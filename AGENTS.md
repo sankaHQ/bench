@@ -11,8 +11,9 @@ This repository is the independent evaluator for repository-level migrations.
 - A behavior pass never compensates for a failed native-target-compliance gate.
 - Django ORM use is allowed in the DRF-to-FastAPI lane; DRF request handling,
   Django ASGI mounting, and proxying are forbidden in native candidates.
-- Do not publish datasets, make the repository public, or deploy hosted
-  evaluation without explicit approval.
+- Do not publish datasets or deploy hosted evaluation without explicit approval.
+- Hidden scenarios, candidate transcripts, and per-run mirrors never enter this
+  repository; published records are scrubbed snapshots under `results/`.
 
 ## Checks
 

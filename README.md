@@ -1,6 +1,6 @@
 # Sanka Migration Bench
 
-Sanka Migration Bench (`sanka-bench`) is a tool-neutral, repository-level
+Sanka Migration Bench (repository `sankaHQ/bench`, package `sanka-bench`) is a tool-neutral, repository-level
 benchmark for evaluating whether a software migration preserves behavior and
 actually reaches its declared target architecture.
 

@@ -24,8 +24,8 @@ fixture = [
 sanka-bench = "sanka_bench.cli:main"
 
 [project.urls]
-Repository = "https://github.com/sankaHQ/sanka-bench"
-Issues = "https://github.com/sankaHQ/sanka-bench/issues"
+Repository = "https://github.com/sankaHQ/bench"
+Issues = "https://github.com/sankaHQ/bench/issues"
 
 [build-system]
 requires = ["hatchling>=1.27"]
