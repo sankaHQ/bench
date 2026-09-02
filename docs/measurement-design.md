@@ -51,8 +51,12 @@ existing tasks cover the failure families the notes and the verifier target; Ver
 real repositories join the suite starting with the smallest scannable ones
 (djangoforapis, styleguide-example, kitsune), each with a recorded scan, public scenarios
 sampled from the hidden superset, and a source-oracle driver. Real-repository tasks carry
-their license and commit in `task.yaml`; the hidden superset stays out of the public
-repository as before.
+their license and commit in `task.yaml`. "Hidden" means hidden from the agent: the
+harness copies only `public-tests/` into the workspace, while the evaluator grades the
+superset named by `evaluation.scenarios` (`evaluation/scenarios.json` on the tasks that
+have one). Those files are tracked in this repository today; if the repository is
+public, move them to a private companion the coordinator mounts at evaluation time
+before publishing a matrix.
 
 ## Publication rules
 
