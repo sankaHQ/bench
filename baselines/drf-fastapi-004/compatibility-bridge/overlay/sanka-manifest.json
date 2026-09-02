@@ -1,0 +1,197 @@
+{
+  "generated_files": [
+    "app.py",
+    "sanka_compat.py"
+  ],
+  "generator": "sanka",
+  "mode": "compatibility",
+  "plan_hash": "sha256:983990b96807f9ef751706eb9e36c0271c7a80431621186cfa1f2e16956b654a",
+  "routes": [
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/<drf_format_suffix:format>",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/accounts.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/accounts.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/accounts/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/accounts/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/accounts/{pk}.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/accounts/{pk}.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/accounts/{pk}.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/accounts/{pk}.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/accounts/{pk}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/accounts/{pk}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/accounts/{pk}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/accounts/{pk}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "transfer",
+      "path": "/api/accounts/{pk}/transfer.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "transfer",
+      "path": "/api/accounts/{pk}/transfer/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/audit.{format}/",
+      "source_view": "ledger.views.AuditLogViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/audit/",
+      "source_view": "ledger.views.AuditLogViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/entries.{format}/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/entries.{format}/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/entries/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/entries/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/entries/{pk}.{format}/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/entries/{pk}.{format}/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/entries/{pk}/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/entries/{pk}/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    }
+  ],
+  "schema_version": 1,
+  "settings_module": "ledger_project.settings",
+  "source_root": ".",
+  "source_scan_hash": "sha256:aeab60aef901aad0e486c8bdb244a68e26808a79b14fba2da4db7f65db047c1e"
+}

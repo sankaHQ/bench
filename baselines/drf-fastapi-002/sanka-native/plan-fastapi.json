@@ -1,0 +1,216 @@
+{
+  "alias_drop_rate": 0.5,
+  "automatic_routes": 7,
+  "capabilities": [
+    "fastapi-routes",
+    "generated-app-tests",
+    "uv-environment",
+    "database-configuration",
+    "database-lifecycle",
+    "persistence"
+  ],
+  "database_required": true,
+  "default_output": "<local-path>/outputs/002",
+  "dropped_alias_routes": 7,
+  "file_operations": [
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "README.md"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "app.py"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "models.py"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "pyproject.toml"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "requirements-test.txt"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "requirements.txt"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka-manifest.json"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka_native.py"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka_store.py"
+    }
+  ],
+  "generation_mode": "minimal",
+  "mode": "native",
+  "native_eligible_routes": 7,
+  "native_routes": 7,
+  "needs_adaptation_routes": 0,
+  "omissions": [
+    "full-project-infrastructure"
+  ],
+  "package_manager": "uv",
+  "plan_hash": "sha256:ed2fe4fa0b6384b7e17737a2adf145440c949f60423e4a203b04bcfe6a87c9a7",
+  "readiness": 1.0,
+  "retained": [
+    "Existing Django tables (schema reused, not rewritten)",
+    "Async SQL via Tortoise ORM (recommended — closest to Django)",
+    "DRF removed; FastAPI async request layer (Django is not imported at serve time)",
+    "Format-suffix alias routes dropped (disclosed contract change)"
+  ],
+  "risks": [],
+  "routes": [
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "native-fastapi-api-root"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/<drf_format_suffix:format>",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/posts.{format}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/posts.{format}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/posts/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/posts/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/posts/{pk}.{format}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/posts/{pk}.{format}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/posts/{pk}.{format}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/posts/{pk}.{format}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/posts/{pk}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/posts/{pk}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/posts/{pk}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/posts/{pk}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "native-fastapi-crud"
+    }
+  ],
+  "schema_version": 3,
+  "settings_module": "bulletin_project.settings",
+  "source_framework": "django-rest-framework",
+  "source_scan_hash": "sha256:6a2cc18c229b6123713f7d84a1c7d75bdfa07e247c65f694f06ee9615cddb6a7",
+  "sql_engine": "tortoise",
+  "target_fingerprint": "",
+  "target_framework": "fastapi",
+  "target_generation_mode": ""
+}

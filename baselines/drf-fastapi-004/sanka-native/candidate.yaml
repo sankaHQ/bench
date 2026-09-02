@@ -1,0 +1,8 @@
+schema_version: sanka-bench/candidate/v0.1
+id: sanka-native
+kind: overlay
+overlay: overlay
+provenance:
+  producer: sanka
+  revision: sha256:cecb1753b48ca78ac67828a2a1316b04c956a10938a1d88a172aff0f6e1e099c
+  command: sanka scan && sanka plan --to fastapi && sanka apply --plan-hash <hash> --bench-candidate <dir>

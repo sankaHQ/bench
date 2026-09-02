@@ -1,0 +1,8 @@
+schema_version: sanka-bench/candidate/v0.1
+id: sanka-compatibility-bridge
+kind: overlay
+overlay: overlay
+provenance:
+  producer: sanka
+  revision: 6c13461ac83952ed3711f6bdbd35712016f602c2
+  command: sanka scan && sanka plan --to fastapi --strategy compatibility && sanka apply

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sanka.com/schemas/sanka-bench/task/v0.2.json",
+  "title": "Sanka Migration Bench task",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "lane",
+    "source",
+    "target",
+    "commands",
+    "evaluation"
+  ],
+  "properties": {
+    "schema_version": { "const": "sanka-bench/task/v0.2" },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]+$" },
+    "lane": { "const": "drf-fastapi" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "framework", "python", "provenance"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "framework": { "const": "django-rest-framework" },
+        "python": { "type": "string", "pattern": "^3\\.12(?:\\..+)?$" },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "license", "digest"],
+          "properties": {
+            "kind": { "enum": ["synthetic", "repository"] },
+            "repository": { "type": "string" },
+            "commit": { "type": "string" },
+            "license": { "type": "string", "minLength": 1 },
+            "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          }
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "framework",
+        "orm",
+        "entrypoint",
+        "serving",
+        "static_patterns"
+      ],
+      "properties": {
+        "framework": { "const": "fastapi" },
+        "orm": { "const": "django" },
+        "entrypoint": { "type": "string", "minLength": 1 },
+        "serving": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["forbidden_imports"],
+          "properties": {
+            "forbidden_imports": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "static_patterns": {
+          "type": "object",
+          "description": "Fast textual diagnostics over candidate-contributed files. Never a hard gate; the native-target gate uses recorded serving evidence.",
+          "additionalProperties": false,
+          "required": ["required", "forbidden"],
+          "properties": {
+            "required": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "forbidden": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["regression"],
+      "properties": {
+        "regression": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["driver", "scenarios", "repeat", "timeout_seconds"],
+      "properties": {
+        "driver": { "type": "string", "minLength": 1 },
+        "scenarios": { "type": "string", "minLength": 1 },
+        "repeat": { "type": "integer", "minimum": 2, "maximum": 5 },
+        "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 600 }
+      }
+    }
+  }
+}

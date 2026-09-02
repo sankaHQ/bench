@@ -1,0 +1,363 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sanka.com/schemas/sanka-bench/result/v0.2.json",
+  "title": "Sanka Migration Bench result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "candidate_id",
+    "status",
+    "fully_migrated",
+    "hard_gates",
+    "metrics",
+    "scenarios",
+    "diagnostics",
+    "provenance",
+    "errors"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "sanka-bench/result/v0.2"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "candidate_id": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "failed",
+        "invalid"
+      ]
+    },
+    "fully_migrated": {
+      "type": "boolean"
+    },
+    "hard_gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_qualified",
+        "regression_tests",
+        "target_boot",
+        "native_target",
+        "behavior_parity",
+        "database_parity",
+        "side_effect_parity",
+        "deterministic"
+      ],
+      "properties": {
+        "source_qualified": {
+          "type": "boolean"
+        },
+        "regression_tests": {
+          "type": "boolean"
+        },
+        "target_boot": {
+          "type": "boolean"
+        },
+        "native_target": {
+          "type": "boolean"
+        },
+        "behavior_parity": {
+          "type": "boolean"
+        },
+        "database_parity": {
+          "type": "boolean"
+        },
+        "side_effect_parity": {
+          "type": "boolean"
+        },
+        "deterministic": {
+          "type": "boolean"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario_count",
+        "route_coverage",
+        "behavioral_parity",
+        "database_parity",
+        "side_effect_parity",
+        "native_compliance"
+      ],
+      "properties": {
+        "scenario_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "route_coverage": {
+          "$ref": "#/$defs/fraction"
+        },
+        "behavioral_parity": {
+          "$ref": "#/$defs/fraction"
+        },
+        "database_parity": {
+          "$ref": "#/$defs/fraction"
+        },
+        "side_effect_parity": {
+          "$ref": "#/$defs/fraction"
+        },
+        "native_compliance": {
+          "$ref": "#/$defs/fraction"
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "target_ran",
+          "behavior_match",
+          "database_match",
+          "side_effect_match",
+          "native_compliant",
+          "stable",
+          "detail",
+          "native"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "target_ran": {
+            "type": "boolean"
+          },
+          "behavior_match": {
+            "type": "boolean"
+          },
+          "database_match": {
+            "type": "boolean"
+          },
+          "side_effect_match": {
+            "type": "boolean"
+          },
+          "native_compliant": {
+            "type": "boolean"
+          },
+          "stable": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "native": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/nativeEvidence"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "static_patterns"
+      ],
+      "properties": {
+        "static_patterns": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "required_missing",
+            "forbidden_present"
+          ],
+          "properties": {
+            "required_missing": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "forbidden_present": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "file",
+                  "pattern"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  },
+                  "pattern": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "catch_all_served_scenarios": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Scenario ids served by a catch-all route (/{name:path}) although the source application did not answer 404. Diagnostic only; never a gate."
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_digest",
+        "source_digest",
+        "candidate_digest",
+        "evaluator_version",
+        "repeat"
+      ],
+      "properties": {
+        "task_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "source_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "candidate_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "evaluator_version": {
+          "type": "string"
+        },
+        "repeat": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "candidate_stats": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "turns": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "duration_seconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "cost_usd": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "fraction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "passed",
+        "total",
+        "rate"
+      ],
+      "properties": {
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "nativeEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "app_is_fastapi",
+        "route_class",
+        "endpoint_in_workspace",
+        "forbidden_imports",
+        "process_events",
+        "socket_events",
+        "settings_module"
+      ],
+      "properties": {
+        "app_is_fastapi": {
+          "type": "boolean"
+        },
+        "route_class": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint_in_workspace": {
+          "type": "boolean"
+        },
+        "forbidden_imports": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "process_events": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "socket_events": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "settings_module": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "route_is_apiroute": {
+          "type": "boolean",
+          "description": "True when the matched route is a fastapi.routing.APIRoute or a subclass; absent in evidence recorded before evaluator 0.0.3."
+        },
+        "route_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Path template of the matched route, so catch-all serving can be flagged."
+        }
+      }
+    }
+  }
+}

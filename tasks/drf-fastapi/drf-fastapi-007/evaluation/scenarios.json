@@ -1,0 +1,277 @@
+[
+  {
+    "id": "list-default-first-page",
+    "method": "GET",
+    "path": "/api/records/"
+  },
+  {
+    "id": "walk-default-second-page",
+    "method": "GET",
+    "path": "/api/records/?cursor=cD0yMDI2LTAxLTAxKzAyJTNBMDAlM0EwMCUyQjAwJTNBMDA%3D",
+    "setup": [{"method": "GET", "path": "/api/records/"}]
+  },
+  {
+    "id": "search-and-order-combined",
+    "method": "GET",
+    "path": "/api/records/?search=retail&ordering=amount"
+  },
+  {
+    "id": "retrieve-decimal-timezone-etag",
+    "method": "GET",
+    "path": "/api/records/1/",
+    "capture_headers": ["ETag", "Cache-Control", "Vary", "Content-Length"]
+  },
+  {
+    "id": "conditional-etag-match",
+    "method": "GET",
+    "path": "/api/records/1/",
+    "capture_headers": ["ETag", "Cache-Control", "Vary", "Content-Length"],
+    "headers": {
+      "If-None-Match": "\"b2e08e5a61fe5fdc57a57c3d2256a9765efba09318cdb51378270f92c742cbda\""
+    },
+    "setup": [
+      {
+        "method": "GET",
+        "path": "/api/records/1/",
+        "capture_headers": ["ETag", "Cache-Control", "Vary", "Content-Length"]
+      }
+    ]
+  },
+  {
+    "id": "create-normalizes-decimal-and-offset",
+    "method": "POST",
+    "path": "/api/records/",
+    "body": {
+      "label": "Tokyo sale",
+      "category": "sales",
+      "amount": 10,
+      "posted_at": "2026-01-01T00:30:00-05:00"
+    }
+  },
+  {
+    "id": "walk-default-third-page",
+    "method": "GET",
+    "path": "/api/records/?cursor=bz0xJnA9MjAyNi0wMS0wMSswMSUzQTAwJTNBMDAlMkIwMCUzQTAw",
+    "setup": [
+      {"method": "GET", "path": "/api/records/"},
+      {
+        "method": "GET",
+        "path": "/api/records/?cursor=cD0yMDI2LTAxLTAxKzAyJTNBMDAlM0EwMCUyQjAwJTNBMDA%3D"
+      }
+    ]
+  },
+  {
+    "id": "cursor-stable-after-newer-insert",
+    "method": "GET",
+    "path": "/api/records/?cursor=cD0yMDI2LTAxLTAxKzAyJTNBMDAlM0EwMCUyQjAwJTNBMDA%3D",
+    "setup": [
+      {"method": "GET", "path": "/api/records/"},
+      {
+        "method": "POST",
+        "path": "/api/records/",
+        "body": {
+          "label": "Newest record",
+          "category": "ops",
+          "amount": "1.00",
+          "posted_at": "2026-01-01T04:00:00Z"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ordered-cursor-stable-after-middle-insert",
+    "method": "GET",
+    "path": "/api/records/?cursor=cD0yLjUw&ordering=amount",
+    "setup": [
+      {"method": "GET", "path": "/api/records/?ordering=amount"},
+      {
+        "method": "POST",
+        "path": "/api/records/",
+        "body": {
+          "label": "Inserted middle",
+          "category": "ops",
+          "amount": "1.00",
+          "posted_at": "2026-01-01T04:00:00Z"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ordering-posted-at-breaks-ties-by-id",
+    "method": "GET",
+    "path": "/api/records/?ordering=posted_at"
+  },
+  {
+    "id": "ordering-descending-amount-breaks-ties",
+    "method": "GET",
+    "path": "/api/records/?ordering=-amount"
+  },
+  {
+    "id": "walk-descending-amount-second-page",
+    "method": "GET",
+    "path": "/api/records/?cursor=bz0xJnA9MTAwLjEw&ordering=-amount",
+    "setup": [{"method": "GET", "path": "/api/records/?ordering=-amount"}]
+  },
+  {
+    "id": "search-category-preserves-default-order",
+    "method": "GET",
+    "path": "/api/records/?search=ops"
+  },
+  {
+    "id": "search-is-case-insensitive",
+    "method": "GET",
+    "path": "/api/records/?search=ALPHA"
+  },
+  {
+    "id": "search-empty-result-envelope",
+    "method": "GET",
+    "path": "/api/records/?search=missing"
+  },
+  {
+    "id": "search-retail-descending-amount-tie",
+    "method": "GET",
+    "path": "/api/records/?search=retail&ordering=-amount"
+  },
+  {
+    "id": "invalid-ordering-falls-back-to-default",
+    "method": "GET",
+    "path": "/api/records/?ordering=bogus"
+  },
+  {
+    "id": "ordering-label-is-deterministic",
+    "method": "GET",
+    "path": "/api/records/?ordering=label"
+  },
+  {
+    "id": "retrieve-zero-decimal-string",
+    "method": "GET",
+    "path": "/api/records/5/",
+    "capture_headers": ["ETag"]
+  },
+  {
+    "id": "create-one-decimal-expands-scale",
+    "method": "POST",
+    "path": "/api/records/",
+    "body": {
+      "label": "One decimal",
+      "category": "sales",
+      "amount": "10.1",
+      "posted_at": "2026-01-02T00:00:00Z"
+    }
+  },
+  {
+    "id": "create-utc-renders-tokyo-zone",
+    "method": "POST",
+    "path": "/api/records/",
+    "body": {
+      "label": "UTC input",
+      "category": "sales",
+      "amount": "2.50",
+      "posted_at": "2026-01-02T03:04:05Z"
+    }
+  },
+  {
+    "id": "conditional-etag-nonmatch-returns-body",
+    "method": "GET",
+    "path": "/api/records/1/",
+    "headers": {"If-None-Match": "\"stale\""},
+    "capture_headers": ["ETag", "Cache-Control", "Vary", "Content-Length"]
+  },
+  {
+    "id": "conditional-etag-wildcard",
+    "method": "GET",
+    "path": "/api/records/1/",
+    "headers": {"If-None-Match": "*"},
+    "capture_headers": ["ETag", "Cache-Control", "Vary", "Content-Length"]
+  },
+  {
+    "id": "conditional-etag-comma-list",
+    "method": "GET",
+    "path": "/api/records/1/",
+    "capture_headers": ["ETag", "Cache-Control", "Vary", "Content-Length"],
+    "headers": {
+      "If-None-Match": "\"stale\", \"b2e08e5a61fe5fdc57a57c3d2256a9765efba09318cdb51378270f92c742cbda\""
+    },
+    "setup": [
+      {
+        "method": "GET",
+        "path": "/api/records/1/",
+        "capture_headers": ["ETag"]
+      }
+    ]
+  },
+  {
+    "id": "stale-etag-after-patch-returns-new-body",
+    "method": "GET",
+    "path": "/api/records/1/",
+    "capture_headers": ["ETag", "Cache-Control", "Vary", "Content-Length"],
+    "headers": {
+      "If-None-Match": "\"b2e08e5a61fe5fdc57a57c3d2256a9765efba09318cdb51378270f92c742cbda\""
+    },
+    "setup": [
+      {
+        "method": "GET",
+        "path": "/api/records/1/",
+        "capture_headers": ["ETag"]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/records/1/",
+        "body": {"label": "Alpha changed"},
+        "capture_headers": ["ETag"]
+      }
+    ]
+  },
+  {
+    "id": "current-etag-after-patch-returns-304",
+    "method": "GET",
+    "path": "/api/records/1/",
+    "capture_headers": ["ETag", "Cache-Control", "Vary", "Content-Length"],
+    "headers": {
+      "If-None-Match": "\"d4a69af0b0033d60f673eb96f380306fe39c6eeb26b68d8fa4dd5c5aed277758\""
+    },
+    "setup": [
+      {
+        "method": "GET",
+        "path": "/api/records/1/",
+        "capture_headers": ["ETag"]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/records/1/",
+        "body": {"label": "Alpha changed"},
+        "capture_headers": ["ETag"]
+      }
+    ]
+  },
+  {
+    "id": "put-response-keeps-decimal-timezone-etag",
+    "method": "PUT",
+    "path": "/api/records/3/",
+    "body": {
+      "label": "Updated fee",
+      "category": "ops",
+      "amount": 10,
+      "posted_at": "2026-01-01T01:30:00-05:00"
+    },
+    "capture_headers": ["ETag", "Cache-Control", "Vary"]
+  },
+  {
+    "id": "malformed-cursor-has-exact-error",
+    "method": "GET",
+    "path": "/api/records/?cursor=bz14"
+  },
+  {
+    "id": "walk-search-results-preserves-query",
+    "method": "GET",
+    "path": "/api/records/?cursor=cD1BbHBoYStyZW5ld2Fs&ordering=label&search=al",
+    "setup": [{"method": "GET", "path": "/api/records/?search=al&ordering=label"}]
+  },
+  {
+    "id": "patch-offset-datetime-renders-tokyo-zone",
+    "method": "PATCH",
+    "path": "/api/records/2/",
+    "body": {"posted_at": "2026-02-03T23:45:00-08:00"},
+    "capture_headers": ["ETag"]
+  }
+]

@@ -1,0 +1,7 @@
+schema_version: sanka-bench/candidate/v0.1
+id: noop
+kind: noop
+provenance:
+  producer: unchanged-source
+  revision: drf-fastapi-005
+  command: ""

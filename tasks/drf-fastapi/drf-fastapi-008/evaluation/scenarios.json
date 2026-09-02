@@ -1,0 +1,289 @@
+[
+  {
+    "id": "function-list-canonical",
+    "method": "GET",
+    "path": "/api/function/entries/"
+  },
+  {
+    "id": "class-list-canonical",
+    "method": "GET",
+    "path": "/api/class/entries"
+  },
+  {
+    "id": "viewset-list-canonical",
+    "method": "GET",
+    "path": "/api/viewset/entries/"
+  },
+  {
+    "id": "function-detail-non-slug",
+    "method": "GET",
+    "path": "/api/function/entries/guide.v2+draft/"
+  },
+  {
+    "id": "class-detail-non-slug",
+    "method": "GET",
+    "path": "/api/class/entries/guide.v2+draft"
+  },
+  {
+    "id": "viewset-detail-non-slug",
+    "method": "GET",
+    "path": "/api/viewset/entries/guide.v2+draft/"
+  },
+  {
+    "id": "function-create",
+    "method": "POST",
+    "path": "/api/function/entries/",
+    "body": {
+      "code": "new.item+one",
+      "title": "New entry",
+      "body": "Created through a function view",
+      "state": "draft"
+    }
+  },
+  {
+    "id": "function-invalid-blank",
+    "method": "POST",
+    "path": "/api/function/entries/",
+    "body": {"code": "", "title": ""}
+  },
+  {
+    "id": "function-list-no-slash-is-also-canonical",
+    "method": "GET",
+    "path": "/api/function/entries"
+  },
+  {
+    "id": "class-list-slash-redirects-back",
+    "method": "GET",
+    "path": "/api/class/entries/",
+    "capture_headers": ["Location"]
+  },
+  {
+    "id": "viewset-list-no-slash-redirects-forward",
+    "method": "GET",
+    "path": "/api/viewset/entries",
+    "capture_headers": ["Location"]
+  },
+  {
+    "id": "function-detail-no-slash-is-also-canonical",
+    "method": "GET",
+    "path": "/api/function/entries/guide.v2+draft"
+  },
+  {
+    "id": "class-detail-slash-redirects-back",
+    "method": "GET",
+    "path": "/api/class/entries/guide.v2+draft/",
+    "capture_headers": ["Location"]
+  },
+  {
+    "id": "viewset-detail-no-slash-redirects-forward",
+    "method": "GET",
+    "path": "/api/viewset/entries/guide.v2+draft",
+    "capture_headers": ["Location"]
+  },
+  {
+    "id": "function-detail-at-and-dot-code",
+    "method": "GET",
+    "path": "/api/function/entries/release@2026.08/"
+  },
+  {
+    "id": "class-detail-at-and-dot-code",
+    "method": "GET",
+    "path": "/api/class/entries/release@2026.08"
+  },
+  {
+    "id": "viewset-detail-at-and-dot-code",
+    "method": "GET",
+    "path": "/api/viewset/entries/release@2026.08/"
+  },
+  {
+    "id": "class-create",
+    "method": "POST",
+    "path": "/api/class/entries",
+    "body": {
+      "code": "new.item+one",
+      "title": "New entry",
+      "body": "Created through a class view",
+      "state": "draft"
+    }
+  },
+  {
+    "id": "viewset-create",
+    "method": "POST",
+    "path": "/api/viewset/entries/",
+    "body": {
+      "code": "new.item+one",
+      "title": "New entry",
+      "body": "Created through a viewset",
+      "state": "draft"
+    }
+  },
+  {
+    "id": "class-invalid-duplicate-code",
+    "method": "POST",
+    "path": "/api/class/entries",
+    "body": {
+      "code": "guide.v2+draft",
+      "title": "Duplicate",
+      "body": "Must not persist",
+      "state": "draft"
+    }
+  },
+  {
+    "id": "viewset-invalid-choice",
+    "method": "POST",
+    "path": "/api/viewset/entries/",
+    "body": {
+      "code": "invalid.state",
+      "title": "Invalid state",
+      "body": "Must not persist",
+      "state": "archived"
+    }
+  },
+  {
+    "id": "cross-create-function-read-class",
+    "method": "GET",
+    "path": "/api/class/entries/shared.created+one",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/function/entries/",
+        "body": {
+          "code": "shared.created+one",
+          "title": "Cross-style create",
+          "body": "Function to class",
+          "state": "published"
+        }
+      }
+    ]
+  },
+  {
+    "id": "cross-create-class-read-viewset",
+    "method": "GET",
+    "path": "/api/viewset/entries/shared.created+two/",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/class/entries",
+        "body": {
+          "code": "shared.created+two",
+          "title": "Cross-style create",
+          "body": "Class to viewset",
+          "state": "draft"
+        }
+      }
+    ]
+  },
+  {
+    "id": "cross-create-viewset-read-function",
+    "method": "GET",
+    "path": "/api/function/entries/shared.created+three/",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/viewset/entries/",
+        "body": {
+          "code": "shared.created+three",
+          "title": "Cross-style create",
+          "body": "Viewset to function",
+          "state": "draft"
+        }
+      }
+    ]
+  },
+  {
+    "id": "cross-patch-function-read-class",
+    "method": "GET",
+    "path": "/api/class/entries/guide.v2+draft",
+    "setup": [
+      {
+        "method": "PATCH",
+        "path": "/api/function/entries/guide.v2+draft/",
+        "body": {"title": "Function patched", "state": "published"}
+      }
+    ]
+  },
+  {
+    "id": "cross-patch-class-read-viewset",
+    "method": "GET",
+    "path": "/api/viewset/entries/guide.v2+draft/",
+    "setup": [
+      {
+        "method": "PATCH",
+        "path": "/api/class/entries/guide.v2+draft",
+        "body": {"title": "Class patched", "body": "Changed once"}
+      }
+    ]
+  },
+  {
+    "id": "cross-patch-viewset-read-function",
+    "method": "GET",
+    "path": "/api/function/entries/guide.v2+draft/",
+    "setup": [
+      {
+        "method": "PATCH",
+        "path": "/api/viewset/entries/guide.v2+draft/",
+        "body": {"title": "Viewset patched", "body": "Changed once"}
+      }
+    ]
+  },
+  {
+    "id": "cross-put-class-read-function",
+    "method": "GET",
+    "path": "/api/function/entries/guide.v2+draft/",
+    "setup": [
+      {
+        "method": "PUT",
+        "path": "/api/class/entries/guide.v2+draft",
+        "body": {
+          "code": "guide.v2+draft",
+          "title": "Fully replaced",
+          "body": "Class put",
+          "state": "published"
+        }
+      }
+    ]
+  },
+  {
+    "id": "cross-delete-function-read-viewset",
+    "method": "GET",
+    "path": "/api/viewset/entries/guide.v2+draft/",
+    "setup": [
+      {
+        "method": "DELETE",
+        "path": "/api/function/entries/guide.v2+draft/"
+      }
+    ]
+  },
+  {
+    "id": "cross-delete-class-read-function",
+    "method": "GET",
+    "path": "/api/function/entries/guide.v2+draft/",
+    "setup": [
+      {
+        "method": "DELETE",
+        "path": "/api/class/entries/guide.v2+draft"
+      }
+    ]
+  },
+  {
+    "id": "cross-delete-viewset-read-class",
+    "method": "GET",
+    "path": "/api/class/entries/guide.v2+draft",
+    "setup": [
+      {
+        "method": "DELETE",
+        "path": "/api/viewset/entries/guide.v2+draft/"
+      }
+    ]
+  },
+  {
+    "id": "viewset-full-update-missing-code-rolls-back",
+    "method": "PUT",
+    "path": "/api/viewset/entries/guide.v2+draft/",
+    "body": {
+      "title": "Incomplete replacement",
+      "body": "Must not persist",
+      "state": "published"
+    }
+  }
+]

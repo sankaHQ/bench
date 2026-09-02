@@ -1,0 +1,7 @@
+schema_version: sanka-bench/candidate/v0.1
+id: sanka-native
+kind: noop
+provenance:
+  producer: sanka
+  revision: sha256:4a30730ad0de8163ffae205d07ba658a9e22a12a5031cbadfcaa2f0c7dce7984
+  command: sanka scan && sanka plan --to fastapi && sanka apply --plan-hash <hash> --bench-candidate <dir>

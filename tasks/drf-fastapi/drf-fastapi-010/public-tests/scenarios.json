@@ -1,0 +1,50 @@
+[
+  {
+    "id": "list-orders",
+    "method": "GET",
+    "path": "/api/orders/"
+  },
+  {
+    "id": "detail-draft",
+    "method": "GET",
+    "path": "/api/orders/1/"
+  },
+  {
+    "id": "create-order-version-one",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "number": "ORD-NEW",
+      "total": "10.00",
+      "notes": "Created"
+    }
+  },
+  {
+    "id": "patch-current-version",
+    "method": "PATCH",
+    "path": "/api/orders/1/",
+    "body": {
+      "version": 1,
+      "total": "130.25",
+      "notes": "Edited"
+    }
+  },
+  {
+    "id": "transition-draft-to-submitted",
+    "method": "POST",
+    "path": "/api/orders/1/transition/",
+    "body": {"to_status": "submitted", "version": 1}
+  },
+  {
+    "id": "transition-draft-to-approved",
+    "method": "POST",
+    "path": "/api/orders/1/transition/",
+    "body": {"to_status": "approved", "version": 1}
+  },
+  {
+    "id": "stale-patch-rolls-back-both-tables",
+    "method": "PATCH",
+    "path": "/api/orders/1/",
+    "body": {"version": 9, "notes": "Must not persist"}
+  }
+]

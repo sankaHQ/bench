@@ -1,0 +1,61 @@
+{
+  "generated_files": [
+    "<local-path>/candidates/004/overlay/target_app.py",
+    "<local-path>/candidates/004/overlay/sanka_native.py",
+    "<local-path>/candidates/004/overlay/sanka_store.py",
+    "<local-path>/candidates/004/overlay/sanka_settings.py"
+  ],
+  "http": {
+    "enabled": false,
+    "failed": [],
+    "passed": 0,
+    "probed": 0,
+    "safe_routes": 2
+  },
+  "mode": "native",
+  "ok": false,
+  "output": "<local-path>/candidates/004/overlay",
+  "paths": {
+    "environment": null,
+    "generated": "<local-path>/candidates/004/overlay",
+    "lockfile": null,
+    "manifest": "<local-path>/candidates/004/overlay/sanka-manifest.json",
+    "plan": "<local-path>/artifacts/004/plan-fastapi.json",
+    "pyproject": "<local-path>/candidates/004/overlay/pyproject.toml",
+    "python": null,
+    "scan": "<local-path>/artifacts/004/scan.json",
+    "source": "<repo>/tasks/drf-fastapi/drf-fastapi-004/source"
+  },
+  "plan_hash": "sha256:cecb1753b48ca78ac67828a2a1316b04c956a10938a1d88a172aff0f6e1e099c",
+  "routes": {
+    "dropped": [
+      "DELETE /api/accounts/{pk}.{format}/",
+      "DELETE /api/entries/{pk}.{format}/",
+      "GET /api/<drf_format_suffix:format>",
+      "GET /api/accounts.{format}/",
+      "GET /api/accounts/{pk}.{format}/",
+      "GET /api/audit.{format}/",
+      "GET /api/entries.{format}/",
+      "GET /api/entries/{pk}.{format}/",
+      "PATCH /api/accounts/{pk}.{format}/",
+      "POST /api/accounts.{format}/",
+      "POST /api/accounts/{pk}/transfer.{format}/",
+      "POST /api/entries.{format}/",
+      "PUT /api/accounts/{pk}.{format}/"
+    ],
+    "extra": [],
+    "generated": 7,
+    "missing": [],
+    "needs_adaptation": [
+      "DELETE /api/entries/{pk}/",
+      "GET /api/audit/",
+      "GET /api/entries/",
+      "GET /api/entries/{pk}/",
+      "POST /api/accounts/{pk}/transfer/",
+      "POST /api/entries/"
+    ],
+    "planned": 26,
+    "scanned": 26
+  },
+  "scan_hash": "sha256:9d5c71ab9d78a7f738dfa040005eb465e2c36b7662277cbd684bac3f6c954bf1"
+}

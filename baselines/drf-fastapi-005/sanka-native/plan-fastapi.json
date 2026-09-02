@@ -1,0 +1,265 @@
+{
+  "alias_drop_rate": 0.5,
+  "automatic_routes": 1,
+  "capabilities": [
+    "fastapi-routes",
+    "generated-app-tests",
+    "uv-environment"
+  ],
+  "database_required": false,
+  "default_output": "<local-path>/outputs/005",
+  "dropped_alias_routes": 8,
+  "file_operations": [
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "README.md"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "app.py"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "pyproject.toml"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "requirements-test.txt"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "requirements.txt"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka-manifest.json"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka_native.py"
+    }
+  ],
+  "generation_mode": "minimal",
+  "mode": "native",
+  "native_eligible_routes": 8,
+  "native_routes": 1,
+  "needs_adaptation_routes": 7,
+  "omissions": [
+    "full-project-infrastructure",
+    "database-runtime",
+    "manual-route-adaptations"
+  ],
+  "package_manager": "uv",
+  "plan_hash": "sha256:09e0249c005628c35677d7073663f7df0d47df87bb82144443233bbc5c6a4f0b",
+  "readiness": 0.125,
+  "retained": [
+    "No source database is required by generated routes",
+    "No database runtime required by generated routes",
+    "DRF removed; FastAPI async request layer (Django is not imported at serve time)",
+    "Format-suffix alias routes dropped (disclosed contract change)"
+  ],
+  "risks": [],
+  "routes": [
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "native-fastapi-api-root"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/<drf_format_suffix:format>",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/documents.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/documents.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_AUTH_PERMISSIONS_UNSUPPORTED",
+          "feature": "authentication-permissions",
+          "message": "Authentication/permission classes are outside AllowAny or the supported TokenAuthentication + IsAuthenticated owner pattern; authentication: documents.authentication.ExpiringTokenAuthentication, rest_framework.authentication.SessionAuthentication; permissions: rest_framework.permissions.AllowAny"
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/documents/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_AUTH_PERMISSIONS_UNSUPPORTED",
+          "feature": "authentication-permissions",
+          "message": "Authentication/permission classes are outside AllowAny or the supported TokenAuthentication + IsAuthenticated owner pattern; authentication: documents.authentication.ExpiringTokenAuthentication, rest_framework.authentication.SessionAuthentication; permissions: rest_framework.permissions.AllowAny"
+        }
+      ],
+      "automatic": false,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/documents/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/documents/{pk}.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/documents/{pk}.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/documents/{pk}.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/documents/{pk}.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_AUTH_PERMISSIONS_UNSUPPORTED",
+          "feature": "authentication-permissions",
+          "message": "Authentication/permission classes are outside AllowAny or the supported TokenAuthentication + IsAuthenticated owner pattern; authentication: documents.authentication.ExpiringTokenAuthentication, rest_framework.authentication.SessionAuthentication; permissions: rest_framework.permissions.AllowAny"
+        }
+      ],
+      "automatic": false,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/documents/{pk}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_AUTH_PERMISSIONS_UNSUPPORTED",
+          "feature": "authentication-permissions",
+          "message": "Authentication/permission classes are outside AllowAny or the supported TokenAuthentication + IsAuthenticated owner pattern; authentication: documents.authentication.ExpiringTokenAuthentication, rest_framework.authentication.SessionAuthentication; permissions: rest_framework.permissions.AllowAny"
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/documents/{pk}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_AUTH_PERMISSIONS_UNSUPPORTED",
+          "feature": "authentication-permissions",
+          "message": "Authentication/permission classes are outside AllowAny or the supported TokenAuthentication + IsAuthenticated owner pattern; authentication: documents.authentication.ExpiringTokenAuthentication, rest_framework.authentication.SessionAuthentication; permissions: rest_framework.permissions.AllowAny"
+        }
+      ],
+      "automatic": false,
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/documents/{pk}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_AUTH_PERMISSIONS_UNSUPPORTED",
+          "feature": "authentication-permissions",
+          "message": "Authentication/permission classes are outside AllowAny or the supported TokenAuthentication + IsAuthenticated owner pattern; authentication: documents.authentication.ExpiringTokenAuthentication, rest_framework.authentication.SessionAuthentication; permissions: rest_framework.permissions.AllowAny"
+        }
+      ],
+      "automatic": false,
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/documents/{pk}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "POST",
+      "operation": "review",
+      "path": "/api/documents/{pk}/review.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_CUSTOM_ACTION_UNSUPPORTED",
+          "feature": "viewset-actions",
+          "message": "Custom or unsupported viewset actions are present: review"
+        }
+      ],
+      "automatic": false,
+      "method": "POST",
+      "operation": "review",
+      "path": "/api/documents/{pk}/review/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "needs-manual-adaptation"
+    }
+  ],
+  "schema_version": 3,
+  "settings_module": "access_project.settings",
+  "source_framework": "django-rest-framework",
+  "source_scan_hash": "sha256:38076cbbdeef1e53814dcc3cdca8dec68f8c9a33c772ff2635624a21407f89d2",
+  "sql_engine": "none",
+  "target_fingerprint": "",
+  "target_framework": "fastapi",
+  "target_generation_mode": ""
+}

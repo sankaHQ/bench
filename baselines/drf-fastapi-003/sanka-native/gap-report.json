@@ -1,0 +1,17 @@
+{
+  "critic_checks": {
+    "database_parity": "required",
+    "native_serving_evidence": "required",
+    "redirect_and_header_parity": "required",
+    "route_coverage": "required"
+  },
+  "native_eligible_routes": 7,
+  "native_routes": 7,
+  "needs_adaptation_routes": 0,
+  "plan_hash": "sha256:221a3d35b244b7358349ac831bce73d28222aa00265da2cff301e4d0da727465",
+  "readiness": 1.0,
+  "schema": "sanka/native-gap-report/v1",
+  "skipped_routes": [],
+  "threshold_unit": "ratio",
+  "unsupported_routes": []
+}
