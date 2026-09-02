@@ -22,8 +22,14 @@ from __future__ import annotations
 
 import html
 import json
+import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
+from sanka_bench.statistics import bootstrap_interval, weighted_score, wilson_interval
+
+_SAMPLE_SUFFIX = re.compile(r"-s(\d+)$")
 
 GATE_ORDER = (
     ("source_qualified", "SRC", "Source qualified"),
@@ -67,16 +73,31 @@ class ReportError(RuntimeError):
 
 
 def family_key(candidate_id: str) -> str:
+    """Group every sample of one approach together (``…-s2`` is sample 2 of ``…``)."""
     if "compatibility-bridge" in candidate_id:
         return "compatibility-bridge"
-    return candidate_id
+    return _SAMPLE_SUFFIX.sub("", candidate_id)
+
+
+def sample_index(candidate_id: str) -> int:
+    match = _SAMPLE_SUFFIX.search(candidate_id)
+    return int(match.group(1)) if match else 1
 
 
 def family_label(family: str) -> str:
     return _FAMILY_LABELS.get(family, family)
 
 
-def collect(reports_dir: Path) -> dict[str, Any]:
+def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -> dict[str, Any]:
+    """Aggregate result files into per-approach rows.
+
+    A cell is one (task, approach); it may hold several samples (``candidate_id``
+    suffixed ``-s<k>``), each with a local and/or Docker result. Rows carry the
+    task-sample pass rate with a Wilson interval, the route-weighted score with a
+    bootstrap interval when route weights are given (task-weighted otherwise), and the
+    agent's cost and time per sample beside cost per verified route. See
+    ``docs/measurement-design.md``.
+    """
     cells: dict[tuple[str, str], dict[str, Any]] = {}
     for path in sorted(reports_dir.glob("*.json")):
         try:
@@ -92,55 +113,102 @@ def collect(reports_dir: Path) -> dict[str, Any]:
         runner = "docker" if path.stem.endswith("-docker") else "local"
         cell = cells.setdefault(
             (task_id, family_key(candidate_id)),
+            {"candidate_id": candidate_id, "local": None, "docker": None, "samples": {}},
+        )
+        sample = cell["samples"].setdefault(
+            sample_index(candidate_id),
             {"candidate_id": candidate_id, "local": None, "docker": None},
         )
-        cell[runner] = payload
+        sample[runner] = payload
     if not cells:
         raise ReportError(f"no benchmark results found in {reports_dir}")
+    for cell in cells.values():
+        ordered = [cell["samples"][index] for index in sorted(cell["samples"])]
+        cell["samples"] = ordered
+        # the first sample stays the representative for the per-task gate tables
+        cell["candidate_id"] = ordered[0]["candidate_id"]
+        cell["local"] = ordered[0]["local"]
+        cell["docker"] = ordered[0]["docker"]
 
     tasks = sorted({task for task, _ in cells})
     seen_families = {family for _, family in cells}
     families = [family for family in _FAMILY_ORDER if family in seen_families]
     families.extend(sorted(seen_families - set(_FAMILY_ORDER)))
+    weights = dict(route_weights) if route_weights else None
 
     rows: list[dict[str, Any]] = []
     for family in families:
         migrated: list[str] = []
         covered: list[str] = []
+        outcomes: dict[str, list[bool]] = {}
         cost_usd = 0.0
         duration_seconds = 0.0
         has_stats = False
+        result_count = 0
         diagnostic = {key: [0, 0] for key in _DIAGNOSTIC_FIELDS}
         has_metrics = False
         for task in tasks:
             entry = cells.get((task, family))
-            result = entry and (entry["local"] or entry["docker"])
-            if result is None:
+            if entry is None:
+                continue
+            task_outcomes: list[bool] = []
+            for sample in entry["samples"]:
+                result = sample["local"] or sample["docker"]
+                if result is None:
+                    continue
+                result_count += 1
+                task_outcomes.append(result.get("fully_migrated") is True)
+                stats = result.get("provenance", {}).get("candidate_stats")
+                if isinstance(stats, dict):
+                    has_stats = True
+                    cost_usd += float(stats.get("cost_usd") or 0)
+                    duration_seconds += float(stats.get("duration_seconds") or 0)
+                metrics = result.get("metrics")
+                if isinstance(metrics, dict):
+                    for key, field in _DIAGNOSTIC_FIELDS.items():
+                        fraction = metrics.get(field)
+                        if isinstance(fraction, dict):
+                            has_metrics = True
+                            diagnostic[key][0] += int(fraction.get("passed") or 0)
+                            diagnostic[key][1] += int(fraction.get("total") or 0)
+            if not task_outcomes:
                 continue
             covered.append(task)
-            if result.get("fully_migrated") is True:
+            outcomes[task] = task_outcomes
+            if all(task_outcomes):
                 migrated.append(task)
-            stats = result.get("provenance", {}).get("candidate_stats")
-            if isinstance(stats, dict):
-                has_stats = True
-                cost_usd += float(stats.get("cost_usd") or 0)
-                duration_seconds += float(stats.get("duration_seconds") or 0)
-            metrics = result.get("metrics")
-            if isinstance(metrics, dict):
-                for key, field in _DIAGNOSTIC_FIELDS.items():
-                    fraction = metrics.get(field)
-                    if isinstance(fraction, dict):
-                        has_metrics = True
-                        diagnostic[key][0] += int(fraction.get("passed") or 0)
-                        diagnostic[key][1] += int(fraction.get("total") or 0)
+        samples = max((len(values) for values in outcomes.values()), default=1)
+        passed_samples = sum(sum(1 for passed in values if passed) for values in outcomes.values())
+        total_samples = sum(len(values) for values in outcomes.values())
+        task_weights = [weights.get(task, 0) if weights else 1 for task in covered]
+        weighted = bool(weights)
+        score = bootstrap_interval([outcomes[task] for task in covered], task_weights)
+        total_weight = sum(task_weights)
+        verified_routes = (
+            weighted_score([outcomes[task] for task in covered], task_weights) * total_weight
+            if weighted
+            else None
+        )
+        per_sample = samples if samples else 1
+        row_cost = cost_usd / per_sample if has_stats else None
         rows.append(
             {
                 "family": family,
                 "label": family_label(family),
                 "migrated": migrated,
                 "covered": covered,
-                "cost_usd": cost_usd if has_stats else None,
-                "duration_seconds": duration_seconds if has_stats else None,
+                "outcomes": outcomes,
+                "samples": samples,
+                "passed_samples": passed_samples,
+                "total_samples": total_samples,
+                "pass_rate": wilson_interval(passed_samples, total_samples).to_dict(),
+                "score": {**score.to_dict(), "weighted": weighted},
+                "verified_routes": verified_routes,
+                "cost_usd": row_cost,
+                "duration_seconds": duration_seconds / per_sample if has_stats else None,
+                "cost_per_verified_route": (
+                    row_cost / verified_routes if row_cost is not None and verified_routes else None
+                ),
                 "diagnostic": diagnostic if has_metrics else None,
             }
         )
@@ -149,25 +217,49 @@ def collect(reports_dir: Path) -> dict[str, Any]:
     parity_matched = 0
     versions: set[str] = set()
     for cell in cells.values():
-        for result in (cell["local"], cell["docker"]):
-            if result is not None:
-                versions.add(str(result.get("provenance", {}).get("evaluator_version", "")))
-        if cell["local"] is not None and cell["docker"] is not None:
-            parity_checked += 1
-            if (
-                cell["local"]["hard_gates"] == cell["docker"]["hard_gates"]
-                and cell["local"]["fully_migrated"] == cell["docker"]["fully_migrated"]
-            ):
-                parity_matched += 1
+        for sample in cell["samples"]:
+            for result in (sample["local"], sample["docker"]):
+                if result is not None:
+                    versions.add(str(result.get("provenance", {}).get("evaluator_version", "")))
+            if sample["local"] is not None and sample["docker"] is not None:
+                parity_checked += 1
+                if (
+                    sample["local"]["hard_gates"] == sample["docker"]["hard_gates"]
+                    and sample["local"]["fully_migrated"] == sample["docker"]["fully_migrated"]
+                ):
+                    parity_matched += 1
 
     return {
         "tasks": tasks,
         "rows": rows,
         "cells": cells,
+        "samples": max((row["samples"] for row in rows), default=1),
+        "route_weights": weights,
         "parity_checked": parity_checked,
         "parity_matched": parity_matched,
         "evaluator_versions": sorted(version for version in versions if version),
     }
+
+
+def count_label(row: dict[str, Any]) -> str:
+    """``migrated/covered`` for single samples, ``passed/total task-samples`` otherwise."""
+    if not row["covered"]:
+        return "—"
+    if row.get("samples", 1) > 1:
+        return f"{row['passed_samples']}/{row['total_samples']}"
+    return f"{len(row['migrated'])}/{len(row['covered'])}"
+
+
+def interval_label(row: dict[str, Any]) -> str:
+    """Score with its bootstrap interval; empty for single-sample, unweighted rows."""
+    score = row.get("score") or {}
+    if not row["covered"] or not (row.get("samples", 1) > 1 or score.get("weighted")):
+        return ""
+    unit = "routes" if score.get("weighted") else "tasks"
+    return (
+        f"{score['estimate'] * 100:.1f}% of {unit} "
+        f"[{score['low'] * 100:.1f}, {score['high'] * 100:.1f}]"
+    )
 
 
 def _esc(value: Any) -> str:
@@ -181,27 +273,38 @@ def _tally_row(row: dict[str, Any], tasks: list[str]) -> str:
             cells.append(
                 f'<span class="cell cell-absent" title="{_esc(task)}: no candidate"></span>'
             )
-        elif task in row["migrated"]:
-            cells.append(
-                f'<span class="cell cell-pass" title="{_esc(task)}: fully migrated"></span>'
-            )
+            continue
+        outcomes = row["outcomes"].get(task) or []
+        passed = sum(1 for value in outcomes if value)
+        if len(outcomes) > 1:
+            detail = f"{passed}/{len(outcomes)} samples fully migrated"
         else:
-            cells.append(
-                f'<span class="cell cell-fail" title="{_esc(task)}: not fully migrated"></span>'
-            )
-    count = f"{len(row['migrated'])}/{len(row['covered'])}" if row["covered"] else "—"
+            detail = "fully migrated" if passed else "not fully migrated"
+        if passed == len(outcomes):
+            klass = "cell-pass"
+        elif passed:
+            klass = "cell-partial"
+        else:
+            klass = "cell-fail"
+        cells.append(f'<span class="cell {klass}" title="{_esc(task)}: {_esc(detail)}"></span>')
+    count = count_label(row)
     stats_note = ""
     if row.get("cost_usd") is not None:
         minutes = (row.get("duration_seconds") or 0) / 60
+        per_route = row.get("cost_per_verified_route")
+        route_note = f" · ${per_route:.3f}/verified route" if per_route is not None else ""
         stats_note = (
             f'<span class="tally-stats">${row["cost_usd"]:.2f}'
-            f" · {minutes:.0f} min agent time</span>"
+            f" · {minutes:.0f} min agent time{route_note}</span>"
         )
+    interval = interval_label(row)
+    interval_note = f'<span class="tally-interval">{_esc(interval)}</span>' if interval else ""
     return (
         '<div class="tally-row">'
         f'<span class="tally-label">{_esc(row["label"])}</span>'
         f'<span class="tally-cells">{"".join(cells)}</span>'
         f'<span class="tally-count">{_esc(count)}</span>'
+        f"{interval_note}"
         f"{stats_note}"
         "</div>"
     )
@@ -305,8 +408,15 @@ def render_html(data: dict[str, Any]) -> str:
     versions = ", ".join(data["evaluator_versions"]) or "unknown"
     agent_note = ""
     if any(row.get("cost_usd") is not None for row in data["rows"]):
+        samples = int(data.get("samples") or 1)
+        attempts = (
+            "single unattended attempts (pass@1)"
+            if samples == 1
+            else f"{samples} independent unattended attempts per cell (pass@1 mean, "
+            "Wilson interval on task-samples, bootstrap interval on the route-weighted score)"
+        )
         agent_note = (
-            '<p class="note">Official agent rows are single unattended attempts (pass@1) with '
+            f'<p class="note">Official agent rows are {attempts} with '
             "the same model, turn budget, and contract; the ordinary with-Sanka prompt offers "
             "the Sanka CLI with readiness-aware usage guidance. Readiness-aware rows are a "
             "separately labelled "
@@ -371,12 +481,19 @@ h3 {{ font: 500 15px/1.4 "IBM Plex Mono", ui-monospace, monospace; margin: 24px 
 .cell {{ width: 34px; height: 16px; border-radius: 4px; }}
 .cell-pass {{ background: var(--accent); }}
 .cell-fail {{ background: var(--cell-empty); box-shadow: inset 0 0 0 1px var(--hairline); }}
+.cell-partial {{
+  background: linear-gradient(90deg, var(--accent) 50%, var(--cell-empty) 50%);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}}
 .cell-absent {{
   background: transparent; box-shadow: inset 0 0 0 1px var(--hairline); opacity: .45;
 }}
 .tally-count {{
   font: 500 14px/1 "IBM Plex Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums; color: var(--ink-2);
+}}
+.tally-interval {{
+  font-family: "IBM Plex Mono", monospace; font-size: 12px; color: #52514e; margin-left: 10px;
 }}
 .tally-stats {{
   font: 400 12px/1 "IBM Plex Mono", ui-monospace, monospace;
@@ -487,10 +604,12 @@ def render_svg(data: dict[str, Any]) -> str:
                 f'height="{cell_height}" rx="4" fill="{fill}"{stroke_attr}/>'
             )
             x += cell_width + cell_gap
-        count = f"{len(row['migrated'])}/{len(row['covered'])}" if row["covered"] else "—"
+        count = count_label(row)
+        interval = interval_label(row)
+        label = f"{count} · {interval}" if interval else count
         parts.append(
             f'<text x="{x + 14}" y="{cy + 4}" font-family="IBM Plex Mono, monospace" '
-            f'font-size="13" fill="#52514e">{_esc(count)}</text>'
+            f'font-size="13" fill="#52514e">{_esc(label)}</text>'
         )
         y += row_height
     parts.append(
@@ -506,8 +625,9 @@ def write_report(
     reports_dir: Path,
     html_path: Path,
     svg_path: Path,
+    route_weights: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
-    data = collect(reports_dir)
+    data = collect(reports_dir, route_weights)
     html_path.parent.mkdir(parents=True, exist_ok=True)
     html_path.write_text(render_html(data), encoding="utf-8")
     svg_path.parent.mkdir(parents=True, exist_ok=True)

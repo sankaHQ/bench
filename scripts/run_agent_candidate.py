@@ -128,7 +128,10 @@ generate FastAPI code for the routes it supports:
 
 Read the plan's readiness report before adopting anything: it states, per
 route, whether native generation is supported and why not when it is not
-(`plan --to fastapi --json` prints the full detail). At high readiness the
+(`plan --to fastapi --json` prints the full detail, including per-route
+`parity_notes`: the source's exact authentication order and error strings,
+pagination, ordering, file, uniqueness, and validation-message behavior). At
+high readiness the
 generated overlay under bench-candidate/overlay/ is a strong starting point —
 copy the generated files and continue from them. At low readiness apply may
 refuse outright or emit only a few routes; treat whatever it produces as
@@ -166,7 +169,17 @@ non-alias routes) against a {threshold_percent:.1f}% scaffold threshold.
 Plan hash: {plan_hash}
 
 {decision}
-{verifier}"""
+{notes}{verifier}"""
+
+PARITY_NOTES_FILE = "sanka-parity-notes.md"
+
+PROMPT_PARITY_NOTES = """
+Sanka's scan also wrote per-route parity notes — the source's exact
+authentication order and error strings, pagination, ordering, file, uniqueness,
+and validation-message behavior, derived from the running application — to
+{notes_file} ({note_count} notes over {route_count} routes). Read a route's
+section before implementing it.
+"""
 
 EXCLUDED_PARTS = {
     ".claude",
@@ -179,7 +192,7 @@ EXCLUDED_PARTS = {
     "public-tests",
 }
 EXCLUDED_SUFFIXES = {".log", ".pyc", ".sqlite3"}
-EXCLUDED_NAMES = {".DS_Store", "AGENT_TASK.md", "CLAUDE.md"}
+EXCLUDED_NAMES = {".DS_Store", "AGENT_TASK.md", "CLAUDE.md", PARITY_NOTES_FILE}
 
 
 def _candidate_mode(candidate_id: str) -> str | None:
@@ -273,8 +286,71 @@ def _readiness_prompt(context: dict[str, object], sanka: Path) -> str:
         threshold_percent=float(context["threshold"]) * 100,
         plan_hash=context["plan_hash"],
         decision=decision,
+        notes=_notes_prompt(context),
         verifier=_verifier_prompt(sanka),
     )
+
+
+def _notes_prompt(context: dict[str, object]) -> str:
+    """One pointer to the notes file when the plan carried notes; nothing otherwise."""
+    count = int(context.get("parity_note_count") or 0)
+    notes_file = context.get("parity_notes_file")
+    if not count or not notes_file:
+        return ""
+    return PROMPT_PARITY_NOTES.format(
+        notes_file=notes_file,
+        note_count=count,
+        route_count=int(context.get("parity_note_routes") or 0),
+    )
+
+
+def _write_parity_notes(
+    workspace: Path, plan: dict[str, object], context: dict[str, object]
+) -> Path | None:
+    """Render the plan's per-route parity notes for the agent, grouped by route.
+
+    Notes are facts about the source application (M2 of the fresh-start program), not
+    instructions; they cover the routes the agent has to write by hand — every non-alias
+    route below the scaffold threshold, only the non-generated ones above it. Plans
+    from older engines carry no notes, and then nothing is written.
+    """
+    sections: list[str] = []
+    note_count = 0
+    scaffolded = context.get("decision") == "emit-scaffold"
+    for item in plan.get("routes") or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("strategy") == "dropped-format-suffix-alias":
+            continue
+        if scaffolded and item.get("automatic") is True:
+            continue
+        notes = [note for note in item.get("parity_notes") or [] if isinstance(note, dict)]
+        if not notes:
+            continue
+        lines = [f"## {item.get('method')} {item.get('path')}", ""]
+        for note in notes:
+            source = f" ({note.get('source')})" if note.get("source") else ""
+            lines.append(f"- [{note.get('family')}] {note.get('message')}{source}")
+        lines.append("")
+        sections.append("\n".join(lines))
+        note_count += len(notes)
+    if not sections:
+        return None
+    header = [
+        "# Parity notes from the Sanka scan",
+        "",
+        "Facts about the source application's exact behavior, derived from its running",
+        "Django/DRF classes by `sanka scan`. One section per route you have to write;",
+        "the original application remains the specification and the differential",
+        "verifier remains the check.",
+        "",
+    ]
+    path = workspace / PARITY_NOTES_FILE
+    path.write_text("\n".join(header) + "\n" + "\n".join(sections), encoding="utf-8")
+    context["parity_notes_file"] = PARITY_NOTES_FILE
+    context["parity_note_count"] = note_count
+    context["parity_note_routes"] = len(sections)
+    return path
 
 
 def _run_sanka_command(
@@ -333,6 +409,7 @@ def _prepare_readiness_context(
     if not isinstance(scan, dict):
         raise RuntimeError(f"Sanka scan is not an object: {scan_path}")
     context = _readiness_context(plan, threshold, scan)
+    _write_parity_notes(workspace, plan, context)
     if context["decision"] == "emit-scaffold":
         _run_sanka_command(
             [

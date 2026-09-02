@@ -20,6 +20,7 @@ from run_agent_matrix import (  # noqa: E402
     cell_state,
     ensure_authorized,
     prioritized,
+    render_command,
     validate_backups,
     worktree_preflight,
 )
@@ -286,3 +287,30 @@ def test_cancelled_worker_is_terminated_before_control_returns() -> None:
             assert not coordinator.processes
 
         asyncio.run(cancel_worker())
+
+
+def test_samples_multiply_cells_and_suffix_their_identities() -> None:
+    data = manifest()
+    data["execution"]["samples"] = 3
+    data["execution"]["expected_rows"] = 9
+    cells = build_cells(data)
+    assert len(cells) == 9
+    assert len({cell.key for cell in cells}) == 9
+    ids = sorted(cell.candidate_id for cell in cells if cell.model_slug == "a-fail")
+    assert ids == [
+        "drf-fastapi-001-codex-a-fail-alone-s1",
+        "drf-fastapi-001-codex-a-fail-alone-s2",
+        "drf-fastapi-001-codex-a-fail-alone-s3",
+    ]
+    # single-sample manifests keep the historical identities byte for byte
+    assert build_cells(manifest())[0].candidate_id == "drf-fastapi-001-codex-a-fail-alone"
+    command = render_command(
+        ["{python}", "--sample", "{sample}", "--id", "{candidate_id}"],
+        Path("/m.json"),
+        cells[1],
+        "generate",
+    )
+    assert command[2] == "2" and command[4].endswith("-s2")
+    data["execution"]["samples"] = 0
+    with pytest.raises(ValueError):
+        build_cells(data)

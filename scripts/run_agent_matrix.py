@@ -54,14 +54,19 @@ class CellSpec:
     provider_variant: str
     config: str
     route_weight: int
+    sample: int = 1
+    samples: int = 1
 
     @property
     def candidate_id(self) -> str:
-        return f"{self.task}-{self.candidate_slug}-{self.config}"
+        """Cell identity; samples beyond the first run carry ``-s<k>`` (report groups them)."""
+        base = f"{self.task}-{self.candidate_slug}-{self.config}"
+        return f"{base}-s{self.sample}" if self.samples > 1 else base
 
     @property
     def key(self) -> str:
-        return f"{self.task}:{self.model_slug}:{self.config}"
+        base = f"{self.task}:{self.model_slug}:{self.config}"
+        return f"{base}:s{self.sample}" if self.samples > 1 else base
 
 
 @dataclass(frozen=True)
@@ -114,23 +119,29 @@ def build_cells(manifest: dict[str, Any]) -> list[CellSpec]:
     cells: list[CellSpec] = []
     weights = manifest["suite"]["route_weights"]
     configurations = manifest["execution"]["configurations"]
+    samples = int(manifest["execution"].get("samples", 1))
+    if samples < 1:
+        raise ValueError("execution.samples must be a positive integer")
     for task in manifest["suite"]["tasks"]:
         suffix = str(task).rsplit("-", 1)[-1]
         for model in manifest["models"]:
             variant = str(model.get("provider_variant") or "standard")
             for config in configurations:
-                cells.append(
-                    CellSpec(
-                        task=str(task),
-                        task_suffix=suffix,
-                        model_slug=str(model["slug"]),
-                        candidate_slug=str(model["candidate_slug"]),
-                        provider=str(model["provider"]),
-                        provider_variant=variant,
-                        config=str(config),
-                        route_weight=int(weights[task]),
+                for sample in range(1, samples + 1):
+                    cells.append(
+                        CellSpec(
+                            task=str(task),
+                            task_suffix=suffix,
+                            model_slug=str(model["slug"]),
+                            candidate_slug=str(model["candidate_slug"]),
+                            provider=str(model["provider"]),
+                            provider_variant=variant,
+                            config=str(config),
+                            route_weight=int(weights[task]),
+                            sample=sample,
+                            samples=samples,
+                        )
                     )
-                )
     expected = int(manifest["execution"]["expected_rows"])
     if len(cells) != expected:
         raise ValueError(f"manifest expands to {len(cells)} cells, expected {expected}")
@@ -266,6 +277,8 @@ def render_command(
         "config": cell.config,
         "provider": cell.provider,
         "provider_variant": cell.provider_variant,
+        "sample": str(cell.sample),
+        "candidate_id": cell.candidate_id,
     }
     return [str(item).format_map(values) for item in template]
 

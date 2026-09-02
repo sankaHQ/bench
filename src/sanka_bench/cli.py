@@ -38,6 +38,14 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--reports", type=Path, default=Path("reports"))
     report.add_argument("--html", type=Path, default=Path("reports/index.html"))
     report.add_argument("--svg", type=Path, default=Path("reports/summary.svg"))
+    report.add_argument(
+        "--route-weights",
+        type=Path,
+        help=(
+            "JSON mapping task id -> method-route count (or a matrix manifest carrying "
+            "suite.route_weights); enables the route-weighted score and cost per verified route"
+        ),
+    )
     return parser
 
 
@@ -81,8 +89,26 @@ def _validate(root: Path) -> int:
     return 0
 
 
+def _load_route_weights(path: Path | None) -> dict[str, int] | None:
+    if path is None:
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict) and isinstance(payload.get("suite"), dict):
+        payload = payload["suite"].get("route_weights")
+    if not isinstance(payload, dict) or not all(
+        isinstance(key, str) and isinstance(value, int) for key, value in payload.items()
+    ):
+        raise ReportError(f"route weights must map task ids to integers: {path}")
+    return dict(payload)
+
+
 def _report(args: argparse.Namespace) -> int:
-    data = write_report(args.reports.resolve(), args.html.resolve(), args.svg.resolve())
+    data = write_report(
+        args.reports.resolve(),
+        args.html.resolve(),
+        args.svg.resolve(),
+        _load_route_weights(args.route_weights),
+    )
     migrated = sum(
         1 for row in data["rows"] if row["covered"] and len(row["migrated"]) == len(row["covered"])
     )
