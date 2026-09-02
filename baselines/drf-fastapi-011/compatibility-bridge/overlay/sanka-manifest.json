@@ -1,0 +1,50 @@
+{
+  "generated_files": [
+    "app.py",
+    "sanka_compat.py"
+  ],
+  "generator": "sanka",
+  "mode": "compatibility",
+  "plan_hash": "sha256:0e1b86664ac50a20d1b95b2b2068c62bbb38c8a9914a38b9fa383dfe0871dd3c",
+  "routes": [
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/accounts/",
+      "source_view": "sales.views.AccountListView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/summary/",
+      "source_view": "sales.views.SummaryView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/transactions/",
+      "source_view": "sales.views.TransactionViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/transactions/{pk}/",
+      "source_view": "sales.views.TransactionViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/transactions/{pk}/",
+      "source_view": "sales.views.TransactionViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    }
+  ],
+  "schema_version": 1,
+  "settings_module": "metrics_project.settings",
+  "source_root": ".",
+  "source_scan_hash": "sha256:67733c4559dc8fce8d14d94914932d84c712841c0335acf02fa742ff7f289a10"
+}

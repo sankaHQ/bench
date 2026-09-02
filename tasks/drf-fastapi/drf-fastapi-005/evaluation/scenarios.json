@@ -1,0 +1,238 @@
+[
+  {
+    "id": "list-anonymous-open",
+    "method": "GET",
+    "path": "/api/documents/",
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "create-token-owner-injected",
+    "method": "POST",
+    "path": "/api/documents/",
+    "headers": { "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "body": { "owner": 2, "title": "Token draft", "body": "created", "reviewed": true },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "create-session-with-csrf",
+    "method": "POST",
+    "path": "/api/documents/",
+    "headers": {
+      "Cookie": "sessionid=ssssssssssssssssssssssssssssssss; csrftoken=cccccccccccccccccccccccccccccccc",
+      "X-CSRFToken": "cccccccccccccccccccccccccccccccc"
+    },
+    "body": { "title": "Session draft", "body": "created" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "retrieve-own-token",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": { "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "patch-own-token",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": { "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "body": { "title": "Alpha revised" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "destroy-staff-token",
+    "method": "DELETE",
+    "path": "/api/documents/2/",
+    "headers": { "Authorization": "Token dddddddddddddddddddddddddddddddddddddddd" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "review-staff-token",
+    "method": "POST",
+    "path": "/api/documents/1/review/",
+    "headers": { "Authorization": "Token dddddddddddddddddddddddddddddddddddddddd" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "list-invalid-token",
+    "method": "GET",
+    "path": "/api/documents/",
+    "headers": { "Authorization": "Token xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "list-expired-token",
+    "method": "GET",
+    "path": "/api/documents/",
+    "headers": { "Authorization": "Token eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "list-inactive-token",
+    "method": "GET",
+    "path": "/api/documents/",
+    "headers": { "Authorization": "Token iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "list-empty-token-header",
+    "method": "GET",
+    "path": "/api/documents/",
+    "headers": { "Authorization": "Token" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "list-spaced-token-header",
+    "method": "GET",
+    "path": "/api/documents/",
+    "headers": { "Authorization": "Token a b" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "list-invalid-token-beats-session",
+    "method": "GET",
+    "path": "/api/documents/",
+    "headers": {
+      "Authorization": "Token xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "Cookie": "sessionid=ssssssssssssssssssssssssssssssss"
+    },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "list-valid-session",
+    "method": "GET",
+    "path": "/api/documents/",
+    "headers": { "Cookie": "sessionid=ssssssssssssssssssssssssssssssss" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "create-anonymous",
+    "method": "POST",
+    "path": "/api/documents/",
+    "body": { "title": "Denied" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "create-wrong-scheme",
+    "method": "POST",
+    "path": "/api/documents/",
+    "headers": { "Authorization": "Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "body": { "title": "Denied" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "create-session-missing-csrf",
+    "method": "POST",
+    "path": "/api/documents/",
+    "headers": { "Cookie": "sessionid=ssssssssssssssssssssssssssssssss" },
+    "body": { "title": "Denied" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "create-expired-token-beats-session",
+    "method": "POST",
+    "path": "/api/documents/",
+    "headers": {
+      "Authorization": "Token eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "Cookie": "sessionid=ssssssssssssssssssssssssssssssss; csrftoken=cccccccccccccccccccccccccccccccc",
+      "X-CSRFToken": "cccccccccccccccccccccccccccccccc"
+    },
+    "body": { "title": "Denied" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "retrieve-anonymous",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "retrieve-other-owner",
+    "method": "GET",
+    "path": "/api/documents/2/",
+    "headers": { "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "retrieve-own-session",
+    "method": "GET",
+    "path": "/api/documents/2/",
+    "headers": { "Cookie": "sessionid=ssssssssssssssssssssssssssssssss" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "retrieve-missing-anonymous",
+    "method": "GET",
+    "path": "/api/documents/999/",
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "retrieve-missing-authenticated",
+    "method": "GET",
+    "path": "/api/documents/999/",
+    "headers": { "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "patch-other-owner",
+    "method": "PATCH",
+    "path": "/api/documents/2/",
+    "headers": { "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "body": { "title": "Hijacked" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "patch-invalid-token-own",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": { "Authorization": "Token xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+    "body": { "title": "Hijacked" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "destroy-owner-nonstaff",
+    "method": "DELETE",
+    "path": "/api/documents/1/",
+    "headers": { "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "destroy-anonymous",
+    "method": "DELETE",
+    "path": "/api/documents/1/",
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "destroy-staff-session",
+    "method": "DELETE",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Cookie": "sessionid=tttttttttttttttttttttttttttttttt; csrftoken=cccccccccccccccccccccccccccccccc",
+      "X-CSRFToken": "cccccccccccccccccccccccccccccccc"
+    },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "review-owner-nonstaff",
+    "method": "POST",
+    "path": "/api/documents/1/review/",
+    "headers": { "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "review-anonymous",
+    "method": "POST",
+    "path": "/api/documents/1/review/",
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "review-staff-session",
+    "method": "POST",
+    "path": "/api/documents/2/review/",
+    "headers": {
+      "Cookie": "sessionid=tttttttttttttttttttttttttttttttt; csrftoken=cccccccccccccccccccccccccccccccc",
+      "X-CSRFToken": "cccccccccccccccccccccccccccccccc"
+    },
+    "capture_headers": ["allow", "www-authenticate"]
+  }
+]

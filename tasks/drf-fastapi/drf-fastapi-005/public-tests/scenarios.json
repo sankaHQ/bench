@@ -1,0 +1,56 @@
+[
+  {
+    "id": "list-anonymous-open",
+    "method": "GET",
+    "path": "/api/documents/",
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "create-token-owner-injected",
+    "method": "POST",
+    "path": "/api/documents/",
+    "headers": { "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "body": { "owner": 2, "title": "Token draft", "body": "created", "reviewed": true },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "create-session-with-csrf",
+    "method": "POST",
+    "path": "/api/documents/",
+    "headers": {
+      "Cookie": "sessionid=ssssssssssssssssssssssssssssssss; csrftoken=cccccccccccccccccccccccccccccccc",
+      "X-CSRFToken": "cccccccccccccccccccccccccccccccc"
+    },
+    "body": { "title": "Session draft", "body": "created" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "retrieve-own-token",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": { "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "patch-own-token",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": { "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "body": { "title": "Alpha revised" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "destroy-staff-token",
+    "method": "DELETE",
+    "path": "/api/documents/2/",
+    "headers": { "Authorization": "Token dddddddddddddddddddddddddddddddddddddddd" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "review-staff-token",
+    "method": "POST",
+    "path": "/api/documents/1/review/",
+    "headers": { "Authorization": "Token dddddddddddddddddddddddddddddddddddddddd" },
+    "capture_headers": ["allow", "www-authenticate"]
+  }
+]

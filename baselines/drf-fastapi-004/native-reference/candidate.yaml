@@ -1,0 +1,8 @@
+schema_version: sanka-bench/candidate/v0.1
+id: native-reference
+kind: overlay
+overlay: overlay
+provenance:
+  producer: human-reference
+  revision: drf-fastapi-004-v1
+  command: reviewed native FastAPI request layer reimplementing the signal side effects explicitly

@@ -1,0 +1,96 @@
+{
+  "critic_checks": {
+    "database_parity": "required",
+    "native_serving_evidence": "required",
+    "redirect_and_header_parity": "required",
+    "route_coverage": "required"
+  },
+  "native_eligible_routes": 7,
+  "native_routes": 1,
+  "needs_adaptation_routes": 6,
+  "plan_hash": "sha256:4a30730ad0de8163ffae205d07ba658a9e22a12a5031cbadfcaa2f0c7dce7984",
+  "readiness": 0.14285714285714285,
+  "schema": "sanka/native-gap-report/v1",
+  "skipped_routes": [],
+  "threshold_unit": "ratio",
+  "unsupported_routes": [
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/orders/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: orders.serializers.OrderSerializer"
+        }
+      ],
+      "source_view": "orders.views.OrderViewSet"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/orders/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: orders.serializers.OrderSerializer"
+        }
+      ],
+      "source_view": "orders.views.OrderViewSet"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/orders/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: orders.serializers.OrderSerializer"
+        }
+      ],
+      "source_view": "orders.views.OrderViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/orders/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: orders.serializers.OrderSerializer"
+        }
+      ],
+      "source_view": "orders.views.OrderViewSet"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/orders/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: orders.serializers.OrderSerializer"
+        }
+      ],
+      "source_view": "orders.views.OrderViewSet"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/orders/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: orders.serializers.OrderSerializer"
+        }
+      ],
+      "source_view": "orders.views.OrderViewSet"
+    }
+  ]
+}

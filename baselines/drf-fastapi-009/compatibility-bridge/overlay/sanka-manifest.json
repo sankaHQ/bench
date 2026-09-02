@@ -1,0 +1,99 @@
+{
+  "generated_files": [
+    "app.py",
+    "sanka_compat.py"
+  ],
+  "generator": "sanka",
+  "mode": "compatibility",
+  "plan_hash": "sha256:1ebd5fcf390865063aee2b9456ae710a1db3130585d4278baadeffe3102dd2b9",
+  "routes": [
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/files.api",
+      "source_view": "artifacts.views.ArtifactViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/files.api",
+      "source_view": "artifacts.views.ArtifactViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/files.json",
+      "source_view": "artifacts.views.ArtifactViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/files.json",
+      "source_view": "artifacts.views.ArtifactViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/files/",
+      "source_view": "artifacts.views.ArtifactViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/files/",
+      "source_view": "artifacts.views.ArtifactViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/files/{pk}.api",
+      "source_view": "artifacts.views.ArtifactViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/files/{pk}.json",
+      "source_view": "artifacts.views.ArtifactViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/files/{pk}/",
+      "source_view": "artifacts.views.ArtifactViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "download",
+      "path": "/api/files/{pk}/download.api",
+      "source_view": "artifacts.views.ArtifactViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "download",
+      "path": "/api/files/{pk}/download.json",
+      "source_view": "artifacts.views.ArtifactViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "download",
+      "path": "/api/files/{pk}/download/",
+      "source_view": "artifacts.views.ArtifactViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    }
+  ],
+  "schema_version": 1,
+  "settings_module": "files_project.settings",
+  "source_root": ".",
+  "source_scan_hash": "sha256:2c9527862aeb49ca669da9a697ddc07de672de01a475ae9006444429f41bacc0"
+}

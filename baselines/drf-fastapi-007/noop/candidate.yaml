@@ -1,0 +1,7 @@
+schema_version: sanka-bench/candidate/v0.1
+id: noop
+kind: noop
+provenance:
+  producer: benchmark-author
+  revision: drf-fastapi-007-noop-v1
+  command: no-op negative control

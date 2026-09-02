@@ -1,0 +1,44 @@
+schema_version: sanka-bench/task/v0.2
+id: drf-fastapi-008
+lane: drf-fastapi
+
+source:
+  path: source
+  framework: django-rest-framework
+  python: "3.12"
+  provenance:
+    kind: synthetic
+    license: Apache-2.0
+    digest: sha256:20b671ce2e8f0a4b225ff74966324d160a5a7c82727f7d76ef0c04baa3e1ac52
+
+target:
+  framework: fastapi
+  orm: django
+  entrypoint: target_app.py
+  serving:
+    forbidden_imports:
+      - rest_framework
+      - django.core.asgi
+      - django.core.wsgi
+      - django.core.handlers
+      - django.test
+  static_patterns:
+    required:
+      - "FastAPI("
+    forbidden:
+      - rest_framework
+      - get_asgi_application
+      - WSGIMiddleware
+      - django.test.Client
+      - ".mount("
+      - "_dispatch"
+
+commands:
+  regression:
+    - ["{python}", "manage.py", "test", "catalog", "--verbosity", "0"]
+
+evaluation:
+  driver: evaluation/driver.py
+  scenarios: evaluation/scenarios.json
+  repeat: 2
+  timeout_seconds: 120

@@ -1,0 +1,174 @@
+{
+  "critic_checks": {
+    "database_parity": "required",
+    "native_serving_evidence": "required",
+    "redirect_and_header_parity": "required",
+    "route_coverage": "required"
+  },
+  "native_eligible_routes": 12,
+  "native_routes": 0,
+  "needs_adaptation_routes": 12,
+  "plan_hash": "sha256:bb7db721438ae43fb9dae350001b69091ea2a28426f23db89c20c699b7b239fe",
+  "readiness": 0.0,
+  "schema": "sanka/native-gap-report/v1",
+  "skipped_routes": [],
+  "threshold_unit": "ratio",
+  "unsupported_routes": [
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/files.api",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: artifacts.serializers.ArtifactSerializer"
+        }
+      ],
+      "source_view": "artifacts.views.ArtifactViewSet"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/files.api",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: artifacts.serializers.ArtifactSerializer"
+        }
+      ],
+      "source_view": "artifacts.views.ArtifactViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/files.json",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: artifacts.serializers.ArtifactSerializer"
+        }
+      ],
+      "source_view": "artifacts.views.ArtifactViewSet"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/files.json",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: artifacts.serializers.ArtifactSerializer"
+        }
+      ],
+      "source_view": "artifacts.views.ArtifactViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/files/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: artifacts.serializers.ArtifactSerializer"
+        }
+      ],
+      "source_view": "artifacts.views.ArtifactViewSet"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/files/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: artifacts.serializers.ArtifactSerializer"
+        }
+      ],
+      "source_view": "artifacts.views.ArtifactViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/files/{pk}.api",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: artifacts.serializers.ArtifactSerializer"
+        }
+      ],
+      "source_view": "artifacts.views.ArtifactViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/files/{pk}.json",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: artifacts.serializers.ArtifactSerializer"
+        }
+      ],
+      "source_view": "artifacts.views.ArtifactViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/files/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: artifacts.serializers.ArtifactSerializer"
+        }
+      ],
+      "source_view": "artifacts.views.ArtifactViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "download",
+      "path": "/api/files/{pk}/download.api",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_CUSTOM_ACTION_UNSUPPORTED",
+          "feature": "viewset-actions",
+          "message": "Custom or unsupported viewset actions are present: download"
+        }
+      ],
+      "source_view": "artifacts.views.ArtifactViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "download",
+      "path": "/api/files/{pk}/download.json",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_CUSTOM_ACTION_UNSUPPORTED",
+          "feature": "viewset-actions",
+          "message": "Custom or unsupported viewset actions are present: download"
+        }
+      ],
+      "source_view": "artifacts.views.ArtifactViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "download",
+      "path": "/api/files/{pk}/download/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_CUSTOM_ACTION_UNSUPPORTED",
+          "feature": "viewset-actions",
+          "message": "Custom or unsupported viewset actions are present: download"
+        }
+      ],
+      "source_view": "artifacts.views.ArtifactViewSet"
+    }
+  ]
+}

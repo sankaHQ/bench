@@ -1,0 +1,1 @@
+"""Widget schema migrations."""

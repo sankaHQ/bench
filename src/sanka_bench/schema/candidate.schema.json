@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sanka.com/schemas/sanka-bench/candidate/v0.2.json",
+  "title": "Sanka Migration Bench candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "kind",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "enum": [
+        "sanka-bench/candidate/v0.1",
+        "sanka-bench/candidate/v0.2"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]+$"
+    },
+    "kind": {
+      "enum": [
+        "noop",
+        "overlay"
+      ]
+    },
+    "overlay": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "producer",
+        "revision",
+        "command"
+      ],
+      "properties": {
+        "producer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string"
+        }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "description": "Optional producer-run statistics (agent baselines disclose turns, wall time, and reported cost).",
+      "additionalProperties": false,
+      "properties": {
+        "turns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cost_usd": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "overlay"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "overlay"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+[
+  {
+    "id": "list-default-page-one",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total"
+  },
+  {
+    "id": "list-default-page-two",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total&page=2"
+  },
+  {
+    "id": "summary-seeded",
+    "method": "GET",
+    "path": "/api/summary/"
+  },
+  {
+    "id": "create-posted-west-recomputes-page",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/transactions/",
+        "body": {
+          "account": "ACCT-W",
+          "reference": "TX-W-PUBLIC",
+          "state": "posted",
+          "amount": "25.00",
+          "note": "Public create"
+        }
+      }
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total"
+  },
+  {
+    "id": "patch-pending-recomputes-page",
+    "setup": [
+      {
+        "method": "PATCH",
+        "path": "/api/transactions/2/",
+        "body": {"state": "posted", "amount": "3.75"}
+      }
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total"
+  },
+  {
+    "id": "delete-posted-recomputes-summary",
+    "setup": [
+      {"method": "DELETE", "path": "/api/transactions/1/"}
+    ],
+    "method": "GET",
+    "path": "/api/summary/"
+  },
+  {
+    "id": "invalid-computed-ordering",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=unknown"
+  }
+]

@@ -1,0 +1,79 @@
+[
+  {
+    "id": "list-canonical",
+    "method": "GET",
+    "path": "/api/files/"
+  },
+  {
+    "id": "detail-canonical",
+    "method": "GET",
+    "path": "/api/files/1/"
+  },
+  {
+    "id": "list-json-media-type",
+    "method": "GET",
+    "path": "/api/files.json",
+    "capture_headers": ["Content-Type"]
+  },
+  {
+    "id": "detail-api-media-type",
+    "method": "GET",
+    "path": "/api/files/1.api",
+    "capture_headers": ["Content-Type"]
+  },
+  {
+    "id": "download-canonical-bytes",
+    "method": "GET",
+    "path": "/api/files/1/download/",
+    "response_body": "base64",
+    "capture_headers": ["Content-Type", "Content-Disposition"]
+  },
+  {
+    "id": "upload-canonical-txt",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "fields": {"key": "public-file", "label": "Public file"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "public.txt",
+          "content_type": "text/plain",
+          "content_b64": "bmV3IGZpbGUNCg=="
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-wrong-extension",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "fields": {"key": "wrong-type", "label": "Wrong type"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "payload.exe",
+          "content_type": "application/octet-stream",
+          "content_b64": "YmFk"
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-oversized",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "fields": {"key": "too-large", "label": "Too large"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "large.txt",
+          "content_type": "text/plain",
+          "content_b64": "eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4"
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,48 @@
+{
+  "generated_files": [
+    "<local-path>/candidates/002/overlay/target_app.py",
+    "<local-path>/candidates/002/overlay/sanka_native.py",
+    "<local-path>/candidates/002/overlay/sanka_store.py",
+    "<local-path>/candidates/002/overlay/sanka_settings.py"
+  ],
+  "http": {
+    "enabled": false,
+    "failed": [],
+    "passed": 0,
+    "probed": 0,
+    "safe_routes": 2
+  },
+  "mode": "native",
+  "ok": true,
+  "output": "<local-path>/candidates/002/overlay",
+  "paths": {
+    "environment": null,
+    "generated": "<local-path>/candidates/002/overlay",
+    "lockfile": null,
+    "manifest": "<local-path>/candidates/002/overlay/sanka-manifest.json",
+    "plan": "<local-path>/artifacts/002/plan-fastapi.json",
+    "pyproject": "<local-path>/candidates/002/overlay/pyproject.toml",
+    "python": null,
+    "scan": "<local-path>/artifacts/002/scan.json",
+    "source": "<repo>/tasks/drf-fastapi/drf-fastapi-002/source"
+  },
+  "plan_hash": "sha256:ed2fe4fa0b6384b7e17737a2adf145440c949f60423e4a203b04bcfe6a87c9a7",
+  "routes": {
+    "dropped": [
+      "DELETE /api/posts/{pk}.{format}/",
+      "GET /api/<drf_format_suffix:format>",
+      "GET /api/posts.{format}/",
+      "GET /api/posts/{pk}.{format}/",
+      "PATCH /api/posts/{pk}.{format}/",
+      "POST /api/posts.{format}/",
+      "PUT /api/posts/{pk}.{format}/"
+    ],
+    "extra": [],
+    "generated": 7,
+    "missing": [],
+    "needs_adaptation": [],
+    "planned": 14,
+    "scanned": 14
+  },
+  "scan_hash": "sha256:6a2cc18c229b6123713f7d84a1c7d75bdfa07e247c65f694f06ee9615cddb6a7"
+}

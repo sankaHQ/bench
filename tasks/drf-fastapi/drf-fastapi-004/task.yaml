@@ -1,0 +1,49 @@
+schema_version: sanka-bench/task/v0.2
+id: drf-fastapi-004
+lane: drf-fastapi
+
+source:
+  path: source
+  framework: django-rest-framework
+  python: "3.12"
+  provenance:
+    kind: synthetic
+    license: Apache-2.0
+    digest: sha256:ea25dd2db570898cdfc809758bbc90d7b5bec5354563462e5933ce69088c0a17
+
+target:
+  framework: fastapi
+  orm: django
+  entrypoint: target_app.py
+  serving:
+    forbidden_imports:
+      - rest_framework
+      - django.core.asgi
+      - django.core.wsgi
+      - django.core.handlers
+      - django.test
+  static_patterns:
+    required:
+      - "FastAPI("
+    forbidden:
+      - rest_framework
+      - get_asgi_application
+      - WSGIMiddleware
+      - django.test.Client
+      - ".mount("
+      - "_dispatch"
+
+commands:
+  regression:
+    - ["{python}", "manage.py", "test", "ledger", "--verbosity", "0"]
+
+# The graded scenario set lives in evaluation/ and is a strict superset of
+# public-tests/scenarios.json. Candidates see only the public subset; the
+# hidden scenarios exercise the signal-driven side effects (balance
+# read-only enforcement, audit ordering, cascades, rollback) that the
+# visible surface deliberately under-specifies.
+evaluation:
+  driver: evaluation/driver.py
+  scenarios: evaluation/scenarios.json
+  repeat: 2
+  timeout_seconds: 120
