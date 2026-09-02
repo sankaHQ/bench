@@ -416,6 +416,30 @@ def _enable_sanka_extension(sanka_bin: Path, *, workspace: Path, env: dict[str, 
     )
 
 
+def _sanka_artifact(stdout: str, name: str, workspace: Path) -> Path:
+    """Locate a lifecycle artifact from the CLI's JSON output, else the legacy `.sanka/` spot.
+
+    sanka-cli 0.2.0 keeps each extension's artifacts under
+    `.sanka/extensions/<extension id>/` and lists them in the response's `artifacts`;
+    older engines wrote them straight into `.sanka/`.
+    """
+    try:
+        payload = json.loads(stdout) if stdout.strip() else {}
+    except json.JSONDecodeError:
+        payload = {}
+    listed = payload.get("artifacts") if isinstance(payload, dict) else None
+    for raw in listed or []:
+        if isinstance(raw, str) and Path(raw).name == name:
+            return Path(raw)
+    for candidate in (
+        workspace / ".sanka" / "extensions" / "sanka" / "drf-to-fastapi" / name,
+        workspace / ".sanka" / name,
+    ):
+        if candidate.is_file():
+            return candidate
+    raise RuntimeError(f"Sanka did not produce {name}; artifacts listed: {listed!r}")
+
+
 def _sanka_tool_versions(sanka_bin: Path, *, workspace: Path, env: dict[str, str]) -> str:
     """`sanka --version` plus the locked DRF extension version, for GENERATED.md."""
     version = subprocess.run(
@@ -464,17 +488,19 @@ def _prepare_readiness_context(
     threshold: float,
 ) -> dict[str, object]:
     _enable_sanka_extension(sanka_bin, workspace=workspace, env=env)
-    _run_sanka_command([str(sanka_bin), "scan", "."], workspace=workspace, env=env)
-    _run_sanka_command(
-        [str(sanka_bin), "plan", ".", "--to", "fastapi", *PLAN_INPUTS],
+    scanned = _run_sanka_command(
+        [str(sanka_bin), "scan", ".", "--json"], workspace=workspace, env=env
+    )
+    planned = _run_sanka_command(
+        [str(sanka_bin), "plan", ".", "--to", "fastapi", *PLAN_INPUTS, "--json"],
         workspace=workspace,
         env=env,
     )
-    plan_path = workspace / ".sanka" / "plan-fastapi.json"
+    plan_path = _sanka_artifact(planned.stdout, "plan-fastapi.json", workspace)
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     if not isinstance(plan, dict):
         raise RuntimeError(f"Sanka plan is not an object: {plan_path}")
-    scan_path = workspace / ".sanka" / "scan.json"
+    scan_path = _sanka_artifact(scanned.stdout, "scan.json", workspace)
     scan = json.loads(scan_path.read_text(encoding="utf-8"))
     if not isinstance(scan, dict):
         raise RuntimeError(f"Sanka scan is not an object: {scan_path}")

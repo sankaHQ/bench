@@ -257,10 +257,11 @@ def test_readiness_preflight_mechanically_gates_scaffold(
         "plan",
         *(("apply",) if expects_apply else ()),
     ]
+    assert commands[2][-1] == "--json" and commands[3][-1] == "--json"
     assert commands[0][2:4] == ["marketplace", "add"]
     assert commands[1][2:4] == ["add", "sanka/drf-to-fastapi"]
     assert commands[3][2:5] == [".", "--to", "fastapi"]
-    assert commands[3][5:] == [
+    assert commands[3][5:-1] == [
         "--strategy",
         "native",
         "--generation",
@@ -701,3 +702,23 @@ def test_parity_notes_skip_generated_routes_and_older_plans(
     assert "sanka-parity-notes.md" not in harness._readiness_prompt(  # type: ignore[attr-defined]
         older, Path("/tools/sanka")
     )
+
+
+def test_sanka_artifact_prefers_the_cli_listing_then_the_extension_directory(
+    harness: object, tmp_path: Path
+) -> None:
+    locate = harness._sanka_artifact  # type: ignore[attr-defined]
+    listed = tmp_path / "elsewhere" / "plan-fastapi.json"
+    listed.parent.mkdir()
+    listed.write_text("{}", encoding="utf-8")
+    payload = json.dumps({"artifacts": [str(listed)]})
+    assert locate(payload, "plan-fastapi.json", tmp_path) == listed
+    nested = tmp_path / ".sanka" / "extensions" / "sanka" / "drf-to-fastapi" / "scan.json"
+    nested.parent.mkdir(parents=True)
+    nested.write_text("{}", encoding="utf-8")
+    assert locate("", "scan.json", tmp_path) == nested
+    legacy = tmp_path / ".sanka" / "plan-fastapi.json"
+    legacy.write_text("{}", encoding="utf-8")
+    assert locate("not json", "plan-fastapi.json", tmp_path) == legacy
+    with pytest.raises(RuntimeError):
+        locate("", "missing.json", tmp_path)
