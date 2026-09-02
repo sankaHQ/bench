@@ -123,8 +123,12 @@ It can scan the source, report how much of it it can migrate natively, and
 generate FastAPI code for the routes it supports:
 
     {sanka} scan .
-    {sanka} plan --to fastapi
-    {sanka} apply --root . --bench-candidate ./bench-candidate
+    {sanka} plan . --to fastapi --strategy native --generation minimal --package-manager uv
+    {sanka} apply --root . --plan-hash <hash from the plan> --bench-candidate ./bench-candidate
+
+The extension the CLI needs for this source is already installed and enabled in
+this workspace. Run scan, plan, and apply before you edit any file: they refuse
+to run against a source tree that changed after the plan was reviewed.
 
 Read the plan's readiness report before adopting anything: it states, per
 route, whether native generation is supported and why not when it is not
@@ -353,7 +357,11 @@ def _write_parity_notes(
 
 
 def _run_sanka_command(
-    command: list[str], *, workspace: Path, env: dict[str, str]
+    command: list[str],
+    *,
+    workspace: Path,
+    env: dict[str, str],
+    tolerate: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
     outcome = subprocess.run(
         command,
@@ -365,10 +373,62 @@ def _run_sanka_command(
         timeout=120,
         check=False,
     )
-    if outcome.returncode != 0:
+    if outcome.returncode != 0 and not any(code in outcome.stdout for code in tolerate):
         detail = outcome.stderr.strip() or outcome.stdout.strip() or "no output"
         raise RuntimeError(f"Sanka preflight failed ({' '.join(command[:2])}): {detail[:2000]}")
     return outcome
+
+
+OFFICIAL_MARKETPLACE = "https://github.com/sankaHQ/extensions.git"
+DRF_EXTENSION_ID = "sanka/drf-to-fastapi"
+# sanka-cli 0.2.0 asks for these interactively; a headless plan must pass them.
+PLAN_INPUTS = ("--strategy", "native", "--generation", "minimal", "--package-manager", "uv")
+
+
+def _enable_sanka_extension(sanka_bin: Path, *, workspace: Path, env: dict[str, str]) -> None:
+    """Make the DRF extension usable in the workspace: marketplace snapshot + project lock.
+
+    sanka-cli resolves extensions through a trusted marketplace snapshot in SANKA_HOME
+    and a per-project lock; neither exists in a fresh workspace. Installing the tool is
+    part of offering it, so both with-Sanka arms get this before the agent starts and
+    the alone arm never sees it. The marketplace add is idempotent by name.
+    """
+    _run_sanka_command(
+        [str(sanka_bin), "extension", "marketplace", "add", OFFICIAL_MARKETPLACE, "--json"],
+        workspace=workspace,
+        env=env,
+        tolerate=("SANKA_MARKETPLACE_EXISTS",),
+    )
+    _run_sanka_command(
+        [str(sanka_bin), "extension", "add", DRF_EXTENSION_ID, "--json"],
+        workspace=workspace,
+        env=env,
+    )
+
+
+def _sanka_tool_versions(sanka_bin: Path, *, workspace: Path, env: dict[str, str]) -> str:
+    """`sanka --version` plus the locked DRF extension version, for GENERATED.md."""
+    version = subprocess.run(
+        [str(sanka_bin), "--version"], capture_output=True, text=True, check=False, env=env
+    ).stdout.strip()
+    extension = ""
+    listed = subprocess.run(
+        [str(sanka_bin), "extension", "list", "--json"],
+        cwd=workspace,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    try:
+        records = json.loads(listed.stdout).get("data", {}).get("records", [])
+    except (json.JSONDecodeError, AttributeError):
+        records = []
+    for record in records:
+        if isinstance(record, dict) and record.get("id") == DRF_EXTENSION_ID:
+            extension = f"; {DRF_EXTENSION_ID} {record.get('version')} {record.get('status')}"
+    return f"{version or sanka_bin}{extension}"
 
 
 def _sanka_runtime_env(env: dict[str, str]) -> dict[str, str]:
@@ -393,9 +453,10 @@ def _prepare_readiness_context(
     env: dict[str, str],
     threshold: float,
 ) -> dict[str, object]:
+    _enable_sanka_extension(sanka_bin, workspace=workspace, env=env)
     _run_sanka_command([str(sanka_bin), "scan", "."], workspace=workspace, env=env)
     _run_sanka_command(
-        [str(sanka_bin), "plan", ".", "--to", "fastapi"],
+        [str(sanka_bin), "plan", ".", "--to", "fastapi", *PLAN_INPUTS],
         workspace=workspace,
         env=env,
     )
@@ -532,10 +593,17 @@ def main() -> int:
         if mode != "alone":
             env = _sanka_runtime_env(env)
         readiness_context: dict[str, object] | None = None
+        sanka_versions: str | None = None
         prompt = PROMPT_CORE.format(python=sys.executable)
         if mode == "with-sanka":
             assert args.sanka_bin is not None
             sanka_bin = args.sanka_bin.resolve()
+            try:
+                _enable_sanka_extension(sanka_bin, workspace=workspace, env=env)
+            except (OSError, RuntimeError) as exc:
+                print(f"with-sanka extension setup failed: {exc}", file=sys.stderr)
+                return 1
+            sanka_versions = _sanka_tool_versions(sanka_bin, workspace=workspace, env=env)
             prompt += PROMPT_SANKA.format(sanka=sanka_bin, verifier=_verifier_prompt(sanka_bin))
         elif mode == "readiness-aware":
             assert args.sanka_bin is not None
@@ -549,6 +617,9 @@ def main() -> int:
             except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
                 print(f"readiness-aware Sanka preflight failed: {exc}", file=sys.stderr)
                 return 1
+            sanka_versions = _sanka_tool_versions(
+                args.sanka_bin.resolve(), workspace=workspace, env=env
+            )
             prompt += _readiness_prompt(readiness_context, args.sanka_bin.resolve())
         if args.agent == "codex":
             codex_home = Path(temp) / "codex-home"
@@ -701,6 +772,7 @@ def main() -> int:
             modified=modified,
             readiness_context=readiness_context,
             terminal_reason=terminal_reason,
+            sanka_versions=sanka_versions,
         )
     print(
         f"{args.candidate_id}: {len(added)} file(s) in overlay"
@@ -934,6 +1006,7 @@ def _write_disclosure(
     modified: list[str],
     readiness_context: dict[str, object] | None,
     terminal_reason: str | None = None,
+    sanka_versions: str | None = None,
 ) -> None:
     duration = stats.get("duration_ms")
     minutes = f"{int(duration) / 60000:.1f} min" if isinstance(duration, int | float) else "unknown"
@@ -993,6 +1066,7 @@ intervention between prompt and frozen overlay.
 | Reported cost | {cost_text} |
 | Terminal | {terminal_reason or "completed within budget"} |
 | Attempt | {attempt_text} |
+| Sanka CLI | {sanka_versions or "not offered"} |
 | Sanka readiness preflight | {readiness_value} |
 
 Files added by the agent: {len(added)}. Contract-violating modifications to

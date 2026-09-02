@@ -9,7 +9,7 @@ source:
   provenance:
     kind: synthetic
     license: Apache-2.0
-    digest: sha256:07477a55f2709b4c0adc5e685487cd9206d61588ee9451af18c9c434b6a30f4c
+    digest: sha256:e75c1e53cc1e1c80123ebcd7b344c070b02fe0bd5235e61a254541034b84eb54
 
 target:
   framework: fastapi

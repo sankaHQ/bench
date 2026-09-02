@@ -225,7 +225,9 @@ def test_readiness_preflight_mechanically_gates_scaffold(
     )
     commands: list[list[str]] = []
 
-    def fake_run(command: list[str], *, workspace: Path, env: dict[str, str]) -> SimpleNamespace:
+    def fake_run(
+        command: list[str], *, workspace: Path, env: dict[str, str], **_kwargs: object
+    ) -> SimpleNamespace:
         assert workspace == tmp_path
         assert env == {"BENCH": "1"}
         commands.append(command)
@@ -246,10 +248,25 @@ def test_readiness_preflight_mechanically_gates_scaffold(
             "reason": "non-drf-view",
         }
     ]
+    # the tool is installed for the agent first (marketplace snapshot + project lock),
+    # then scan, then a headless plan with its inputs spelled out
     assert [command[1] for command in commands] == [
+        "extension",
+        "extension",
         "scan",
         "plan",
         *(("apply",) if expects_apply else ()),
+    ]
+    assert commands[0][2:4] == ["marketplace", "add"]
+    assert commands[1][2:4] == ["add", "sanka/drf-to-fastapi"]
+    assert commands[3][2:5] == [".", "--to", "fastapi"]
+    assert commands[3][5:] == [
+        "--strategy",
+        "native",
+        "--generation",
+        "minimal",
+        "--package-manager",
+        "uv",
     ]
     if expects_apply:
         assert "--plan-hash" in commands[-1]
