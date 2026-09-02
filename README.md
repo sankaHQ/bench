@@ -142,7 +142,8 @@ authentication natively without loading DRF.
 Every fixture also carries two frozen coding-agent baselines —
 `claude-code-alone` and `claude-code-with-sanka` — produced unattended by
 `scripts/run_agent_candidate.py` with identical model, turn budget, and
-contract (the with-Sanka prompt only adds that the Sanka CLI exists). Each
+contract (the with-Sanka prompt only adds the Sanka CLI and its differential
+verifier command). Each
 candidate's `GENERATED.md` discloses the prompt verbatim, turns, wall time,
 and reported cost; `make report` renders those figures beside the tally.
 Agent results are empirical, not pinned by tests — the report shows the
@@ -155,9 +156,11 @@ Experiments may add a separately labelled
 `*-with-sanka-readiness-aware` arm. Before the agent starts, the harness runs
 `sanka scan` and `sanka plan`, freezes `sanka-readiness.json`, and emits a
 scaffold only when native readiness reaches the configured threshold (50% by
-default). Below it, the agent receives the structured unsupported/unscanned
-route inventory and no scaffold. This diagnostic arm never replaces or
-rewrites the official alone/with-Sanka pass@1 result.
+default). Below it, the agent receives the readiness number and the verifier
+command — no scaffold and no route checklist; the unsupported and unscanned
+route inventory is frozen in `sanka-readiness.json` for the record only. This
+diagnostic arm never replaces or rewrites the official alone/with-Sanka pass@1
+result.
 
 `drf-fastapi-003` carries noop, compatibility-bridge, human
 native-reference, and Sanka native-converter baselines. The converter's
@@ -377,10 +380,11 @@ uv run python scripts/run_agent_candidate.py \
 
 The two official configurations share the same model, budget, and contract;
 the ordinary with-Sanka prompt is strictly additive — it offers the Sanka CLI
-with readiness-aware usage guidance. A third, diagnostic candidate id ending in
-`-with-sanka-readiness-aware` adds a preflight threshold decision and frozen
-gap checklist. The frozen overlay is graded by the same evaluator as every
-other candidate.
+with readiness-aware usage guidance and the `sanka verify --scenarios`
+differential verifier. A third, diagnostic candidate id ending in
+`-with-sanka-readiness-aware` adds a preflight threshold decision; the route
+gap inventory is frozen for the record, not sent as a checklist. The frozen
+overlay is graded by the same evaluator as every other candidate.
 
 For larger model matrices, use `scripts/run_agent_matrix.py` as the single
 foreground coordinator. It preserves generated candidates across resumes,

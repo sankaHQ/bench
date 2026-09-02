@@ -76,6 +76,16 @@ def test_prompts_differ_only_by_the_sanka_paragraph(harness: object) -> None:
     assert "remains the specification" in extra
     assert "cp -R" not in extra
     assert "contract" not in extra.lower()
+    # capability, not instructions: the packaged verifier is named with its exact
+    # command and its scope (public scenarios + scan-derived edge probes)
+    verifier = harness._verifier_prompt(Path("/tools/sanka"))  # type: ignore[attr-defined]
+    rendered = extra.format(sanka="/tools/sanka", verifier=verifier)
+    assert (
+        "/tools/sanka verify . --to fastapi --scenarios public-tests/scenarios.json "
+        "--candidate . --entrypoint target_app.py --db-env BENCH_DB_PATH --edge-probes --json"
+    ) in rendered
+    assert "hidden grading set" in rendered
+    assert "checklist" not in rendered.lower()
 
 
 def test_candidate_modes_preserve_official_arms_and_add_diagnostic_arm(
@@ -88,7 +98,9 @@ def test_candidate_modes_preserve_official_arms_and_add_diagnostic_arm(
     assert mode("opus-experimental") is None
 
 
-def test_readiness_context_abstains_and_renders_route_checklist(harness: object) -> None:
+def test_readiness_context_abstains_and_sends_only_readiness_and_verifier(
+    harness: object,
+) -> None:
     context = harness._readiness_context(  # type: ignore[attr-defined]
         {
             "readiness": 0.034,
@@ -134,14 +146,21 @@ def test_readiness_context_abstains_and_renders_route_checklist(harness: object)
     )
     assert context["decision"] == "gap-report-only"
     assert len(context["unsupported_routes"]) == 1
-    prompt = harness._readiness_prompt(context)  # type: ignore[attr-defined]
+    # the inventory is frozen for the record ...
+    assert context["skipped_routes"][0]["view"] == "legacy_project.urls.permanent_style_redirect"
+    prompt = harness._readiness_prompt(context, Path("/tools/sanka"))  # type: ignore[attr-defined]
     assert "3.4% (1/29" in prompt
     assert "did not generate a scaffold" in prompt
     assert "Do not run `sanka apply`" in prompt
-    assert "SANKA_DRF_ROUTE_PATTERN_UNSUPPORTED" in prompt
-    assert "api/class/entries/ -> legacy_project.urls.permanent_style_redirect" in prompt
-    assert "Allow, Location, and WWW-Authenticate" in prompt
-    assert prompt.count("GET /api/dynamic/entries/{code}/") == 1
+    assert "/tools/sanka verify . --to fastapi --scenarios public-tests/scenarios.json" in prompt
+    assert "--edge-probes" in prompt
+    # ... but never sent as a checklist: no route codes, no unscanned patterns,
+    # no critic list (v5: instructions without capability only raised cost)
+    assert "SANKA_DRF_ROUTE_PATTERN_UNSUPPORTED" not in prompt
+    assert "permanent_style_redirect" not in prompt
+    assert "GET /api/dynamic/entries/{code}/" not in prompt
+    assert "Allow, Location, and WWW-Authenticate" not in prompt
+    assert "checklist" not in prompt.lower()
 
 
 def test_readiness_context_emits_scaffold_at_threshold(harness: object) -> None:
@@ -157,8 +176,10 @@ def test_readiness_context_emits_scaffold_at_threshold(harness: object) -> None:
         0.5,
     )
     assert context["decision"] == "emit-scaffold"
-    prompt = harness._readiness_prompt(context)  # type: ignore[attr-defined]
+    prompt = harness._readiness_prompt(context, Path("/tools/sanka"))  # type: ignore[attr-defined]
     assert "generated `bench-candidate/overlay/`" in prompt
+    assert "/tools/sanka verify . --to fastapi" in prompt
+    assert "checklist" not in prompt.lower()
 
 
 @pytest.mark.parametrize(

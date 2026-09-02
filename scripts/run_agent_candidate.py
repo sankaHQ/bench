@@ -17,9 +17,10 @@ separate diagnostic arm:
   guidance for adopting or declining its generated candidate.
 - ``--candidate-id claude-code-with-sanka-readiness-aware`` — the harness runs
   scan/plan first, generates a scaffold only at or above the configured native
-  readiness threshold, and otherwise gives the agent a structured unsupported-
-  route checklist. This arm is diagnostic and never replaces the official
-  pass@1 configurations.
+  readiness threshold, and otherwise sends the agent the readiness number and
+  the verifier command only (the route gap inventory is frozen in
+  ``sanka-readiness.json``, not sent). This arm is diagnostic and never
+  replaces the official pass@1 configurations.
 
 Two agent families share the same contract, prompt, and freezing logic:
 
@@ -135,6 +136,27 @@ reference material, not as the thing to submit. Either way the original
 application remains the specification: derive every route's exact semantics
 from the source and verify by differential testing against it, never against
 the generated code.
+{verifier}"""
+
+VERIFIER_COMMAND = (
+    "{sanka} verify . --to fastapi --scenarios public-tests/scenarios.json "
+    "--candidate . --entrypoint target_app.py --db-env BENCH_DB_PATH --edge-probes --json"
+)
+
+PROMPT_VERIFIER = """
+Sanka also ships the differential verifier. Run it whenever you want to know
+where the candidate still diverges, and before you finish:
+
+    {verifier}
+
+It replays every public scenario, plus edge probes derived from the source's
+own routes (OPTIONS/Allow, an unsupported method, the slash variant, a
+missing-object request), against the original application and target_app.py
+on identical fresh databases, and reports every status, body, header, and
+table-content difference together with the route class that served each
+request. Scenarios that assume existing rows can be replayed from a seed script
+with `--seed <file.py>` (Django is configured when it runs). The verifier never
+sees the hidden grading set; a clean run is necessary, not sufficient.
 """
 
 PROMPT_SANKA_READINESS = """
@@ -144,23 +166,7 @@ non-alias routes) against a {threshold_percent:.1f}% scaffold threshold.
 Plan hash: {plan_hash}
 
 {decision}
-
-Unsupported-route checklist from the frozen Sanka plan:
-{checklist}
-
-URL patterns the Sanka scan saw but did not classify as DRF routes:
-{skipped_checklist}
-
-Post-generation critic checklist (the evaluator checks these independently):
-- Every source route is covered, including explicit slash/no-slash variants.
-- Status, JSON/body bytes, Allow, Location, and WWW-Authenticate match exactly.
-- Successful and rejected mutations leave every database table in the same
-  state as the source application.
-
-Treat this checklist as migration guidance, not as permission to weaken the
-deliverable contract. Verify the public scenarios and the exact FastAPI serving
-behavior before you finish.
-"""
+{verifier}"""
 
 EXCLUDED_PARTS = {
     ".claude",
@@ -235,42 +241,30 @@ def _readiness_context(
     }
 
 
-def _readiness_prompt(context: dict[str, object]) -> str:
-    routes = context["unsupported_routes"]
-    assert isinstance(routes, list)
-    lines: list[str] = []
-    for route in routes:
-        assert isinstance(route, dict)
-        reasons = route.get("reasons") or []
-        rendered = "; ".join(
-            f"{reason.get('code')} ({reason.get('feature')}): {reason.get('message')}"
-            for reason in reasons
-            if isinstance(reason, dict)
-        )
-        route_label = f"{route.get('method')} {route.get('path')}"
-        lines.append(f"- {route_label}: {rendered or 'manual adaptation required'}")
-    checklist = "\n".join(lines) or "- none"
-    skipped = context.get("skipped_routes") or []
-    assert isinstance(skipped, list)
-    skipped_checklist = (
-        "\n".join(
-            f"- {item.get('pattern')} -> {item.get('view')} ({item.get('reason')})"
-            for item in skipped
-            if isinstance(item, dict)
-        )
-        or "- none"
-    )
+def _verifier_prompt(sanka: Path) -> str:
+    return PROMPT_VERIFIER.format(verifier=VERIFIER_COMMAND.format(sanka=sanka))
+
+
+def _readiness_prompt(context: dict[str, object], sanka: Path) -> str:
+    """Readiness number, threshold decision, verifier command — and nothing else.
+
+    v5 showed that route and critic checklists sent without capability raised
+    cost (Sonnet +39%, GLM +48% on sub-threshold tasks) without changing a
+    single verdict. The unsupported and unscanned route inventory stays in
+    ``sanka-readiness.json`` for the record; the agent gets the tool instead.
+    """
     if context["decision"] == "emit-scaffold":
         decision = (
             "The harness generated `bench-candidate/overlay/`. Copy the complete "
             "overlay to the repository root, including non-Python artifacts, then "
-            "adapt every checklist route."
+            "adapt the routes the plan marks as needing manual work "
+            "(`.sanka/plan-fastapi.json` lists each with its reasons)."
         )
     else:
         decision = (
             "The harness intentionally did not generate a scaffold because readiness "
             "is below the threshold. Do not run `sanka apply`; implement the native "
-            "FastAPI target from the source while using the checklist as guidance."
+            "FastAPI target from the source."
         )
     return PROMPT_SANKA_READINESS.format(
         readiness_percent=float(context["readiness"]) * 100,
@@ -279,8 +273,7 @@ def _readiness_prompt(context: dict[str, object]) -> str:
         threshold_percent=float(context["threshold"]) * 100,
         plan_hash=context["plan_hash"],
         decision=decision,
-        checklist=checklist,
-        skipped_checklist=skipped_checklist,
+        verifier=_verifier_prompt(sanka),
     )
 
 
@@ -466,7 +459,8 @@ def main() -> int:
         prompt = PROMPT_CORE.format(python=sys.executable)
         if mode == "with-sanka":
             assert args.sanka_bin is not None
-            prompt += PROMPT_SANKA.format(sanka=args.sanka_bin.resolve())
+            sanka_bin = args.sanka_bin.resolve()
+            prompt += PROMPT_SANKA.format(sanka=sanka_bin, verifier=_verifier_prompt(sanka_bin))
         elif mode == "readiness-aware":
             assert args.sanka_bin is not None
             try:
@@ -479,7 +473,7 @@ def main() -> int:
             except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
                 print(f"readiness-aware Sanka preflight failed: {exc}", file=sys.stderr)
                 return 1
-            prompt += _readiness_prompt(readiness_context)
+            prompt += _readiness_prompt(readiness_context, args.sanka_bin.resolve())
         if args.agent == "codex":
             codex_home = Path(temp) / "codex-home"
             command = _codex_command(args, prompt, codex_home)

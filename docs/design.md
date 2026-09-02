@@ -73,9 +73,10 @@ source-framework dispatcher.
 The official comparison remains the two pass@1 arms above. A separate
 readiness-aware diagnostic arm may preflight the same task with Sanka before
 the agent runs. It freezes the plan-derived readiness decision and route gaps;
-at the default 50% threshold it supplies only the unsupported and unscanned
-route checklist instead of a low-readiness scaffold. The evaluator remains
-tool-neutral and unchanged.
+below the default 50% threshold it sends the agent the readiness number and
+the verifier command instead of a low-readiness scaffold, and never a route
+checklist (v5 showed that instructions without capability only raise cost).
+The evaluator remains tool-neutral and unchanged.
 
 Result reports aggregate the already-recorded per-scenario HTTP, database, and
 native-serving counters. They are explicitly diagnostic: the
@@ -506,6 +507,23 @@ readiness is high, treat low-readiness output as reference material, and in
 all cases derive exact semantics from the source application, which remains
 the specification. The condition still differs from `alone` by exactly one
 additive paragraph.
+
+**The with-Sanka condition ships capability, not instructions.** Bench v5
+(11 tasks, six models, 132 cells) showed that on tasks below the scaffold
+threshold the readiness-aware arm sent agents a route checklist and a critic
+checklist and nothing they could run: no verdict changed and cost rose
+(Sonnet +39%, GLM +48% on those tasks), while agents in every arm spent
+35–50% of their time hand-building a differential harness. Both with-Sanka
+prompts now name the packaged verifier — `sanka verify --to fastapi
+--scenarios public-tests/scenarios.json --edge-probes` replays the public
+scenarios plus scan-derived edge probes (OPTIONS/Allow, an unsupported method,
+the slash variant, a missing-object request) against the source and the
+candidate on identical fresh databases and diffs status, body, declared
+headers, and table contents — and the readiness-aware arm below threshold
+sends the readiness number and that command only. The hidden grading set is
+never part of the verifier; edge probes derive from the scan, which is
+legitimate. The route gap inventory remains frozen in `sanka-readiness.json`
+for forensics.
 
 **Near-misses are visible beside the cliff.** `sanka-bench report` now renders
 a diagnostic scenario-parity table (Migration Quality Score v0.3 preview):
