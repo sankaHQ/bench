@@ -416,6 +416,16 @@ def _enable_sanka_extension(sanka_bin: Path, *, workspace: Path, env: dict[str, 
     )
 
 
+def _cli_data(stdout: str) -> dict[str, object]:
+    """The `data` object of a sanka-cli JSON response, or {} when there is none."""
+    try:
+        payload = json.loads(stdout) if stdout.strip() else {}
+    except json.JSONDecodeError:
+        return {}
+    data = payload.get("data") if isinstance(payload, dict) else None
+    return data if isinstance(data, dict) else {}
+
+
 def _sanka_artifact(stdout: str, name: str, workspace: Path) -> Path:
     """Locate a lifecycle artifact from the CLI's JSON output, else the legacy `.sanka/` spot.
 
@@ -505,6 +515,9 @@ def _prepare_readiness_context(
     if not isinstance(scan, dict):
         raise RuntimeError(f"Sanka scan is not an object: {scan_path}")
     context = _readiness_context(plan, threshold, scan)
+    # sanka-cli reviews the core plan (which wraps the extension plan); apply wants the
+    # core hash from the CLI response. Older engines had a single hash: fall back to it.
+    context["core_plan_hash"] = _cli_data(planned.stdout).get("plan_hash") or context["plan_hash"]
     _write_parity_notes(workspace, plan, context)
     if context["decision"] == "emit-scaffold":
         _run_sanka_command(
@@ -514,7 +527,7 @@ def _prepare_readiness_context(
                 "--root",
                 ".",
                 "--plan-hash",
-                str(context["plan_hash"]),
+                str(context["core_plan_hash"]),
                 "--bench-candidate",
                 "./bench-candidate",
             ],
