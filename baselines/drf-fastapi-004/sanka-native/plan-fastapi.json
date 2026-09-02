@@ -1,0 +1,361 @@
+{
+  "alias_drop_rate": 0.5,
+  "automatic_routes": 7,
+  "capabilities": [
+    "fastapi-routes",
+    "generated-app-tests",
+    "uv-environment",
+    "database-configuration",
+    "database-lifecycle",
+    "persistence"
+  ],
+  "database_required": true,
+  "default_output": "<local-path>/outputs/004",
+  "dropped_alias_routes": 13,
+  "file_operations": [
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "README.md"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "app.py"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "models.py"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "pyproject.toml"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "requirements-test.txt"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "requirements.txt"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka-manifest.json"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka_native.py"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka_store.py"
+    }
+  ],
+  "generation_mode": "minimal",
+  "mode": "native",
+  "native_eligible_routes": 13,
+  "native_routes": 7,
+  "needs_adaptation_routes": 6,
+  "omissions": [
+    "full-project-infrastructure",
+    "manual-route-adaptations"
+  ],
+  "package_manager": "uv",
+  "plan_hash": "sha256:cecb1753b48ca78ac67828a2a1316b04c956a10938a1d88a172aff0f6e1e099c",
+  "readiness": 0.5384615384615384,
+  "retained": [
+    "Existing Django tables (schema reused, not rewritten)",
+    "Async SQL via Tortoise ORM (recommended — closest to Django)",
+    "DRF removed; FastAPI async request layer (Django is not imported at serve time)",
+    "Format-suffix alias routes dropped (disclosed contract change)"
+  ],
+  "risks": [],
+  "routes": [
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "native-fastapi-api-root"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/<drf_format_suffix:format>",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/accounts.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/accounts.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/accounts/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/accounts/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/accounts/{pk}.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/accounts/{pk}.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/accounts/{pk}.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/accounts/{pk}.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/accounts/{pk}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/accounts/{pk}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/accounts/{pk}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/accounts/{pk}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "POST",
+      "operation": "transfer",
+      "path": "/api/accounts/{pk}/transfer.{format}/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_CUSTOM_ACTION_UNSUPPORTED",
+          "feature": "viewset-actions",
+          "message": "Custom or unsupported viewset actions are present: transfer"
+        }
+      ],
+      "automatic": false,
+      "method": "POST",
+      "operation": "transfer",
+      "path": "/api/accounts/{pk}/transfer/",
+      "source_view": "ledger.views.AccountViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/audit.{format}/",
+      "source_view": "ledger.views.AuditLogViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "ledger.views.AuditLogViewSet is not a ModelViewSet."
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/audit/",
+      "source_view": "ledger.views.AuditLogViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/entries.{format}/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/entries.{format}/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "ledger.views.LedgerEntryViewSet is not a ModelViewSet."
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/entries/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "ledger.views.LedgerEntryViewSet is not a ModelViewSet."
+        }
+      ],
+      "automatic": false,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/entries/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/entries/{pk}.{format}/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/entries/{pk}.{format}/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "ledger.views.LedgerEntryViewSet is not a ModelViewSet."
+        }
+      ],
+      "automatic": false,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/entries/{pk}/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "ledger.views.LedgerEntryViewSet is not a ModelViewSet."
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/entries/{pk}/",
+      "source_view": "ledger.views.LedgerEntryViewSet",
+      "strategy": "needs-manual-adaptation"
+    }
+  ],
+  "schema_version": 3,
+  "settings_module": "ledger_project.settings",
+  "source_framework": "django-rest-framework",
+  "source_scan_hash": "sha256:9d5c71ab9d78a7f738dfa040005eb465e2c36b7662277cbd684bac3f6c954bf1",
+  "sql_engine": "tortoise",
+  "target_fingerprint": "",
+  "target_framework": "fastapi",
+  "target_generation_mode": ""
+}

@@ -1,0 +1,73 @@
+[project]
+name = "sanka-bench"
+version = "0.0.3"
+description = "Tool-neutral repository-level migration benchmark and evaluator"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Sanka, Inc." }]
+dependencies = [
+  "jsonschema>=4.23,<5",
+  "pyyaml>=6,<7",
+]
+
+[project.optional-dependencies]
+fixture = [
+  "django>=5.2,<6",
+  "djangorestframework>=3.16,<4",
+  "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
+]
+
+[project.scripts]
+sanka-bench = "sanka_bench.cli:main"
+
+[project.urls]
+Repository = "https://github.com/sankaHQ/bench"
+Issues = "https://github.com/sankaHQ/bench/issues"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sanka_bench"]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.14",
+  "pytest>=8.3",
+  "ruff>=0.12",
+  "types-jsonschema>=4.23",
+  "types-pyyaml>=6",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+  "baselines/*/claude-code-alone/overlay",
+  "baselines/*/claude-code-with-sanka/overlay",
+  "baselines/*/compatibility-bridge/overlay",
+  "baselines/*/sanka-native/overlay",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tasks/**/source/**/migrations/*.py" = ["RUF012"]
+"tasks/**/source/**/models.py" = ["RUF012"]
+"tasks/**/source/**/serializers.py" = ["RUF012"]
+"tasks/**/source/**/views.py" = ["RUF012"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+packages = ["sanka_bench"]
+mypy_path = ["src"]

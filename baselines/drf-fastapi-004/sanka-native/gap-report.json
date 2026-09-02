@@ -1,0 +1,96 @@
+{
+  "critic_checks": {
+    "database_parity": "required",
+    "native_serving_evidence": "required",
+    "redirect_and_header_parity": "required",
+    "route_coverage": "required"
+  },
+  "native_eligible_routes": 13,
+  "native_routes": 7,
+  "needs_adaptation_routes": 6,
+  "plan_hash": "sha256:cecb1753b48ca78ac67828a2a1316b04c956a10938a1d88a172aff0f6e1e099c",
+  "readiness": 0.5384615384615384,
+  "schema": "sanka/native-gap-report/v1",
+  "skipped_routes": [],
+  "threshold_unit": "ratio",
+  "unsupported_routes": [
+    {
+      "method": "POST",
+      "operation": "transfer",
+      "path": "/api/accounts/{pk}/transfer/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_CUSTOM_ACTION_UNSUPPORTED",
+          "feature": "viewset-actions",
+          "message": "Custom or unsupported viewset actions are present: transfer"
+        }
+      ],
+      "source_view": "ledger.views.AccountViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/audit/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "ledger.views.AuditLogViewSet is not a ModelViewSet."
+        }
+      ],
+      "source_view": "ledger.views.AuditLogViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/entries/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "ledger.views.LedgerEntryViewSet is not a ModelViewSet."
+        }
+      ],
+      "source_view": "ledger.views.LedgerEntryViewSet"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/entries/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "ledger.views.LedgerEntryViewSet is not a ModelViewSet."
+        }
+      ],
+      "source_view": "ledger.views.LedgerEntryViewSet"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/entries/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "ledger.views.LedgerEntryViewSet is not a ModelViewSet."
+        }
+      ],
+      "source_view": "ledger.views.LedgerEntryViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/entries/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "ledger.views.LedgerEntryViewSet is not a ModelViewSet."
+        }
+      ],
+      "source_view": "ledger.views.LedgerEntryViewSet"
+    }
+  ]
+}

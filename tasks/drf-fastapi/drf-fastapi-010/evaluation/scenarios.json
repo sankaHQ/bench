@@ -1,0 +1,200 @@
+[
+  {
+    "id": "list-orders",
+    "method": "GET",
+    "path": "/api/orders/"
+  },
+  {
+    "id": "detail-draft",
+    "method": "GET",
+    "path": "/api/orders/1/"
+  },
+  {
+    "id": "create-order-version-one",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "number": "ORD-NEW",
+      "total": "10.00",
+      "notes": "Created"
+    }
+  },
+  {
+    "id": "patch-current-version",
+    "method": "PATCH",
+    "path": "/api/orders/1/",
+    "body": {
+      "version": 1,
+      "total": "130.25",
+      "notes": "Edited"
+    }
+  },
+  {
+    "id": "transition-draft-to-submitted",
+    "method": "POST",
+    "path": "/api/orders/1/transition/",
+    "body": {"to_status": "submitted", "version": 1}
+  },
+  {
+    "id": "transition-draft-to-approved",
+    "method": "POST",
+    "path": "/api/orders/1/transition/",
+    "body": {"to_status": "approved", "version": 1}
+  },
+  {
+    "id": "stale-patch-rolls-back-both-tables",
+    "method": "PATCH",
+    "path": "/api/orders/1/",
+    "body": {"version": 9, "notes": "Must not persist"}
+  },
+  {
+    "id": "transition-draft-to-draft",
+    "method": "POST",
+    "path": "/api/orders/1/transition/",
+    "body": {"to_status": "draft", "version": 1}
+  },
+  {
+    "id": "transition-draft-to-shipped",
+    "method": "POST",
+    "path": "/api/orders/1/transition/",
+    "body": {"to_status": "shipped", "version": 1}
+  },
+  {
+    "id": "transition-draft-to-cancelled",
+    "method": "POST",
+    "path": "/api/orders/1/transition/",
+    "body": {"to_status": "cancelled", "version": 1}
+  },
+  {
+    "id": "transition-submitted-to-draft",
+    "method": "POST",
+    "path": "/api/orders/2/transition/",
+    "body": {"to_status": "draft", "version": 1}
+  },
+  {
+    "id": "transition-submitted-to-submitted",
+    "method": "POST",
+    "path": "/api/orders/2/transition/",
+    "body": {"to_status": "submitted", "version": 1}
+  },
+  {
+    "id": "transition-submitted-to-approved",
+    "method": "POST",
+    "path": "/api/orders/2/transition/",
+    "body": {"to_status": "approved", "version": 1}
+  },
+  {
+    "id": "transition-submitted-to-shipped",
+    "method": "POST",
+    "path": "/api/orders/2/transition/",
+    "body": {"to_status": "shipped", "version": 1}
+  },
+  {
+    "id": "transition-submitted-to-cancelled",
+    "method": "POST",
+    "path": "/api/orders/2/transition/",
+    "body": {"to_status": "cancelled", "version": 1}
+  },
+  {
+    "id": "transition-approved-to-draft",
+    "method": "POST",
+    "path": "/api/orders/3/transition/",
+    "body": {"to_status": "draft", "version": 1}
+  },
+  {
+    "id": "transition-approved-to-submitted",
+    "method": "POST",
+    "path": "/api/orders/3/transition/",
+    "body": {"to_status": "submitted", "version": 1}
+  },
+  {
+    "id": "transition-approved-to-approved",
+    "method": "POST",
+    "path": "/api/orders/3/transition/",
+    "body": {"to_status": "approved", "version": 1}
+  },
+  {
+    "id": "transition-approved-to-shipped",
+    "method": "POST",
+    "path": "/api/orders/3/transition/",
+    "body": {"to_status": "shipped", "version": 1}
+  },
+  {
+    "id": "transition-approved-to-cancelled",
+    "method": "POST",
+    "path": "/api/orders/3/transition/",
+    "body": {"to_status": "cancelled", "version": 1}
+  },
+  {
+    "id": "transition-shipped-to-draft",
+    "method": "POST",
+    "path": "/api/orders/4/transition/",
+    "body": {"to_status": "draft", "version": 1}
+  },
+  {
+    "id": "transition-shipped-to-submitted",
+    "method": "POST",
+    "path": "/api/orders/4/transition/",
+    "body": {"to_status": "submitted", "version": 1}
+  },
+  {
+    "id": "transition-shipped-to-approved",
+    "method": "POST",
+    "path": "/api/orders/4/transition/",
+    "body": {"to_status": "approved", "version": 1}
+  },
+  {
+    "id": "transition-shipped-to-shipped",
+    "method": "POST",
+    "path": "/api/orders/4/transition/",
+    "body": {"to_status": "shipped", "version": 1}
+  },
+  {
+    "id": "transition-shipped-to-cancelled",
+    "method": "POST",
+    "path": "/api/orders/4/transition/",
+    "body": {"to_status": "cancelled", "version": 1}
+  },
+  {
+    "id": "transition-cancelled-to-draft",
+    "method": "POST",
+    "path": "/api/orders/5/transition/",
+    "body": {"to_status": "draft", "version": 1}
+  },
+  {
+    "id": "transition-cancelled-to-submitted",
+    "method": "POST",
+    "path": "/api/orders/5/transition/",
+    "body": {"to_status": "submitted", "version": 1}
+  },
+  {
+    "id": "transition-cancelled-to-approved",
+    "method": "POST",
+    "path": "/api/orders/5/transition/",
+    "body": {"to_status": "approved", "version": 1}
+  },
+  {
+    "id": "transition-cancelled-to-shipped",
+    "method": "POST",
+    "path": "/api/orders/5/transition/",
+    "body": {"to_status": "shipped", "version": 1}
+  },
+  {
+    "id": "transition-cancelled-to-cancelled",
+    "method": "POST",
+    "path": "/api/orders/5/transition/",
+    "body": {"to_status": "cancelled", "version": 1}
+  },
+  {
+    "id": "unknown-transition-target-validation",
+    "method": "POST",
+    "path": "/api/orders/1/transition/",
+    "body": {"to_status": "returned", "version": 1}
+  },
+  {
+    "id": "stale-transition-rolls-back-both-tables",
+    "method": "POST",
+    "path": "/api/orders/2/transition/",
+    "body": {"to_status": "approved", "version": 7}
+  }
+]

@@ -1,0 +1,49 @@
+[
+  {
+    "id": "function-list-canonical",
+    "method": "GET",
+    "path": "/api/function/entries/"
+  },
+  {
+    "id": "class-list-canonical",
+    "method": "GET",
+    "path": "/api/class/entries"
+  },
+  {
+    "id": "viewset-list-canonical",
+    "method": "GET",
+    "path": "/api/viewset/entries/"
+  },
+  {
+    "id": "function-detail-non-slug",
+    "method": "GET",
+    "path": "/api/function/entries/guide.v2+draft/"
+  },
+  {
+    "id": "class-detail-non-slug",
+    "method": "GET",
+    "path": "/api/class/entries/guide.v2+draft"
+  },
+  {
+    "id": "viewset-detail-non-slug",
+    "method": "GET",
+    "path": "/api/viewset/entries/guide.v2+draft/"
+  },
+  {
+    "id": "function-create",
+    "method": "POST",
+    "path": "/api/function/entries/",
+    "body": {
+      "code": "new.item+one",
+      "title": "New entry",
+      "body": "Created through a function view",
+      "state": "draft"
+    }
+  },
+  {
+    "id": "function-invalid-blank",
+    "method": "POST",
+    "path": "/api/function/entries/",
+    "body": {"code": "", "title": ""}
+  }
+]

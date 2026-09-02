@@ -1,0 +1,241 @@
+{
+  "alias_drop_rate": 0.5,
+  "automatic_routes": 1,
+  "capabilities": [
+    "fastapi-routes",
+    "generated-app-tests",
+    "uv-environment"
+  ],
+  "database_required": false,
+  "default_output": "<local-path>/outputs/007",
+  "dropped_alias_routes": 7,
+  "file_operations": [
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "README.md"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "app.py"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "pyproject.toml"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "requirements-test.txt"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "requirements.txt"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka-manifest.json"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka_native.py"
+    }
+  ],
+  "generation_mode": "minimal",
+  "mode": "native",
+  "native_eligible_routes": 7,
+  "native_routes": 1,
+  "needs_adaptation_routes": 6,
+  "omissions": [
+    "full-project-infrastructure",
+    "database-runtime",
+    "manual-route-adaptations"
+  ],
+  "package_manager": "uv",
+  "plan_hash": "sha256:824978024173fd6cd3e24ad9835e6dbc112a06698dcc29fc4821f38c3c4f047a",
+  "readiness": 0.14285714285714285,
+  "retained": [
+    "No source database is required by generated routes",
+    "No database runtime required by generated routes",
+    "DRF removed; FastAPI async request layer (Django is not imported at serve time)",
+    "Format-suffix alias routes dropped (disclosed contract change)"
+  ],
+  "risks": [],
+  "routes": [
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "native-fastapi-api-root"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/<drf_format_suffix:format>",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/records.{format}/",
+      "source_view": "records.views.RecordViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/records.{format}/",
+      "source_view": "records.views.RecordViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: retrieve, update"
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/records/",
+      "source_view": "records.views.RecordViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: retrieve, update"
+        }
+      ],
+      "automatic": false,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/records/",
+      "source_view": "records.views.RecordViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/records/{pk}.{format}/",
+      "source_view": "records.views.RecordViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/records/{pk}.{format}/",
+      "source_view": "records.views.RecordViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/records/{pk}.{format}/",
+      "source_view": "records.views.RecordViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/records/{pk}.{format}/",
+      "source_view": "records.views.RecordViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: retrieve, update"
+        }
+      ],
+      "automatic": false,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/records/{pk}/",
+      "source_view": "records.views.RecordViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: retrieve, update"
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/records/{pk}/",
+      "source_view": "records.views.RecordViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: retrieve, update"
+        }
+      ],
+      "automatic": false,
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/records/{pk}/",
+      "source_view": "records.views.RecordViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: retrieve, update"
+        }
+      ],
+      "automatic": false,
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/records/{pk}/",
+      "source_view": "records.views.RecordViewSet",
+      "strategy": "needs-manual-adaptation"
+    }
+  ],
+  "schema_version": 3,
+  "settings_module": "precision_project.settings",
+  "source_framework": "django-rest-framework",
+  "source_scan_hash": "sha256:7b04951021c4e4d48991368d4355af8a6240f2f66c881a7f68df6273ea8cd1af",
+  "sql_engine": "none",
+  "target_fingerprint": "",
+  "target_framework": "fastapi",
+  "target_generation_mode": ""
+}

@@ -1,0 +1,8 @@
+schema_version: sanka-bench/candidate/v0.1
+id: obfuscated-bridge
+kind: overlay
+overlay: overlay
+provenance:
+  producer: test-control
+  revision: drf-fastapi-001-obfuscated-v1
+  command: hand-written facade that hides DRF dispatch in an imported helper

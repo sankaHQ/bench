@@ -1,0 +1,48 @@
+{
+  "generated_files": [
+    "<local-path>/candidates/001/overlay/target_app.py",
+    "<local-path>/candidates/001/overlay/sanka_native.py",
+    "<local-path>/candidates/001/overlay/sanka_store.py",
+    "<local-path>/candidates/001/overlay/sanka_settings.py"
+  ],
+  "http": {
+    "enabled": false,
+    "failed": [],
+    "passed": 0,
+    "probed": 0,
+    "safe_routes": 2
+  },
+  "mode": "native",
+  "ok": true,
+  "output": "<local-path>/candidates/001/overlay",
+  "paths": {
+    "environment": null,
+    "generated": "<local-path>/candidates/001/overlay",
+    "lockfile": null,
+    "manifest": "<local-path>/candidates/001/overlay/sanka-manifest.json",
+    "plan": "<local-path>/artifacts/001/plan-fastapi.json",
+    "pyproject": "<local-path>/candidates/001/overlay/pyproject.toml",
+    "python": null,
+    "scan": "<local-path>/artifacts/001/scan.json",
+    "source": "<repo>/tasks/drf-fastapi/drf-fastapi-001/source"
+  },
+  "plan_hash": "sha256:b75bfdde7be13b8c9a05865be37b61058d9ec17dcf3ffe2a1e37060a192fe894",
+  "routes": {
+    "dropped": [
+      "DELETE /api/widgets/{pk}.{format}/",
+      "GET /api/<drf_format_suffix:format>",
+      "GET /api/widgets.{format}/",
+      "GET /api/widgets/{pk}.{format}/",
+      "PATCH /api/widgets/{pk}.{format}/",
+      "POST /api/widgets.{format}/",
+      "PUT /api/widgets/{pk}.{format}/"
+    ],
+    "extra": [],
+    "generated": 7,
+    "missing": [],
+    "needs_adaptation": [],
+    "planned": 14,
+    "scanned": 14
+  },
+  "scan_hash": "sha256:41a1bd39dc6cd03d40602be8eb7b8f469fba8ccbaa67179446e9aaae826ef98a"
+}

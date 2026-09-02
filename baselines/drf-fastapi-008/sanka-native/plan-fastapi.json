@@ -1,0 +1,547 @@
+{
+  "alias_drop_rate": 0.19444444444444445,
+  "automatic_routes": 7,
+  "capabilities": [
+    "fastapi-routes",
+    "generated-app-tests",
+    "uv-environment",
+    "database-configuration",
+    "database-lifecycle",
+    "persistence"
+  ],
+  "database_required": true,
+  "default_output": "<local-path>/outputs/008",
+  "dropped_alias_routes": 7,
+  "file_operations": [
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "README.md"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "app.py"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "models.py"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "pyproject.toml"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "requirements-test.txt"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "requirements.txt"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka-manifest.json"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka_native.py"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka_store.py"
+    }
+  ],
+  "generation_mode": "minimal",
+  "mode": "native",
+  "native_eligible_routes": 29,
+  "native_routes": 7,
+  "needs_adaptation_routes": 22,
+  "omissions": [
+    "full-project-infrastructure",
+    "manual-route-adaptations"
+  ],
+  "package_manager": "uv",
+  "plan_hash": "sha256:e3623b585c2cd50368fe87543d0ad3718fa6745c20d6a07766dab99e14870c7d",
+  "readiness": 0.2413793103448276,
+  "retained": [
+    "Existing Django tables (schema reused, not rewritten)",
+    "Async SQL via Tortoise ORM (recommended — closest to Django)",
+    "DRF removed; FastAPI async request layer (Django is not imported at serve time)",
+    "Format-suffix alias routes dropped (disclosed contract change)"
+  ],
+  "risks": [],
+  "routes": [
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.LegacyEntryCollectionAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/class/entries",
+      "source_view": "catalog.views.LegacyEntryCollectionAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.LegacyEntryCollectionAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "POST",
+      "operation": "post",
+      "path": "/api/class/entries",
+      "source_view": "catalog.views.LegacyEntryCollectionAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.LegacyEntryDetailAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "DELETE",
+      "operation": "delete",
+      "path": "/api/class/entries/{code}",
+      "source_view": "catalog.views.LegacyEntryDetailAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.LegacyEntryDetailAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/class/entries/{code}",
+      "source_view": "catalog.views.LegacyEntryDetailAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.LegacyEntryDetailAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "PATCH",
+      "operation": "patch",
+      "path": "/api/class/entries/{code}",
+      "source_view": "catalog.views.LegacyEntryDetailAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.LegacyEntryDetailAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "PUT",
+      "operation": "put",
+      "path": "/api/class/entries/{code}",
+      "source_view": "catalog.views.LegacyEntryDetailAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "DELETE",
+      "operation": "delete",
+      "path": "/api/dynamic/entries/{code}/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/dynamic/entries/{code}/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "PATCH",
+      "operation": "patch",
+      "path": "/api/dynamic/entries/{code}/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "PUT",
+      "operation": "put",
+      "path": "/api/dynamic/entries/{code}/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/function/entries",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "POST",
+      "operation": "post",
+      "path": "/api/function/entries",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/function/entries/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "POST",
+      "operation": "post",
+      "path": "/api/function/entries/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "DELETE",
+      "operation": "delete",
+      "path": "/api/function/entries/{code}",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/function/entries/{code}",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "PATCH",
+      "operation": "patch",
+      "path": "/api/function/entries/{code}",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "PUT",
+      "operation": "put",
+      "path": "/api/function/entries/{code}",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "DELETE",
+      "operation": "delete",
+      "path": "/api/function/entries/{code}/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/function/entries/{code}/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "PATCH",
+      "operation": "patch",
+      "path": "/api/function/entries/{code}/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "PUT",
+      "operation": "put",
+      "path": "/api/function/entries/{code}/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/viewset/",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "native-fastapi-api-root"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/viewset/<drf_format_suffix:format>",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/viewset/entries.{format}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/viewset/entries.{format}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/viewset/entries/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/viewset/entries/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/viewset/entries/{code}.{format}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/viewset/entries/{code}.{format}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/viewset/entries/{code}.{format}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/viewset/entries/{code}.{format}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "dropped-format-suffix-alias"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/viewset/entries/{code}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/viewset/entries/{code}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/viewset/entries/{code}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "adaptation_reasons": [],
+      "automatic": true,
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/viewset/entries/{code}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "native-fastapi-crud"
+    }
+  ],
+  "schema_version": 3,
+  "settings_module": "legacy_project.settings",
+  "source_framework": "django-rest-framework",
+  "source_scan_hash": "sha256:8fcfb1f0ae49ad26b14965b2f26bf888ab20439a6e73639dc6652716a4603d59",
+  "sql_engine": "tortoise",
+  "target_fingerprint": "",
+  "target_framework": "fastapi",
+  "target_generation_mode": ""
+}

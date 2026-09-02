@@ -1,0 +1,83 @@
+{
+  "critic_checks": {
+    "database_parity": "required",
+    "native_serving_evidence": "required",
+    "redirect_and_header_parity": "required",
+    "route_coverage": "required"
+  },
+  "native_eligible_routes": 5,
+  "native_routes": 0,
+  "needs_adaptation_routes": 5,
+  "plan_hash": "sha256:b7a431f75e95d3e0200e1ccb2049ed06a277432f1fbf794522fd825bee251f31",
+  "readiness": 0.0,
+  "schema": "sanka/native-gap-report/v1",
+  "skipped_routes": [],
+  "threshold_unit": "ratio",
+  "unsupported_routes": [
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/orders/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: create, partial_update"
+        }
+      ],
+      "source_view": "orders.views.OrderViewSet"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/orders/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: create, partial_update"
+        }
+      ],
+      "source_view": "orders.views.OrderViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/orders/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: create, partial_update"
+        }
+      ],
+      "source_view": "orders.views.OrderViewSet"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/orders/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: create, partial_update"
+        }
+      ],
+      "source_view": "orders.views.OrderViewSet"
+    },
+    {
+      "method": "POST",
+      "operation": "transition",
+      "path": "/api/orders/{pk}/transition/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_CUSTOM_ACTION_UNSUPPORTED",
+          "feature": "viewset-actions",
+          "message": "Custom or unsupported viewset actions are present: transition"
+        }
+      ],
+      "source_view": "orders.views.OrderViewSet"
+    }
+  ]
+}

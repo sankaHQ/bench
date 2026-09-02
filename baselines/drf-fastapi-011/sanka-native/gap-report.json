@@ -1,0 +1,83 @@
+{
+  "critic_checks": {
+    "database_parity": "required",
+    "native_serving_evidence": "required",
+    "redirect_and_header_parity": "required",
+    "route_coverage": "required"
+  },
+  "native_eligible_routes": 5,
+  "native_routes": 0,
+  "needs_adaptation_routes": 5,
+  "plan_hash": "sha256:78006157c9b01dfb6fd00b64463ed4c9d3bbbe3f43dcaad0880dceb42eba1ed1",
+  "readiness": 0.0,
+  "schema": "sanka/native-gap-report/v1",
+  "skipped_routes": [],
+  "threshold_unit": "ratio",
+  "unsupported_routes": [
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/accounts/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "sales.views.AccountListView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "sales.views.AccountListView"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/summary/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "sales.views.SummaryView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "sales.views.SummaryView"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/transactions/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: sales.serializers.TransactionSerializer"
+        }
+      ],
+      "source_view": "sales.views.TransactionViewSet"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/transactions/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: sales.serializers.TransactionSerializer"
+        }
+      ],
+      "source_view": "sales.views.TransactionViewSet"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/transactions/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: sales.serializers.TransactionSerializer"
+        }
+      ],
+      "source_view": "sales.views.TransactionViewSet"
+    }
+  ]
+}

@@ -1,0 +1,265 @@
+{
+  "allow": {
+    "/api/": "GET, HEAD, OPTIONS",
+    "/api/widgets/": "GET, POST, HEAD, OPTIONS",
+    "/api/widgets/{pk}/": "GET, PUT, PATCH, DELETE, HEAD, OPTIONS"
+  },
+  "api_roots": [
+    {
+      "links": [
+        [
+          "widgets",
+          "/api/widgets/"
+        ]
+      ],
+      "path": "/api/"
+    }
+  ],
+  "dropped_routes": [
+    {
+      "method": "GET",
+      "path": "/api/<drf_format_suffix:format>",
+      "reason": "format-suffix alias"
+    },
+    {
+      "method": "GET",
+      "path": "/api/widgets.{format}/",
+      "reason": "format-suffix alias"
+    },
+    {
+      "method": "POST",
+      "path": "/api/widgets.{format}/",
+      "reason": "format-suffix alias"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/widgets/{pk}.{format}/",
+      "reason": "format-suffix alias"
+    },
+    {
+      "method": "GET",
+      "path": "/api/widgets/{pk}.{format}/",
+      "reason": "format-suffix alias"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/widgets/{pk}.{format}/",
+      "reason": "format-suffix alias"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/widgets/{pk}.{format}/",
+      "reason": "format-suffix alias"
+    }
+  ],
+  "entrypoint": "target_app.py",
+  "generated_files": [
+    "target_app.py",
+    "sanka_native.py",
+    "sanka_settings.py"
+  ],
+  "generator": "sanka",
+  "generic_messages": {
+    "not_found": "Not found."
+  },
+  "has_user_logic": false,
+  "mode": "native",
+  "plan_hash": "sha256:df0fe52655b111cf168fe0751e935d4c37cc24ab1f2c3cac6f955ac602de4a93",
+  "resources": [
+    {
+      "auth": null,
+      "create": {
+        "style": "default"
+      },
+      "fields": [
+        {
+          "allow_blank": false,
+          "allow_null": false,
+          "attname": null,
+          "choices": [],
+          "decimal_places": null,
+          "default": null,
+          "has_default": false,
+          "kind": "integer",
+          "max_digits": null,
+          "max_length": null,
+          "max_value": null,
+          "messages": {
+            "invalid": "A valid integer is required.",
+            "max_string_length": "String value too large.",
+            "max_value": "Ensure this value is less than or equal to {max_value}.",
+            "min_value": "Ensure this value is greater than or equal to {min_value}.",
+            "null": "This field may not be null.",
+            "required": "This field is required."
+          },
+          "min_length": null,
+          "min_value": null,
+          "name": "id",
+          "read_only": true,
+          "required": false,
+          "trim_whitespace": true,
+          "unique": false,
+          "unique_message": null
+        },
+        {
+          "allow_blank": false,
+          "allow_null": false,
+          "attname": null,
+          "choices": [],
+          "decimal_places": null,
+          "default": null,
+          "has_default": false,
+          "kind": "char",
+          "max_digits": null,
+          "max_length": 80,
+          "max_value": null,
+          "messages": {
+            "blank": "This field may not be blank.",
+            "invalid": "Not a valid string.",
+            "max_length": "Ensure this field has no more than 80 characters.",
+            "min_length": "Ensure this field has at least {min_length} characters.",
+            "null": "This field may not be null.",
+            "null_characters": "Null characters are not allowed.",
+            "required": "This field is required.",
+            "surrogate_characters": "Surrogate characters are not allowed: U+{code_point:X}."
+          },
+          "min_length": null,
+          "min_value": null,
+          "name": "name",
+          "read_only": false,
+          "required": true,
+          "trim_whitespace": true,
+          "unique": false,
+          "unique_message": null
+        },
+        {
+          "allow_blank": false,
+          "allow_null": false,
+          "attname": null,
+          "choices": [],
+          "decimal_places": null,
+          "default": null,
+          "has_default": false,
+          "kind": "integer",
+          "max_digits": null,
+          "max_length": null,
+          "max_value": null,
+          "messages": {
+            "invalid": "A valid integer is required.",
+            "max_string_length": "String value too large.",
+            "max_value": "Ensure this value is less than or equal to {max_value}.",
+            "min_value": "Ensure this value is greater than or equal to 0.",
+            "null": "This field may not be null.",
+            "required": "This field is required."
+          },
+          "min_length": null,
+          "min_value": 0,
+          "name": "quantity",
+          "read_only": false,
+          "required": true,
+          "trim_whitespace": true,
+          "unique": false,
+          "unique_message": null
+        }
+      ],
+      "lookup": "pk",
+      "model_class": "Widget",
+      "model_module": "widgets.models",
+      "object_name": "Widget",
+      "ordering": [
+        "id"
+      ],
+      "routes": [
+        {
+          "method": "GET",
+          "operation": "list",
+          "path": "/api/widgets/"
+        },
+        {
+          "method": "POST",
+          "operation": "create",
+          "path": "/api/widgets/"
+        },
+        {
+          "method": "DELETE",
+          "operation": "destroy",
+          "path": "/api/widgets/{pk}/"
+        },
+        {
+          "method": "GET",
+          "operation": "retrieve",
+          "path": "/api/widgets/{pk}/"
+        },
+        {
+          "method": "PATCH",
+          "operation": "partial_update",
+          "path": "/api/widgets/{pk}/"
+        },
+        {
+          "method": "PUT",
+          "operation": "update",
+          "path": "/api/widgets/{pk}/"
+        }
+      ],
+      "serializer": "widgets.serializers.WidgetSerializer",
+      "update_drops": null,
+      "view": "widgets.views.WidgetViewSet"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "native-fastapi-api-root"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/widgets/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/widgets/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/widgets/{pk}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/widgets/{pk}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/widgets/{pk}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "native-fastapi-crud"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/widgets/{pk}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "native-fastapi-crud"
+    }
+  ],
+  "schema_version": 1,
+  "serving_settings": "sanka_settings",
+  "settings_module": "fixture_project.settings",
+  "source_root": ".",
+  "source_scan_hash": "sha256:18c791df9733f5f4de0813e8e4cf6d903bdd78221f8aeee9752c7dd0838c735e"
+}

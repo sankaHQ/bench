@@ -1,0 +1,12 @@
+schema_version: sanka-bench/candidate/v0.2
+id: claude-code-alone
+kind: overlay
+overlay: overlay
+provenance:
+  producer: claude-code
+  revision: claude-sonnet-5 via 2.1.241 (Claude Code)
+  command: scripts/run_agent_candidate.py (prompt and budget in GENERATED.md)
+stats:
+  turns: 36
+  duration_seconds: 373.3
+  cost_usd: 1.0179

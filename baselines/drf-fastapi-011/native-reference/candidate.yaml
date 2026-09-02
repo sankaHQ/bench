@@ -1,0 +1,8 @@
+schema_version: sanka-bench/candidate/v0.1
+id: native-reference
+kind: overlay
+overlay: overlay
+provenance:
+  producer: benchmark-author
+  revision: drf-fastapi-011-reference-v1
+  command: hand-written positive control

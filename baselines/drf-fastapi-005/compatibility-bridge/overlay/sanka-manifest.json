@@ -1,0 +1,127 @@
+{
+  "generated_files": [
+    "app.py",
+    "sanka_compat.py"
+  ],
+  "generator": "sanka",
+  "mode": "compatibility",
+  "plan_hash": "sha256:b73a57af8f1f93bf205f53b81bb34ee929e8aaddf2f9c05e3d77de0120c47818",
+  "routes": [
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/<drf_format_suffix:format>",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/documents.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/documents.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/documents/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/documents/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/documents/{pk}.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/documents/{pk}.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/documents/{pk}.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/documents/{pk}.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/documents/{pk}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/documents/{pk}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/documents/{pk}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/documents/{pk}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "review",
+      "path": "/api/documents/{pk}/review.{format}/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "review",
+      "path": "/api/documents/{pk}/review/",
+      "source_view": "documents.views.DocumentViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    }
+  ],
+  "schema_version": 1,
+  "settings_module": "access_project.settings",
+  "source_root": ".",
+  "source_scan_hash": "sha256:9f9ed5ba185ce1715f3bd8efe9c0b2bff2f42985b65e8a6cd464ebefa23c2cd0"
+}

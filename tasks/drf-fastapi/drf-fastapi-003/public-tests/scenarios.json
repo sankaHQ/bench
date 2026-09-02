@@ -1,0 +1,113 @@
+[
+  { "id": "list-seeded-orders", "method": "GET", "path": "/api/orders/" },
+  { "id": "retrieve-order", "method": "GET", "path": "/api/orders/1/" },
+  {
+    "id": "create-nested-valid",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "reference": "ORD-2",
+      "status": "paid",
+      "items": [
+        { "sku": "SKU-C", "quantity": 3, "price": "4.50" },
+        { "sku": "SKU-D", "quantity": 1, "price": "0.99" }
+      ]
+    }
+  },
+  {
+    "id": "create-empty-items",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": { "reference": "ORD-3", "items": [] }
+  },
+  {
+    "id": "create-rollback-on-business-rule",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "reference": "ORD-4",
+      "items": [
+        { "sku": "SKU-C", "quantity": 60, "price": "1.00" },
+        { "sku": "SKU-D", "quantity": 60, "price": "1.00" }
+      ]
+    }
+  },
+  {
+    "id": "create-duplicate-reference",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "reference": "ORD-1",
+      "items": [{ "sku": "SKU-C", "quantity": 1, "price": "1.00" }]
+    }
+  },
+  {
+    "id": "create-nested-item-invalid",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "reference": "ORD-5",
+      "items": [
+        { "sku": "SKU-C", "quantity": 1, "price": "1.00" },
+        { "sku": "SKU-D", "quantity": 0, "price": "1.00" }
+      ]
+    }
+  },
+  {
+    "id": "create-missing-items",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": { "reference": "ORD-6" }
+  },
+  {
+    "id": "create-items-not-a-list",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": { "reference": "ORD-7", "items": { "sku": "SKU-C" } }
+  },
+  {
+    "id": "create-price-too-many-digits",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "reference": "ORD-8",
+      "items": [{ "sku": "SKU-C", "quantity": 1, "price": "1234567.00" }]
+    }
+  },
+  {
+    "id": "create-price-too-many-decimals",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "reference": "ORD-9",
+      "items": [{ "sku": "SKU-C", "quantity": 1, "price": "1.999" }]
+    }
+  },
+  {
+    "id": "create-price-not-a-number",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "reference": "ORD-10",
+      "items": [{ "sku": "SKU-C", "quantity": 1, "price": "abc" }]
+    }
+  },
+  {
+    "id": "create-invalid-status-choice",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "reference": "ORD-11",
+      "status": "shipped",
+      "items": [{ "sku": "SKU-C", "quantity": 1, "price": "1.00" }]
+    }
+  },
+  {
+    "id": "patch-memo-and-status",
+    "method": "PATCH",
+    "path": "/api/orders/1/",
+    "body": { "memo": "updated", "status": "paid" }
+  },
+  { "id": "retrieve-missing-order", "method": "GET", "path": "/api/orders/999/" },
+  { "id": "delete-order-cascades", "method": "DELETE", "path": "/api/orders/1/" }
+]

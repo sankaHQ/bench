@@ -1,0 +1,28 @@
+[
+  { "id": "list-accounts", "method": "GET", "path": "/api/accounts/" },
+  { "id": "retrieve-account", "method": "GET", "path": "/api/accounts/1/" },
+  {
+    "id": "create-account",
+    "method": "POST",
+    "path": "/api/accounts/",
+    "body": { "name": "savings" }
+  },
+  {
+    "id": "create-entry-updates-balance",
+    "method": "GET",
+    "path": "/api/accounts/1/",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/entries/",
+        "body": { "account": 1, "amount": "10.00", "memo": "topup" }
+      }
+    ]
+  },
+  {
+    "id": "transfer-success",
+    "method": "POST",
+    "path": "/api/accounts/1/transfer/",
+    "body": { "target": 2, "amount": "12.34" }
+  }
+]

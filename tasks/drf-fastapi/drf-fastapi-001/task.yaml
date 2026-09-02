@@ -1,0 +1,49 @@
+schema_version: sanka-bench/task/v0.2
+id: drf-fastapi-001
+lane: drf-fastapi
+
+source:
+  path: source
+  framework: django-rest-framework
+  python: "3.12"
+  provenance:
+    kind: synthetic
+    license: Apache-2.0
+    digest: sha256:6f5687e3c05b550bdc5d83ad9ab08c1e74341ecd80cb18edbb48f5113792b86d
+
+target:
+  framework: fastapi
+  orm: django
+  entrypoint: target_app.py
+  serving:
+    # Module prefixes that must never be imported by the guarded serving
+    # process. Django stays importable for the ORM; its request-serving
+    # machinery and DRF do not.
+    forbidden_imports:
+      - rest_framework
+      - django.core.asgi
+      - django.core.wsgi
+      - django.core.handlers
+      - django.test
+  static_patterns:
+    # Textual diagnostics only. The native-target hard gate is decided by
+    # recorded serving evidence, not by these strings.
+    required:
+      - "FastAPI("
+    forbidden:
+      - rest_framework
+      - get_asgi_application
+      - WSGIMiddleware
+      - django.test.Client
+      - ".mount("
+      - "_dispatch"
+
+commands:
+  regression:
+    - ["{python}", "manage.py", "test", "widgets", "--verbosity", "0"]
+
+evaluation:
+  driver: evaluation/driver.py
+  scenarios: public-tests/scenarios.json
+  repeat: 2
+  timeout_seconds: 120
