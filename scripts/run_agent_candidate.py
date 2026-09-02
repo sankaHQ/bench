@@ -1027,7 +1027,6 @@ def _write_candidate(
         "provenance:",
         f"  producer: {args.agent}",
         f"  revision: {args.model} via {agent_version or 'claude cli'}",
-        f"  provider_variant: {args.provider_variant}",
         "  command: scripts/run_agent_candidate.py (prompt and budget in GENERATED.md)",
     ]
     duration = stats.get("duration_ms")
