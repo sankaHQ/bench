@@ -123,7 +123,8 @@ It can scan the source, report how much of it it can migrate natively, and
 generate FastAPI code for the routes it supports:
 
     {sanka} scan .
-    {sanka} plan . --to fastapi --strategy native --generation minimal --package-manager uv
+    {sanka} plan . --to fastapi --strategy native --generation minimal \
+        --package-manager uv --output .sanka/output/fastapi
     {sanka} apply --root . --plan-hash <hash from the plan> --bench-candidate ./bench-candidate
 
 The extension the CLI needs for this source is already installed and enabled in
@@ -382,7 +383,16 @@ def _run_sanka_command(
 OFFICIAL_MARKETPLACE = "https://github.com/sankaHQ/extensions.git"
 DRF_EXTENSION_ID = "sanka/drf-to-fastapi"
 # sanka-cli 0.2.0 asks for these interactively; a headless plan must pass them.
-PLAN_INPUTS = ("--strategy", "native", "--generation", "minimal", "--package-manager", "uv")
+PLAN_INPUTS = (
+    "--strategy",
+    "native",
+    "--generation",
+    "minimal",
+    "--package-manager",
+    "uv",
+    "--output",
+    ".sanka/output/fastapi",
+)
 
 
 def _enable_sanka_extension(sanka_bin: Path, *, workspace: Path, env: dict[str, str]) -> None:

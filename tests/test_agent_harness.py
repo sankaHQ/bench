@@ -267,6 +267,8 @@ def test_readiness_preflight_mechanically_gates_scaffold(
         "minimal",
         "--package-manager",
         "uv",
+        "--output",
+        ".sanka/output/fastapi",
     ]
     if expects_apply:
         assert "--plan-hash" in commands[-1]
