@@ -1,0 +1,96 @@
+{
+  "critic_checks": {
+    "database_parity": "required",
+    "native_serving_evidence": "required",
+    "redirect_and_header_parity": "required",
+    "route_coverage": "required"
+  },
+  "native_eligible_routes": 7,
+  "native_routes": 1,
+  "needs_adaptation_routes": 6,
+  "plan_hash": "sha256:824978024173fd6cd3e24ad9835e6dbc112a06698dcc29fc4821f38c3c4f047a",
+  "readiness": 0.14285714285714285,
+  "schema": "sanka/native-gap-report/v1",
+  "skipped_routes": [],
+  "threshold_unit": "ratio",
+  "unsupported_routes": [
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/records/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: retrieve, update"
+        }
+      ],
+      "source_view": "records.views.RecordViewSet"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/records/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: retrieve, update"
+        }
+      ],
+      "source_view": "records.views.RecordViewSet"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/records/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: retrieve, update"
+        }
+      ],
+      "source_view": "records.views.RecordViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/records/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: retrieve, update"
+        }
+      ],
+      "source_view": "records.views.RecordViewSet"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/records/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: retrieve, update"
+        }
+      ],
+      "source_view": "records.views.RecordViewSet"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/records/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEWSET_OVERRIDES_UNSUPPORTED",
+          "feature": "viewset-overrides",
+          "message": "Viewset overrides require manual carryover: retrieve, update"
+        }
+      ],
+      "source_view": "records.views.RecordViewSet"
+    }
+  ]
+}

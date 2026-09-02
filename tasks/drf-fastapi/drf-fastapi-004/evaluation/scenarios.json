@@ -1,0 +1,134 @@
+[
+  { "id": "list-accounts", "method": "GET", "path": "/api/accounts/" },
+  { "id": "retrieve-account", "method": "GET", "path": "/api/accounts/1/" },
+  {
+    "id": "create-account",
+    "method": "POST",
+    "path": "/api/accounts/",
+    "body": { "name": "savings" }
+  },
+  {
+    "id": "create-entry-updates-balance",
+    "method": "GET",
+    "path": "/api/accounts/1/",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/entries/",
+        "body": { "account": 1, "amount": "10.00", "memo": "topup" }
+      }
+    ]
+  },
+  {
+    "id": "transfer-success",
+    "method": "POST",
+    "path": "/api/accounts/1/transfer/",
+    "body": { "target": 2, "amount": "12.34" }
+  },
+  {
+    "id": "create-account-balance-ignored",
+    "method": "POST",
+    "path": "/api/accounts/",
+    "body": { "name": "smuggle", "balance": "999.99" }
+  },
+  {
+    "id": "patch-account-balance-ignored",
+    "method": "PATCH",
+    "path": "/api/accounts/2/",
+    "body": { "name": "reserve-renamed", "balance": "999.99" }
+  },
+  {
+    "id": "rapid-entry-creates-compose",
+    "method": "GET",
+    "path": "/api/accounts/1/",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/entries/",
+        "body": { "account": 1, "amount": "10.00", "memo": "first" }
+      },
+      {
+        "method": "POST",
+        "path": "/api/entries/",
+        "body": { "account": 1, "amount": "-2.50", "memo": "second" }
+      },
+      {
+        "method": "POST",
+        "path": "/api/entries/",
+        "body": { "account": 1, "amount": "0.75", "memo": "third" }
+      }
+    ]
+  },
+  {
+    "id": "delete-entry-reverses-balance",
+    "method": "GET",
+    "path": "/api/accounts/1/",
+    "setup": [{ "method": "DELETE", "path": "/api/entries/2/" }]
+  },
+  {
+    "id": "transfer-insufficient-funds-rolls-back",
+    "method": "POST",
+    "path": "/api/accounts/3/transfer/",
+    "body": { "target": 1, "amount": "999.00" }
+  },
+  {
+    "id": "transfer-non-positive-amount",
+    "method": "POST",
+    "path": "/api/accounts/1/transfer/",
+    "body": { "target": 2, "amount": "0" }
+  },
+  {
+    "id": "transfer-target-missing",
+    "method": "POST",
+    "path": "/api/accounts/1/transfer/",
+    "body": { "target": 999, "amount": "1.00" }
+  },
+  {
+    "id": "transfer-source-missing",
+    "method": "POST",
+    "path": "/api/accounts/999/transfer/",
+    "body": { "target": 1, "amount": "1.00" }
+  },
+  {
+    "id": "transfer-audit-trail",
+    "method": "GET",
+    "path": "/api/audit/",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/accounts/1/transfer/",
+        "body": { "target": 2, "amount": "30.00" }
+      }
+    ]
+  },
+  {
+    "id": "delete-account-cascade-audit",
+    "method": "GET",
+    "path": "/api/audit/",
+    "setup": [{ "method": "DELETE", "path": "/api/accounts/1/" }]
+  },
+  {
+    "id": "numeric-amount-normalizes",
+    "method": "POST",
+    "path": "/api/entries/",
+    "body": { "account": 3, "amount": 10, "memo": "" }
+  },
+  {
+    "id": "audit-after-mixed-chain",
+    "method": "GET",
+    "path": "/api/audit/",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/entries/",
+        "body": { "account": 2, "amount": "50.00", "memo": "fund" }
+      },
+      {
+        "method": "POST",
+        "path": "/api/accounts/2/transfer/",
+        "body": { "target": 3, "amount": "25.00" }
+      },
+      { "method": "DELETE", "path": "/api/entries/3/" }
+    ]
+  }
+]

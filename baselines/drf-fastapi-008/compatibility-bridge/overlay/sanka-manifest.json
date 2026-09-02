@@ -1,0 +1,239 @@
+{
+  "generated_files": [
+    "app.py",
+    "sanka_compat.py"
+  ],
+  "generator": "sanka",
+  "mode": "compatibility",
+  "plan_hash": "sha256:9a8c31269d92285e96798725b3044318d81e12fe93e047135d1296977a7343bf",
+  "routes": [
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/class/entries",
+      "source_view": "catalog.views.LegacyEntryCollectionAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "post",
+      "path": "/api/class/entries",
+      "source_view": "catalog.views.LegacyEntryCollectionAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "delete",
+      "path": "/api/class/entries/{code}",
+      "source_view": "catalog.views.LegacyEntryDetailAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/class/entries/{code}",
+      "source_view": "catalog.views.LegacyEntryDetailAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "patch",
+      "path": "/api/class/entries/{code}",
+      "source_view": "catalog.views.LegacyEntryDetailAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "put",
+      "path": "/api/class/entries/{code}",
+      "source_view": "catalog.views.LegacyEntryDetailAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/function/entries",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "post",
+      "path": "/api/function/entries",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/function/entries/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "post",
+      "path": "/api/function/entries/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "delete",
+      "path": "/api/function/entries/{code}",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/function/entries/{code}",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "patch",
+      "path": "/api/function/entries/{code}",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "put",
+      "path": "/api/function/entries/{code}",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "delete",
+      "path": "/api/function/entries/{code}/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/function/entries/{code}/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "patch",
+      "path": "/api/function/entries/{code}/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "put",
+      "path": "/api/function/entries/{code}/",
+      "source_view": "catalog.views.WrappedAPIView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/viewset/",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/viewset/<drf_format_suffix:format>",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/viewset/entries.{format}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/viewset/entries.{format}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/viewset/entries/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/viewset/entries/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/viewset/entries/{code}.{format}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/viewset/entries/{code}.{format}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/viewset/entries/{code}.{format}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/viewset/entries/{code}.{format}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/viewset/entries/{code}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/viewset/entries/{code}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/viewset/entries/{code}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/viewset/entries/{code}/",
+      "source_view": "catalog.views.EntryViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    }
+  ],
+  "schema_version": 1,
+  "settings_module": "legacy_project.settings",
+  "source_root": ".",
+  "source_scan_hash": "sha256:69a673430c0d2cfb8f0e40337fb53dc5b1909dce08cff6d82177f84db6aba7d9"
+}

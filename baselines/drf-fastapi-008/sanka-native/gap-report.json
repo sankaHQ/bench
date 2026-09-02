@@ -1,0 +1,325 @@
+{
+  "critic_checks": {
+    "database_parity": "required",
+    "native_serving_evidence": "required",
+    "redirect_and_header_parity": "required",
+    "route_coverage": "required"
+  },
+  "native_eligible_routes": 29,
+  "native_routes": 7,
+  "needs_adaptation_routes": 22,
+  "plan_hash": "sha256:e3623b585c2cd50368fe87543d0ad3718fa6745c20d6a07766dab99e14870c7d",
+  "readiness": 0.2413793103448276,
+  "schema": "sanka/native-gap-report/v1",
+  "skipped_routes": [
+    {
+      "pattern": "^api/class/entries/(?P<code>[^/]+)/$",
+      "reason": "non-drf-view",
+      "view": "legacy_project.urls.permanent_style_redirect"
+    },
+    {
+      "pattern": "^api/viewset/entries/(?P<code>[^/]+)$",
+      "reason": "non-drf-view",
+      "view": "legacy_project.urls.permanent_style_redirect"
+    },
+    {
+      "pattern": "api/class/entries/",
+      "reason": "non-drf-view",
+      "view": "legacy_project.urls.permanent_style_redirect"
+    },
+    {
+      "pattern": "api/viewset/entries",
+      "reason": "non-drf-view",
+      "view": "legacy_project.urls.permanent_style_redirect"
+    }
+  ],
+  "threshold_unit": "ratio",
+  "unsupported_routes": [
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/class/entries",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.LegacyEntryCollectionAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.LegacyEntryCollectionAPIView"
+    },
+    {
+      "method": "POST",
+      "operation": "post",
+      "path": "/api/class/entries",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.LegacyEntryCollectionAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.LegacyEntryCollectionAPIView"
+    },
+    {
+      "method": "DELETE",
+      "operation": "delete",
+      "path": "/api/class/entries/{code}",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.LegacyEntryDetailAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.LegacyEntryDetailAPIView"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/class/entries/{code}",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.LegacyEntryDetailAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.LegacyEntryDetailAPIView"
+    },
+    {
+      "method": "PATCH",
+      "operation": "patch",
+      "path": "/api/class/entries/{code}",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.LegacyEntryDetailAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.LegacyEntryDetailAPIView"
+    },
+    {
+      "method": "PUT",
+      "operation": "put",
+      "path": "/api/class/entries/{code}",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.LegacyEntryDetailAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.LegacyEntryDetailAPIView"
+    },
+    {
+      "method": "DELETE",
+      "operation": "delete",
+      "path": "/api/dynamic/entries/{code}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/dynamic/entries/{code}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "PATCH",
+      "operation": "patch",
+      "path": "/api/dynamic/entries/{code}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "PUT",
+      "operation": "put",
+      "path": "/api/dynamic/entries/{code}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/function/entries",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "POST",
+      "operation": "post",
+      "path": "/api/function/entries",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/function/entries/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "POST",
+      "operation": "post",
+      "path": "/api/function/entries/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "DELETE",
+      "operation": "delete",
+      "path": "/api/function/entries/{code}",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/function/entries/{code}",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "PATCH",
+      "operation": "patch",
+      "path": "/api/function/entries/{code}",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "PUT",
+      "operation": "put",
+      "path": "/api/function/entries/{code}",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "DELETE",
+      "operation": "delete",
+      "path": "/api/function/entries/{code}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/function/entries/{code}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "PATCH",
+      "operation": "patch",
+      "path": "/api/function/entries/{code}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    },
+    {
+      "method": "PUT",
+      "operation": "put",
+      "path": "/api/function/entries/{code}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "catalog.views.WrappedAPIView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "source_view": "catalog.views.WrappedAPIView"
+    }
+  ]
+}

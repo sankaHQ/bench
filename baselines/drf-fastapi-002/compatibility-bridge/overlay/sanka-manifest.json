@@ -1,0 +1,113 @@
+{
+  "generated_files": [
+    "app.py",
+    "sanka_compat.py"
+  ],
+  "generator": "sanka",
+  "mode": "compatibility",
+  "plan_hash": "sha256:82fbd8ba3b71aa6f72d5a7c6f1ae3882e7dbaa1708c88fb7e3c0a6e28d531fdf",
+  "routes": [
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/<drf_format_suffix:format>",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/posts.{format}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/posts.{format}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/posts/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/posts/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/posts/{pk}.{format}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/posts/{pk}.{format}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/posts/{pk}.{format}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/posts/{pk}.{format}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/posts/{pk}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/posts/{pk}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/posts/{pk}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/posts/{pk}/",
+      "source_view": "posts.views.PostViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    }
+  ],
+  "schema_version": 1,
+  "settings_module": "bulletin_project.settings",
+  "source_root": ".",
+  "source_scan_hash": "sha256:4b2ef93611b084c3d8d12cc6725b8be8c4b9be38c402e6459141003d3a1931a3"
+}

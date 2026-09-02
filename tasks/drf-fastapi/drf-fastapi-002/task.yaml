@@ -1,0 +1,47 @@
+schema_version: sanka-bench/task/v0.2
+id: drf-fastapi-002
+lane: drf-fastapi
+
+source:
+  path: source
+  framework: django-rest-framework
+  python: "3.12"
+  provenance:
+    kind: synthetic
+    license: Apache-2.0
+    digest: sha256:6cb5c43c015e3b2ae87038a0fc025378267a19e9547abf13f48bad9822147d43
+
+target:
+  framework: fastapi
+  orm: django
+  entrypoint: target_app.py
+  serving:
+    # DRF must be absent from the serving process, including its authtoken
+    # app: token authentication must be reimplemented natively (the token
+    # table itself stays, owned by the retained Django half).
+    forbidden_imports:
+      - rest_framework
+      - django.core.asgi
+      - django.core.wsgi
+      - django.core.handlers
+      - django.test
+  static_patterns:
+    required:
+      - "FastAPI("
+    forbidden:
+      - rest_framework
+      - get_asgi_application
+      - WSGIMiddleware
+      - django.test.Client
+      - ".mount("
+      - "_dispatch"
+
+commands:
+  regression:
+    - ["{python}", "manage.py", "test", "posts", "--verbosity", "0"]
+
+evaluation:
+  driver: evaluation/driver.py
+  scenarios: public-tests/scenarios.json
+  repeat: 2
+  timeout_seconds: 120

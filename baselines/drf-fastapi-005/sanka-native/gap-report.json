@@ -1,0 +1,109 @@
+{
+  "critic_checks": {
+    "database_parity": "required",
+    "native_serving_evidence": "required",
+    "redirect_and_header_parity": "required",
+    "route_coverage": "required"
+  },
+  "native_eligible_routes": 8,
+  "native_routes": 1,
+  "needs_adaptation_routes": 7,
+  "plan_hash": "sha256:09e0249c005628c35677d7073663f7df0d47df87bb82144443233bbc5c6a4f0b",
+  "readiness": 0.125,
+  "schema": "sanka/native-gap-report/v1",
+  "skipped_routes": [],
+  "threshold_unit": "ratio",
+  "unsupported_routes": [
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/documents/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_AUTH_PERMISSIONS_UNSUPPORTED",
+          "feature": "authentication-permissions",
+          "message": "Authentication/permission classes are outside AllowAny or the supported TokenAuthentication + IsAuthenticated owner pattern; authentication: documents.authentication.ExpiringTokenAuthentication, rest_framework.authentication.SessionAuthentication; permissions: rest_framework.permissions.AllowAny"
+        }
+      ],
+      "source_view": "documents.views.DocumentViewSet"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/documents/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_AUTH_PERMISSIONS_UNSUPPORTED",
+          "feature": "authentication-permissions",
+          "message": "Authentication/permission classes are outside AllowAny or the supported TokenAuthentication + IsAuthenticated owner pattern; authentication: documents.authentication.ExpiringTokenAuthentication, rest_framework.authentication.SessionAuthentication; permissions: rest_framework.permissions.AllowAny"
+        }
+      ],
+      "source_view": "documents.views.DocumentViewSet"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/documents/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_AUTH_PERMISSIONS_UNSUPPORTED",
+          "feature": "authentication-permissions",
+          "message": "Authentication/permission classes are outside AllowAny or the supported TokenAuthentication + IsAuthenticated owner pattern; authentication: documents.authentication.ExpiringTokenAuthentication, rest_framework.authentication.SessionAuthentication; permissions: rest_framework.permissions.AllowAny"
+        }
+      ],
+      "source_view": "documents.views.DocumentViewSet"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/documents/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_AUTH_PERMISSIONS_UNSUPPORTED",
+          "feature": "authentication-permissions",
+          "message": "Authentication/permission classes are outside AllowAny or the supported TokenAuthentication + IsAuthenticated owner pattern; authentication: documents.authentication.ExpiringTokenAuthentication, rest_framework.authentication.SessionAuthentication; permissions: rest_framework.permissions.AllowAny"
+        }
+      ],
+      "source_view": "documents.views.DocumentViewSet"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/documents/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_AUTH_PERMISSIONS_UNSUPPORTED",
+          "feature": "authentication-permissions",
+          "message": "Authentication/permission classes are outside AllowAny or the supported TokenAuthentication + IsAuthenticated owner pattern; authentication: documents.authentication.ExpiringTokenAuthentication, rest_framework.authentication.SessionAuthentication; permissions: rest_framework.permissions.AllowAny"
+        }
+      ],
+      "source_view": "documents.views.DocumentViewSet"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/documents/{pk}/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_AUTH_PERMISSIONS_UNSUPPORTED",
+          "feature": "authentication-permissions",
+          "message": "Authentication/permission classes are outside AllowAny or the supported TokenAuthentication + IsAuthenticated owner pattern; authentication: documents.authentication.ExpiringTokenAuthentication, rest_framework.authentication.SessionAuthentication; permissions: rest_framework.permissions.AllowAny"
+        }
+      ],
+      "source_view": "documents.views.DocumentViewSet"
+    },
+    {
+      "method": "POST",
+      "operation": "review",
+      "path": "/api/documents/{pk}/review/",
+      "reasons": [
+        {
+          "code": "SANKA_DRF_CUSTOM_ACTION_UNSUPPORTED",
+          "feature": "viewset-actions",
+          "message": "Custom or unsupported viewset actions are present: review"
+        }
+      ],
+      "source_view": "documents.views.DocumentViewSet"
+    }
+  ]
+}

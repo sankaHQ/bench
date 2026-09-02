@@ -1,0 +1,47 @@
+schema_version: sanka-bench/task/v0.2
+id: drf-fastapi-005
+lane: drf-fastapi
+
+source:
+  path: source
+  framework: django-rest-framework
+  python: "3.12"
+  provenance:
+    kind: synthetic
+    license: Apache-2.0
+    digest: sha256:7de949ca5dbabdcb76d5736cea57621d12ae0a9da342dfed7615507183451230
+
+target:
+  framework: fastapi
+  orm: django
+  entrypoint: target_app.py
+  serving:
+    forbidden_imports:
+      - rest_framework
+      - django.core.asgi
+      - django.core.wsgi
+      - django.core.handlers
+      - django.test
+  static_patterns:
+    required:
+      - "FastAPI("
+    forbidden:
+      - rest_framework
+      - get_asgi_application
+      - WSGIMiddleware
+      - django.test.Client
+      - ".mount("
+      - "_dispatch"
+
+commands:
+  regression:
+    - ["{python}", "manage.py", "test", "documents", "--verbosity", "0"]
+
+# Candidates see seven representative requests. The graded superset pins the
+# complete 401/403/404 branch matrix, authentication-class ordering, CSRF on
+# session writes, action-specific permissions, and detail-only object checks.
+evaluation:
+  driver: evaluation/driver.py
+  scenarios: evaluation/scenarios.json
+  repeat: 2
+  timeout_seconds: 120

@@ -1,0 +1,109 @@
+{
+  "generator": "sanka",
+  "mode": "compatibility",
+  "plan_hash": "sha256:c83dfdc8647b10f7a90b28af7c4f02de29794cce43483238af0b50cd92973de3",
+  "routes": [
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/<drf_format_suffix:format>",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/widgets.{format}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/widgets.{format}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/widgets/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/widgets/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/widgets/{pk}.{format}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/widgets/{pk}.{format}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/widgets/{pk}.{format}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/widgets/{pk}.{format}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/widgets/{pk}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/widgets/{pk}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/widgets/{pk}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/widgets/{pk}/",
+      "source_view": "widgets.views.WidgetViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    }
+  ],
+  "schema_version": 1,
+  "settings_module": "fixture_project.settings",
+  "source_root": ".",
+  "source_scan_hash": "sha256:7b725d4dea4d26b8c6caecedbcd02f6312b55b2b70dfca155bf41e6b218d3945"
+}

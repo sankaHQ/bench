@@ -1,0 +1,154 @@
+{
+  "alias_drop_rate": 0.0,
+  "automatic_routes": 0,
+  "capabilities": [
+    "fastapi-routes",
+    "generated-app-tests",
+    "uv-environment"
+  ],
+  "database_required": false,
+  "default_output": "<local-path>/outputs/011",
+  "dropped_alias_routes": 0,
+  "file_operations": [
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "README.md"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "app.py"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "pyproject.toml"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "requirements-test.txt"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "requirements.txt"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka-manifest.json"
+    },
+    {
+      "action": "create",
+      "expected_hash": "",
+      "path": "sanka_native.py"
+    }
+  ],
+  "generation_mode": "minimal",
+  "mode": "native",
+  "native_eligible_routes": 5,
+  "native_routes": 0,
+  "needs_adaptation_routes": 5,
+  "omissions": [
+    "full-project-infrastructure",
+    "database-runtime",
+    "manual-route-adaptations"
+  ],
+  "package_manager": "uv",
+  "plan_hash": "sha256:78006157c9b01dfb6fd00b64463ed4c9d3bbbe3f43dcaad0880dceb42eba1ed1",
+  "readiness": 0.0,
+  "retained": [
+    "No source database is required by generated routes",
+    "No database runtime required by generated routes",
+    "DRF removed; FastAPI async request layer (Django is not imported at serve time)",
+    "Format-suffix alias routes dropped (disclosed contract change)"
+  ],
+  "risks": [],
+  "routes": [
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "sales.views.AccountListView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/accounts/",
+      "source_view": "sales.views.AccountListView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_VIEW_KIND_UNSUPPORTED",
+          "feature": "view-kind",
+          "message": "sales.views.SummaryView is not router-bound ModelViewSet CRUD."
+        }
+      ],
+      "automatic": false,
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/summary/",
+      "source_view": "sales.views.SummaryView",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: sales.serializers.TransactionSerializer"
+        }
+      ],
+      "automatic": false,
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/transactions/",
+      "source_view": "sales.views.TransactionViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: sales.serializers.TransactionSerializer"
+        }
+      ],
+      "automatic": false,
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/transactions/{pk}/",
+      "source_view": "sales.views.TransactionViewSet",
+      "strategy": "needs-manual-adaptation"
+    },
+    {
+      "adaptation_reasons": [
+        {
+          "code": "SANKA_DRF_SERIALIZER_SEMANTICS_UNSUPPORTED",
+          "feature": "serializer",
+          "message": "Serializer fields, validation, queryset, or write overrides require manual adaptation: sales.serializers.TransactionSerializer"
+        }
+      ],
+      "automatic": false,
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/transactions/{pk}/",
+      "source_view": "sales.views.TransactionViewSet",
+      "strategy": "needs-manual-adaptation"
+    }
+  ],
+  "schema_version": 3,
+  "settings_module": "metrics_project.settings",
+  "source_framework": "django-rest-framework",
+  "source_scan_hash": "sha256:9f3813da82fbe8e94dc3ce067e220468b73e9d69c614fa1a247ba802d69afd08",
+  "sql_engine": "none",
+  "target_fingerprint": "",
+  "target_framework": "fastapi",
+  "target_generation_mode": ""
+}

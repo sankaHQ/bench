@@ -1,0 +1,113 @@
+{
+  "generated_files": [
+    "app.py",
+    "sanka_compat.py"
+  ],
+  "generator": "sanka",
+  "mode": "compatibility",
+  "plan_hash": "sha256:f351e601f0f504ad0760b1b7975c0ff9d7800c6901c0ce67b8e817c9078c1cbc",
+  "routes": [
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "get",
+      "path": "/api/<drf_format_suffix:format>",
+      "source_view": "rest_framework.routers.APIRootView",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/orders.{format}/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/orders.{format}/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/orders/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/orders/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/orders/{pk}.{format}/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/orders/{pk}.{format}/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/orders/{pk}.{format}/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/orders/{pk}.{format}/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "DELETE",
+      "operation": "destroy",
+      "path": "/api/orders/{pk}/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/orders/{pk}/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/orders/{pk}/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PUT",
+      "operation": "update",
+      "path": "/api/orders/{pk}/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    }
+  ],
+  "schema_version": 1,
+  "settings_module": "shop_config.settings",
+  "source_root": ".",
+  "source_scan_hash": "sha256:7bf5d74418d40d940f8be1e407286b653b03143a8520ddffe622e42103e4da54"
+}

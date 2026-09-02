@@ -1,0 +1,51 @@
+[
+  {
+    "id": "list-default-first-page",
+    "method": "GET",
+    "path": "/api/records/"
+  },
+  {
+    "id": "walk-default-second-page",
+    "method": "GET",
+    "path": "/api/records/?cursor=cD0yMDI2LTAxLTAxKzAyJTNBMDAlM0EwMCUyQjAwJTNBMDA%3D",
+    "setup": [{"method": "GET", "path": "/api/records/"}]
+  },
+  {
+    "id": "search-and-order-combined",
+    "method": "GET",
+    "path": "/api/records/?search=retail&ordering=amount"
+  },
+  {
+    "id": "retrieve-decimal-timezone-etag",
+    "method": "GET",
+    "path": "/api/records/1/",
+    "capture_headers": ["ETag", "Cache-Control", "Vary", "Content-Length"]
+  },
+  {
+    "id": "conditional-etag-match",
+    "method": "GET",
+    "path": "/api/records/1/",
+    "capture_headers": ["ETag", "Cache-Control", "Vary", "Content-Length"],
+    "headers": {
+      "If-None-Match": "\"b2e08e5a61fe5fdc57a57c3d2256a9765efba09318cdb51378270f92c742cbda\""
+    },
+    "setup": [
+      {
+        "method": "GET",
+        "path": "/api/records/1/",
+        "capture_headers": ["ETag", "Cache-Control", "Vary", "Content-Length"]
+      }
+    ]
+  },
+  {
+    "id": "create-normalizes-decimal-and-offset",
+    "method": "POST",
+    "path": "/api/records/",
+    "body": {
+      "label": "Tokyo sale",
+      "category": "sales",
+      "amount": 10,
+      "posted_at": "2026-01-01T00:30:00-05:00"
+    }
+  }
+]

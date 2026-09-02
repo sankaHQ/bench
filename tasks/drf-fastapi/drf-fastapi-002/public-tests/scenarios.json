@@ -1,0 +1,113 @@
+[
+  {
+    "id": "list-unauthenticated",
+    "method": "GET",
+    "path": "/api/posts/",
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "list-invalid-token",
+    "method": "GET",
+    "path": "/api/posts/",
+    "headers": {
+      "Authorization": "Token xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "list-malformed-header",
+    "method": "GET",
+    "path": "/api/posts/",
+    "headers": { "Authorization": "Token" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "list-authenticated",
+    "method": "GET",
+    "path": "/api/posts/",
+    "headers": {
+      "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "capture_headers": ["allow"]
+  },
+  {
+    "id": "api-root-anonymous",
+    "method": "GET",
+    "path": "/api/",
+    "capture_headers": ["allow"]
+  },
+  {
+    "id": "create-authenticated",
+    "method": "POST",
+    "path": "/api/posts/",
+    "headers": {
+      "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "body": { "title": "Gamma post", "body": "fresh" },
+    "capture_headers": ["allow"]
+  },
+  {
+    "id": "create-unauthenticated",
+    "method": "POST",
+    "path": "/api/posts/",
+    "body": { "title": "Nope", "body": "denied" },
+    "capture_headers": ["allow", "www-authenticate"]
+  },
+  {
+    "id": "create-blank-title",
+    "method": "POST",
+    "path": "/api/posts/",
+    "headers": {
+      "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "body": { "title": "", "body": "x" },
+    "capture_headers": ["allow"]
+  },
+  {
+    "id": "retrieve-other-author",
+    "method": "GET",
+    "path": "/api/posts/2/",
+    "headers": {
+      "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "capture_headers": ["allow"]
+  },
+  {
+    "id": "patch-other-author",
+    "method": "PATCH",
+    "path": "/api/posts/2/",
+    "headers": {
+      "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "body": { "title": "hax" },
+    "capture_headers": ["allow"]
+  },
+  {
+    "id": "delete-other-author",
+    "method": "DELETE",
+    "path": "/api/posts/2/",
+    "headers": {
+      "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "capture_headers": ["allow"]
+  },
+  {
+    "id": "patch-own-post",
+    "method": "PATCH",
+    "path": "/api/posts/1/",
+    "headers": {
+      "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "body": { "body": "updated" },
+    "capture_headers": ["allow"]
+  },
+  {
+    "id": "delete-own-post",
+    "method": "DELETE",
+    "path": "/api/posts/1/",
+    "headers": {
+      "Authorization": "Token aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "capture_headers": ["allow"]
+  }
+]

@@ -1,0 +1,50 @@
+{
+  "generated_files": [
+    "app.py",
+    "sanka_compat.py"
+  ],
+  "generator": "sanka",
+  "mode": "compatibility",
+  "plan_hash": "sha256:7dcecd1f2bb070759b595bb8a1ffb53e92608ee1d9710bc390a603980b42c2d2",
+  "routes": [
+    {
+      "method": "GET",
+      "operation": "list",
+      "path": "/api/orders/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "create",
+      "path": "/api/orders/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "GET",
+      "operation": "retrieve",
+      "path": "/api/orders/{pk}/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "PATCH",
+      "operation": "partial_update",
+      "path": "/api/orders/{pk}/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    },
+    {
+      "method": "POST",
+      "operation": "transition",
+      "path": "/api/orders/{pk}/transition/",
+      "source_view": "orders.views.OrderViewSet",
+      "strategy": "django-in-process-compatibility-bridge"
+    }
+  ],
+  "schema_version": 1,
+  "settings_module": "workflow_project.settings",
+  "source_root": ".",
+  "source_scan_hash": "sha256:1a04fdc293f968e80e2cb01db14c90f7bd74215f392e168606bd62942f869e53"
+}

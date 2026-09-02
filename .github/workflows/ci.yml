@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.21"
+          enable-cache: true
+      - run: uv sync --frozen --extra fixture --group dev
+      - run: make check
+
+  local-baseline-shard:
+    name: local-baselines (${{ matrix.task }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        task: ["001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.21"
+          enable-cache: true
+      - run: uv sync --frozen --extra fixture --group dev
+      - run: make baselines-${{ matrix.task }}
+
+  check:
+    name: check
+    if: ${{ always() }}
+    needs: [unit, local-baseline-shard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require unit and local baseline shards
+        env:
+          UNIT_RESULT: ${{ needs.unit.result }}
+          LOCAL_BASELINES_RESULT: ${{ needs.local-baseline-shard.result }}
+        run: |
+          test "$UNIT_RESULT" = success
+          test "$LOCAL_BASELINES_RESULT" = success
+
+  docker-baseline-shard:
+    name: docker-baselines (${{ matrix.task }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        task: ["001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.21"
+          enable-cache: true
+      - run: uv sync --frozen --extra fixture --group dev
+      - run: make docker-baselines-${{ matrix.task }}
+
+  docker-baselines:
+    name: docker-baselines
+    if: ${{ always() }}
+    needs: [docker-baseline-shard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all Docker baseline shards
+        env:
+          DOCKER_BASELINES_RESULT: ${{ needs.docker-baseline-shard.result }}
+        run: test "$DOCKER_BASELINES_RESULT" = success
