@@ -164,7 +164,8 @@ on identical fresh databases, and reports every status, body, header, and
 table-content difference together with the route class that served each
 request. Scenarios that assume existing rows can be replayed from a seed script
 with `--seed <file.py>` (Django is configured when it runs). The verifier never
-sees the hidden grading set; a clean run is necessary, not sufficient.
+sees the hidden grading set; a clean run is necessary, not sufficient. Its JSON
+output is the whole contract: read that, not the CLI's installation.
 """
 
 PROMPT_SANKA_READINESS = """
