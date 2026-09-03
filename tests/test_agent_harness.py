@@ -323,6 +323,9 @@ def test_codex_command_uses_responses_and_custom_openai_provider(
     assert 'env_key = "OPENAI_API_KEY"' in config
     assert "--json" in command
     assert 'model_provider="openai-custom"' in command
+    # Codex 0.150 enables a server-side web-search tool by default; Fireworks'
+    # Responses API rejects it alongside function tools, so it is off everywhere.
+    assert 'web_search="disabled"' in command
     assert command[-1] == "migrate it"
 
 
