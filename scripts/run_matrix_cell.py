@@ -26,6 +26,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -35,6 +36,9 @@ from pathlib import Path
 from typing import Any
 
 ALLOWED_KEYS = {
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
     "OPENAI_API_KEY",
     "FIREWORKS_API_KEY",
     "DEEPINFRA_API_KEY",
@@ -120,6 +124,8 @@ class Paths:
     candidate: Path
     report: Path
     log: Path
+    sandbox: Path
+    claude_config: Path
     sanka_home: Path
 
 
@@ -170,14 +176,32 @@ def resolve_paths(manifest_path: Path, manifest: dict[str, Any], cell: Cell) -> 
     worktree_raw = str(manifest["toolchain"]["worktree"])
     if not worktree_raw or worktree_raw.startswith("PENDING_"):
         raise ValueError("manifest worktree is not armed")
+    sandbox = root / "sandboxes" / cell.candidate_id
     return Paths(
         root=root,
         worktree=Path(worktree_raw).resolve(),
         candidate=root / "candidates" / cell.task_id / cell.candidate_id,
         report=root / "reports" / f"{cell.task_id}-{cell.candidate_id}.json",
         log=root / "logs" / f"run-{cell.task_suffix}-{cell.candidate_id}.log",
-        sanka_home=root / "sanka-home",
+        sandbox=sandbox,
+        claude_config=sandbox / "claude-config",
+        sanka_home=sandbox / "sanka-home",
     )
+
+
+def route_environment(base: dict[str, str], cell: Cell) -> dict[str, str]:
+    env = dict(base)
+    if cell.route_kind == "anthropic-native":
+        for name in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"):
+            env.pop(name, None)
+        return env
+    if cell.route_kind == "gateway":
+        auth = [name for name in ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY") if env.get(name)]
+        if not env.get("ANTHROPIC_BASE_URL"):
+            raise ValueError("gateway route requires a base URL")
+        if len(auth) != 1:
+            raise ValueError("gateway route requires exactly one credential")
+    return env
 
 
 def _armed_path(manifest: dict[str, Any], key: str) -> Path:
@@ -205,15 +229,19 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
         "python": python,
         "bench": bench,
         "agent_runner": agent_runner,
-        "env": _armed_path(manifest, "env_path"),
     }
+    needs_env = not (cell.route_kind == "anthropic-native" and cell.billing_mode == "subscription")
+    if needs_env:
+        tools["env"] = _armed_path(manifest, "env_path")
     agent_tool = "claude" if cell.agent == "claude-code" else "codex"
     tools[agent_tool] = _armed_path(manifest, f"{agent_tool}_bin")
     if cell.with_sanka:
         tools["sanka"] = _armed_path(manifest, "sanka_bin")
     required = [task / "source", task / "public-tests" / "scenarios.json", python, bench]
     required.append(tools[agent_tool])
-    required.extend([agent_runner, tools["env"]])
+    required.append(agent_runner)
+    if needs_env:
+        required.append(tools["env"])
     if cell.with_sanka:
         required.append(tools["sanka"])
     missing = [str(path) for path in required if not path.exists()]
@@ -362,13 +390,23 @@ def generation_command(
         str(tools["claude"] if cell.agent == "claude-code" else tools["codex"]),
         "--out",
         str(paths.candidate),
+        "--sandbox",
+        str(paths.sandbox),
         "--model",
         cell.model_id,
+        "--actual-model-id",
+        cell.actual_model_id,
+        "--route-kind",
+        cell.route_kind,
+        "--billing-mode",
+        cell.billing_mode,
         "--max-turns",
         str(int(manifest["execution"]["max_turns"])),
         "--provider-variant",
         cell.provider_variant,
     ]
+    if cell.gateway_profile is not None:
+        command.extend(["--gateway-profile", cell.gateway_profile])
     if cell.agent == "codex":
         command.extend(["--provider", cell.provider])
     if attempt > 1:
@@ -410,14 +448,25 @@ def run_generation(
     for directory in (paths.candidate.parent, paths.report.parent, paths.log.parent):
         directory.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ)
-    environment.update(read_allowlisted_env(tools["env"]))
-    required_key = {"openai": "OPENAI_API_KEY", "fireworks": "FIREWORKS_API_KEY"}.get(cell.provider)
+    if "env" in tools:
+        environment.update(read_allowlisted_env(tools["env"]))
+    environment = route_environment(environment, cell)
+    required_key = (
+        {"openai": "OPENAI_API_KEY", "fireworks": "FIREWORKS_API_KEY"}.get(cell.provider)
+        if cell.agent == "codex"
+        else None
+    )
     if required_key and not environment.get(required_key):
         raise ValueError(f"required provider credential is unavailable: {required_key}")
     toolchain: dict[str, str] = {}
     if cell.with_sanka:
         if not (paths.root / "toolchain-check.json").is_file():
             raise ValueError("run the prepare phase before with-sanka cells")
+        prepared_sanka_home = paths.root / "sanka-home"
+        if not prepared_sanka_home.is_dir():
+            raise ValueError("prepared Sanka home is missing")
+        paths.sandbox.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(prepared_sanka_home, paths.sanka_home)
         environment["SANKA_HOME"] = str(paths.sanka_home)
         toolchain = check_sanka_toolchain(manifest, tools["sanka"])
     attempt, prior_failure = retry_metadata(manifest, cell, paths.root)
@@ -535,6 +584,8 @@ def main() -> int:
                 candidate=root,
                 report=root,
                 log=root,
+                sandbox=root,
+                claude_config=root / "claude-config",
                 sanka_home=root / "sanka-home",
             )
             record = prepare_sanka_home(manifest, paths, _armed_path(manifest, "sanka_bin"))

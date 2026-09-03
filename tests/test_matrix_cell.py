@@ -117,6 +117,107 @@ def test_v2_cell_carries_harness_and_route_treatment(driver: object) -> None:
     assert cell.gateway_profile == "cliproxyapi-anthropic-v1"
 
 
+def test_each_cell_has_an_isolated_persistent_sandbox(driver: object, tmp_path: Path) -> None:
+    manifest = _manifest(samples=1)
+    first = driver.resolve_cell(manifest, "001", "sonnet5", "alone", 1)  # type: ignore[attr-defined]
+    second = driver.resolve_cell(manifest, "007", "sonnet5", "alone", 1)  # type: ignore[attr-defined]
+
+    first_paths = driver.resolve_paths(tmp_path / "run-manifest.json", manifest, first)  # type: ignore[attr-defined]
+    second_paths = driver.resolve_paths(tmp_path / "run-manifest.json", manifest, second)  # type: ignore[attr-defined]
+
+    assert first_paths.sandbox == tmp_path / "sandboxes" / first.candidate_id
+    assert first_paths.claude_config == first_paths.sandbox / "claude-config"
+    assert first_paths.sanka_home == first_paths.sandbox / "sanka-home"
+    assert first_paths.sandbox != second_paths.sandbox
+
+
+def test_v2_generation_command_passes_route_and_sandbox_metadata(
+    driver: object, tmp_path: Path
+) -> None:
+    manifest = _manifest(samples=1)
+    manifest["schema"] = "sanka-bench/model-matrix-run-manifest/v2"
+    manifest["execution"]["configurations"] = ["alone", "with-sanka"]  # type: ignore[index]
+    manifest["models"] = [
+        {
+            "slug": "gpt56",
+            "candidate_slug": "claude-code-gpt-5-6",
+            "harness": "claude-code",
+            "provider": "openai",
+            "provider_variant": "cliproxyapi",
+            "requested_model_id": "gpt-5.6",
+            "actual_model_id": "gpt-5.6-20260901",
+            "route_kind": "gateway",
+            "billing_mode": "api_key",
+            "gateway_profile": "cliproxyapi-anthropic-v1",
+        }
+    ]
+    cell = driver.resolve_cell(manifest, "001", "gpt56", "alone", 1)  # type: ignore[attr-defined]
+    paths = driver.resolve_paths(tmp_path / "run-manifest.json", manifest, cell)  # type: ignore[attr-defined]
+    tools = {
+        "python": tmp_path / "python",
+        "agent_runner": tmp_path / "run_agent_candidate.py",
+        "claude": tmp_path / "claude",
+    }
+
+    command = driver.generation_command(  # type: ignore[attr-defined]
+        manifest, cell, paths, tools, attempt=1, prior_failure=None
+    )
+
+    assert command[command.index("--sandbox") + 1] == str(paths.sandbox)
+    assert command[command.index("--actual-model-id") + 1] == cell.actual_model_id
+    assert command[command.index("--route-kind") + 1] == "gateway"
+    assert command[command.index("--billing-mode") + 1] == "api_key"
+    assert command[command.index("--gateway-profile") + 1] == "cliproxyapi-anthropic-v1"
+
+
+def test_native_subscription_prerequisites_do_not_require_an_env_file(
+    driver: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest = _manifest(samples=1)
+    manifest["schema"] = "sanka-bench/model-matrix-run-manifest/v2"
+    manifest["execution"]["configurations"] = ["alone", "with-sanka"]  # type: ignore[index]
+    manifest["models"] = [
+        {
+            "slug": "sonnet5",
+            "candidate_slug": "claude-code-sonnet5",
+            "harness": "claude-code",
+            "provider": "anthropic",
+            "requested_model_id": "claude-sonnet-5",
+            "actual_model_id": "claude-sonnet-5-20260901",
+            "route_kind": "anthropic-native",
+            "billing_mode": "subscription",
+        }
+    ]
+    worktree = tmp_path / "bench"
+    task = worktree / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    (task / "source").mkdir(parents=True)
+    (task / "public-tests").mkdir()
+    (task / "public-tests" / "scenarios.json").write_text("[]\n", encoding="utf-8")
+    for relative in (".venv/bin/python", ".venv/bin/sanka-bench", "claude"):
+        path = worktree / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+    runner = worktree / "scripts" / "run_agent_candidate.py"
+    runner.parent.mkdir()
+    runner.write_text("# runner\n", encoding="utf-8")
+    manifest["toolchain"] = {
+        "worktree": str(worktree),
+        "claude_bin": str(worktree / "claude"),
+        "agent_runner_sha256": __import__("hashlib").sha256(runner.read_bytes()).hexdigest(),
+    }
+    monkeypatch.setattr(
+        driver.subprocess,  # type: ignore[attr-defined]
+        "check_output",
+        lambda *_args, **_kwargs: manifest["benchmark_sha"],
+    )
+    cell = driver.resolve_cell(manifest, "001", "sonnet5", "alone", 1)  # type: ignore[attr-defined]
+    paths = driver.resolve_paths(tmp_path / "run-manifest.json", manifest, cell)  # type: ignore[attr-defined]
+
+    tools = driver.validate_prerequisites(manifest, cell, paths)  # type: ignore[attr-defined]
+
+    assert "env" not in tools
+
+
 def test_generation_command_offers_sanka_only_to_with_sanka_cells(
     driver: object, tmp_path: Path
 ) -> None:
@@ -192,9 +293,40 @@ def test_markers_written_by_the_driver_read_back_as_terminal(
 def test_allowlisted_env_reads_only_provider_keys(driver: object, tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(
-        'OPENAI_API_KEY="sk-test"\nFIREWORKS_API_KEY=fw-test\nSECRET_OTHER=nope\n# c=1\n',
+        'OPENAI_API_KEY="sk-test"\nFIREWORKS_API_KEY=fw-test\n'
+        "ANTHROPIC_BASE_URL=https://gateway.test\nANTHROPIC_AUTH_TOKEN=token\n"
+        "SECRET_OTHER=nope\n# c=1\n",
         encoding="utf-8",
     )
     values = driver.read_allowlisted_env(env_file)  # type: ignore[attr-defined]
-    assert values == {"OPENAI_API_KEY": "sk-test", "FIREWORKS_API_KEY": "fw-test"}
+    assert values == {
+        "OPENAI_API_KEY": "sk-test",
+        "FIREWORKS_API_KEY": "fw-test",
+        "ANTHROPIC_BASE_URL": "https://gateway.test",
+        "ANTHROPIC_AUTH_TOKEN": "token",
+    }
     assert json.dumps(values)  # serialisable for the toolchain record
+
+
+def test_route_environment_separates_subscription_and_gateway(driver: object) -> None:
+    manifest = _manifest(samples=1)
+    native = driver.resolve_cell(manifest, "001", "sonnet5", "alone", 1)  # type: ignore[attr-defined]
+    object.__setattr__(native, "route_kind", "anthropic-native")
+    object.__setattr__(native, "billing_mode", "subscription")
+    gateway = driver.resolve_cell(manifest, "001", "sonnet5", "alone", 1)  # type: ignore[attr-defined]
+    object.__setattr__(gateway, "route_kind", "gateway")
+    object.__setattr__(gateway, "billing_mode", "api_key")
+    base = {
+        "PATH": "/bin",
+        "ANTHROPIC_BASE_URL": "https://gateway.test",
+        "ANTHROPIC_AUTH_TOKEN": "token",
+    }
+
+    assert driver.route_environment(base, native) == {"PATH": "/bin"}  # type: ignore[attr-defined]
+    assert driver.route_environment(base, gateway) == base  # type: ignore[attr-defined]
+    with pytest.raises(ValueError, match="exactly one credential"):
+        driver.route_environment(  # type: ignore[attr-defined]
+            {**base, "ANTHROPIC_API_KEY": "second"}, gateway
+        )
+    with pytest.raises(ValueError, match="base URL"):
+        driver.route_environment({"ANTHROPIC_AUTH_TOKEN": "token"}, gateway)  # type: ignore[attr-defined]

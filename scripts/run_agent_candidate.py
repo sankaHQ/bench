@@ -72,6 +72,7 @@ store.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -80,6 +81,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import nullcontext
 from pathlib import Path
 
 PROMPT_CORE = """Migrate this Django REST Framework application to FastAPI, natively.
@@ -118,33 +120,8 @@ consider the task done until every scenario matches exactly.
 """
 
 PROMPT_SANKA = """
-The Sanka migration CLI is installed at: {sanka}
-It can scan the source, report how much of it it can migrate natively, and
-generate FastAPI code for the routes it supports:
-
-    {sanka} scan .
-    {sanka} plan . --to fastapi --strategy native --generation minimal \
-        --package-manager uv --output .sanka/output/fastapi
-    {sanka} apply --root . --plan-hash <hash from the plan> --bench-candidate ./bench-candidate
-
-The extension the CLI needs for this source is already installed and enabled in
-this workspace. Run scan, plan, and apply before you edit any file: they refuse
-to run against a source tree that changed after the plan was reviewed.
-
-Read the plan's readiness report before adopting anything: it states, per
-route, whether native generation is supported and why not when it is not
-(`plan --to fastapi --json` prints the full detail, including per-route
-`parity_notes`: the source's exact authentication order and error strings,
-pagination, ordering, file, uniqueness, and validation-message behavior). At
-high readiness the
-generated overlay under bench-candidate/overlay/ is a strong starting point —
-copy the generated files and continue from them. At low readiness apply may
-refuse outright or emit only a few routes; treat whatever it produces as
-reference material, not as the thing to submit. Either way the original
-application remains the specification: derive every route's exact semantics
-from the source and verify by differential testing against it, never against
-the generated code.
-{verifier}"""
+The project-local `sanka-cli` skill and Sanka migration CLI at {sanka} are available.
+"""
 
 VERIFIER_COMMAND = (
     "{sanka} verify . --to fastapi --scenarios public-tests/scenarios.json "
@@ -422,6 +399,60 @@ def _enable_sanka_extension(sanka_bin: Path, *, workspace: Path, env: dict[str, 
     )
 
 
+def install_sanka_skill(sanka_bin: Path, workspace: Path, env: dict[str, str]) -> dict[str, str]:
+    outcome = _run_sanka_command(
+        [
+            str(sanka_bin),
+            "--output",
+            "json",
+            "skill",
+            "install",
+            "claude",
+            "--scope",
+            "project",
+            "--project-dir",
+            str(workspace),
+        ],
+        workspace=workspace,
+        env=env,
+    )
+    try:
+        payload = json.loads(outcome.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Sanka skill installer returned invalid JSON") from exc
+    installations = payload.get("installations") if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("skill") != "sanka-cli"
+        or payload.get("scope") != "project"
+        or not isinstance(installations, list)
+        or len(installations) != 1
+        or not isinstance(installations[0], dict)
+        or installations[0].get("harness") != "claude"
+    ):
+        raise RuntimeError("Sanka skill installer returned an unexpected installation record")
+    installation = installations[0]
+    target = Path(str(installation.get("path") or "")).resolve()
+    expected = workspace.resolve() / ".claude" / "skills" / "sanka-cli"
+    if target != expected or not target.is_relative_to(workspace.resolve()):
+        raise RuntimeError(f"Sanka skill path escaped the workspace: {target}")
+    skill_file = target / "SKILL.md"
+    expected_digest = str(payload.get("content_sha256") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_digest) or not skill_file.is_file():
+        raise RuntimeError("Sanka skill installation is incomplete")
+    actual_digest = hashlib.sha256(skill_file.read_bytes()).hexdigest()
+    if actual_digest != expected_digest:
+        raise RuntimeError(
+            f"Sanka skill digest mismatch: expected {expected_digest}, got {actual_digest}"
+        )
+    return {
+        "scope": "project",
+        "path": str(target),
+        "status": str(installation.get("status") or ""),
+        "content_sha256": actual_digest,
+    }
+
+
 def _cli_data(stdout: str) -> dict[str, object]:
     """The `data` object of a sanka-cli JSON response, or {} when there is none."""
     try:
@@ -554,9 +585,14 @@ def main() -> int:
         help="<agent>-<model-slug>-alone or ...-with-sanka",
     )
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--sandbox", type=Path)
     parser.add_argument("--agent", default="claude-code", choices=("claude-code", "codex"))
     parser.add_argument("--agent-bin", default=None)
     parser.add_argument("--model", default="claude-sonnet-5")
+    parser.add_argument("--actual-model-id", default=None)
+    parser.add_argument("--route-kind", default="legacy")
+    parser.add_argument("--billing-mode", default="unknown")
+    parser.add_argument("--gateway-profile", default=None)
     parser.add_argument(
         "--provider",
         default="openai",
@@ -633,12 +669,28 @@ def main() -> int:
         [args.agent_bin, "--version"], capture_output=True, text=True, check=False
     ).stdout.strip()
 
-    with tempfile.TemporaryDirectory(prefix="sanka-agent-") as temp:
-        workspace = Path(temp) / "workspace"
+    sandbox_context = (
+        tempfile.TemporaryDirectory(prefix="sanka-agent-")
+        if args.sandbox is None
+        else nullcontext(str(args.sandbox.resolve()))
+    )
+    with sandbox_context as temp:
+        sandbox = Path(temp)
+        sandbox.mkdir(parents=True, exist_ok=True)
+        workspace = sandbox / "workspace"
+        if workspace.exists():
+            if any(workspace.iterdir()):
+                print(f"sandbox workspace is not empty: {workspace}", file=sys.stderr)
+                return 2
+            workspace.rmdir()
         shutil.copytree(source, workspace)
         public_tests = workspace / "public-tests"
         public_tests.mkdir()
         shutil.copy2(scenarios, public_tests / "scenarios.json")
+        claude_config = sandbox / "claude-config"
+        raw_dir = sandbox / "raw"
+        claude_config.mkdir()
+        raw_dir.mkdir()
 
         env = dict(os.environ)
         for name in (
@@ -648,21 +700,24 @@ def main() -> int:
             "CLAUDE_CODE_ENTRYPOINT",
         ):
             env.pop(name, None)
+        env["CLAUDE_CONFIG_DIR"] = str(claude_config)
         if mode != "alone":
             env = _sanka_runtime_env(env)
         readiness_context: dict[str, object] | None = None
+        skill_record: dict[str, str] | None = None
         sanka_versions: str | None = None
         prompt = PROMPT_CORE.format(python=sys.executable)
         if mode == "with-sanka":
             assert args.sanka_bin is not None
             sanka_bin = args.sanka_bin.resolve()
             try:
+                skill_record = install_sanka_skill(sanka_bin, workspace, env)
                 _enable_sanka_extension(sanka_bin, workspace=workspace, env=env)
             except (OSError, RuntimeError) as exc:
                 print(f"with-sanka extension setup failed: {exc}", file=sys.stderr)
                 return 1
             sanka_versions = _sanka_tool_versions(sanka_bin, workspace=workspace, env=env)
-            prompt += PROMPT_SANKA.format(sanka=sanka_bin, verifier=_verifier_prompt(sanka_bin))
+            prompt += PROMPT_SANKA.format(sanka=sanka_bin)
         elif mode == "readiness-aware":
             assert args.sanka_bin is not None
             try:
@@ -680,7 +735,7 @@ def main() -> int:
             )
             prompt += _readiness_prompt(readiness_context, args.sanka_bin.resolve())
         if args.agent == "codex":
-            codex_home = Path(temp) / "codex-home"
+            codex_home = sandbox / "codex-home"
             command = _codex_command(args, prompt, codex_home)
             env["CODEX_HOME"] = str(codex_home)
         else:
@@ -736,12 +791,17 @@ def main() -> int:
         out_dir = args.out.resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
         raw = outcome.stdout.strip().splitlines()
-        if raw:
-            (out_dir / "agent-result.json").write_text(raw[-1] + "\n", encoding="utf-8")
-        if outcome.stdout:
-            (out_dir / "agent-log.jsonl").write_text(outcome.stdout, encoding="utf-8")
-        if outcome.stderr:
-            (out_dir / "agent-stderr.log").write_text(outcome.stderr, encoding="utf-8")
+        for directory in (out_dir, raw_dir):
+            if raw:
+                (directory / "agent-result.json").write_text(raw[-1] + "\n", encoding="utf-8")
+            if outcome.stdout:
+                (directory / "agent-log.jsonl").write_text(outcome.stdout, encoding="utf-8")
+            if outcome.stderr:
+                (directory / "agent-stderr.log").write_text(outcome.stderr, encoding="utf-8")
+        if skill_record is not None:
+            (out_dir / "sanka-skill.json").write_text(
+                json.dumps(skill_record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
         if readiness_context is not None:
             (out_dir / "sanka-readiness.json").write_text(
                 json.dumps(readiness_context, ensure_ascii=False, indent=2, sort_keys=True) + "\n",

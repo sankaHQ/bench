@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -66,26 +67,14 @@ def test_prompts_differ_only_by_the_sanka_paragraph(harness: object) -> None:
     assert "representative sample" in core
     assert "FastAPI `APIRoute`" in core
     assert "raw Starlette `Route`" in core
-    # the +Sanka variant is strictly additive: same contract, one extra tool
-    assert "scan" in extra and "plan --to fastapi" in extra and "bench-candidate" in extra
-    # readiness-aware availability, not a copy mandate: the agent is told to read
-    # the readiness report and treat low-readiness output as reference material,
-    # with the source application staying the specification
-    assert "readiness" in extra
-    assert "reference material" in extra
-    assert "remains the specification" in extra
-    assert "cp -R" not in extra
-    assert "contract" not in extra.lower()
-    # capability, not instructions: the packaged verifier is named with its exact
-    # command and its scope (public scenarios + scan-derived edge probes)
-    verifier = harness._verifier_prompt(Path("/tools/sanka"))  # type: ignore[attr-defined]
-    rendered = extra.format(sanka="/tools/sanka", verifier=verifier)
-    assert (
-        "/tools/sanka verify . --to fastapi --scenarios public-tests/scenarios.json "
-        "--candidate . --entrypoint target_app.py --db-env BENCH_DB_PATH --edge-probes --json"
-    ) in rendered
-    assert "hidden grading set" in rendered
-    assert "checklist" not in rendered.lower()
+    # the +Sanka variant is strictly additive: the installed project skill owns
+    # usage guidance, so the benchmark prompt only discloses availability.
+    rendered = extra.format(sanka="/tools/sanka")
+    assert "project-local `sanka-cli` skill" in rendered
+    assert "/tools/sanka" in rendered
+    assert "scan" not in rendered
+    assert "plan" not in rendered
+    assert "apply" not in rendered
 
 
 def test_candidate_modes_preserve_official_arms_and_add_diagnostic_arm(
@@ -327,6 +316,89 @@ def test_sanka_runtime_env_adds_fixture_packages_without_mutating_input(
     ]
 
 
+def test_install_sanka_skill_is_project_local_and_digest_verified(
+    harness: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = b"---\nname: sanka-cli\n---\n"
+    target = tmp_path / ".claude" / "skills" / "sanka-cli"
+    commands: list[list[str]] = []
+
+    def fake_run(
+        command: list[str], *, workspace: Path, env: dict[str, str], **_kwargs: object
+    ) -> SimpleNamespace:
+        assert workspace == tmp_path
+        assert env == {"PATH": "/bin"}
+        commands.append(command)
+        target.mkdir(parents=True)
+        (target / "SKILL.md").write_bytes(content)
+        return SimpleNamespace(
+            stdout=json.dumps(
+                {
+                    "skill": "sanka-cli",
+                    "scope": "project",
+                    "content_sha256": hashlib.sha256(content).hexdigest(),
+                    "installations": [
+                        {"harness": "claude", "path": str(target), "status": "installed"}
+                    ],
+                }
+            )
+        )
+
+    monkeypatch.setattr(harness, "_run_sanka_command", fake_run)
+
+    record = harness.install_sanka_skill(  # type: ignore[attr-defined]
+        Path("/tools/sanka"), tmp_path, {"PATH": "/bin"}
+    )
+
+    assert commands == [
+        [
+            "/tools/sanka",
+            "--output",
+            "json",
+            "skill",
+            "install",
+            "claude",
+            "--scope",
+            "project",
+            "--project-dir",
+            str(tmp_path),
+        ]
+    ]
+    assert record == {
+        "scope": "project",
+        "path": str(target),
+        "status": "installed",
+        "content_sha256": hashlib.sha256(content).hexdigest(),
+    }
+
+
+def test_install_sanka_skill_rejects_a_false_digest(
+    harness: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / ".claude" / "skills" / "sanka-cli"
+    target.mkdir(parents=True)
+    (target / "SKILL.md").write_text("installed content\n", encoding="utf-8")
+    monkeypatch.setattr(
+        harness,
+        "_run_sanka_command",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            stdout=json.dumps(
+                {
+                    "skill": "sanka-cli",
+                    "scope": "project",
+                    "content_sha256": "0" * 64,
+                    "installations": [
+                        {"harness": "claude", "path": str(target), "status": "installed"}
+                    ],
+                }
+            )
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="digest mismatch"):
+        harness.install_sanka_skill(Path("/tools/sanka"), tmp_path, {})  # type: ignore[attr-defined]
+
+
 def test_codex_command_uses_responses_and_custom_openai_provider(
     harness: object, tmp_path: Path
 ) -> None:
@@ -465,6 +537,8 @@ def _fake_agent(
         "#!/bin/sh\n"
         'if [ "$1" = "--version" ]; then echo fake-agent-1.0; exit 0; fi\n'
         f"printf '%s\\n' \"$@\" > '{tmp_path / 'fake-agent-argv.txt'}'\n"
+        f"printf '%s\\n' \"${{CLAUDE_CONFIG_DIR:-}}\" > "
+        f"'{tmp_path / 'fake-agent-claude-config.txt'}'\n"
         f"{touch_line}\n"
         f"{prints}"
         f"exit {exit_code}\n",
@@ -474,27 +548,74 @@ def _fake_agent(
     return script
 
 
-def _run_adapter(task: Path, agent: Path, out: Path) -> subprocess.CompletedProcess[str]:
+def _run_adapter(
+    task: Path, agent: Path, out: Path, sandbox: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    command = [
+        sys.executable,
+        str(SCRIPTS / "run_agent_candidate.py"),
+        "--task",
+        str(task),
+        "--candidate-id",
+        "claude-code-fake-alone",
+        "--out",
+        str(out),
+        "--agent-bin",
+        str(agent),
+        "--max-turns",
+        "60",
+    ]
+    if sandbox is not None:
+        command.extend(["--sandbox", str(sandbox)])
     return subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPTS / "run_agent_candidate.py"),
-            "--task",
-            str(task),
-            "--candidate-id",
-            "claude-code-fake-alone",
-            "--out",
-            str(out),
-            "--agent-bin",
-            str(agent),
-            "--max-turns",
-            "60",
-        ],
+        command,
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
     )
+
+
+def test_persistent_sandbox_keeps_workspace_config_and_raw_stream(tmp_path: Path) -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    agent = _fake_agent(
+        tmp_path,
+        result={
+            "num_turns": 1,
+            "duration_ms": 1000,
+            "total_cost_usd": 0.1,
+            "is_error": False,
+            "subtype": "success",
+            "result": "done",
+        },
+        touch="target_app.py",
+    )
+    sandbox = tmp_path / "sandbox"
+
+    outcome = _run_adapter(task, agent, tmp_path / "candidate", sandbox)
+
+    assert outcome.returncode == 0, outcome.stderr
+    assert (sandbox / "workspace" / "target_app.py").is_file()
+    assert (sandbox / "claude-config").is_dir()
+    assert (sandbox / "raw" / "agent-log.jsonl").is_file()
+    assert (tmp_path / "fake-agent-claude-config.txt").read_text().strip() == str(
+        sandbox / "claude-config"
+    )
+
+
+def test_persistent_sandbox_refuses_a_nonempty_workspace(tmp_path: Path) -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    agent = _fake_agent(tmp_path, result=None, touch=None)
+    sandbox = tmp_path / "sandbox"
+    workspace = sandbox / "workspace"
+    workspace.mkdir(parents=True)
+    (workspace / "prior-attempt.txt").write_text("keep me\n", encoding="utf-8")
+
+    outcome = _run_adapter(task, agent, tmp_path / "candidate", sandbox)
+
+    assert outcome.returncode == 2
+    assert "sandbox workspace is not empty" in outcome.stderr
+    assert (workspace / "prior-attempt.txt").read_text() == "keep me\n"
 
 
 def test_turn_budget_exhaustion_freezes_the_workspace(tmp_path: Path) -> None:
