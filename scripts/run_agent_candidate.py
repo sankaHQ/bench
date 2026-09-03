@@ -201,12 +201,17 @@ EXCLUDED_SUFFIXES = {".log", ".pyc", ".sqlite3"}
 EXCLUDED_NAMES = {".DS_Store", "AGENT_TASK.md", "CLAUDE.md", PARITY_NOTES_FILE}
 
 
+_SAMPLE_SUFFIX = re.compile(r"-s\d+$")
+
+
 def _candidate_mode(candidate_id: str) -> str | None:
-    if candidate_id.endswith("-with-sanka-readiness-aware"):
+    """Arm selected by the candidate id, ignoring a trailing ``-s<k>`` sample suffix."""
+    family = _SAMPLE_SUFFIX.sub("", candidate_id)
+    if family.endswith("-with-sanka-readiness-aware"):
         return "readiness-aware"
-    if candidate_id.endswith("-with-sanka"):
+    if family.endswith("-with-sanka"):
         return "with-sanka"
-    if candidate_id.endswith("-alone"):
+    if family.endswith("-alone"):
         return "alone"
     return None
 
@@ -608,7 +613,8 @@ def main() -> int:
     mode = _candidate_mode(args.candidate_id)
     if mode is None:
         print(
-            "candidate id must end in -alone, -with-sanka, or -with-sanka-readiness-aware",
+            "candidate id must end in -alone, -with-sanka, or -with-sanka-readiness-aware "
+            "(optionally followed by a -s<k> sample suffix)",
             file=sys.stderr,
         )
         return 2
