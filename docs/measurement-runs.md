@@ -18,6 +18,16 @@ configurations:
 "configurations": ["alone", "with-sanka"]
 ```
 
+The same execution block pins the treatment budgets and scheduler policy:
+
+```json
+{
+  "max_turns": 60,
+  "wall_clock_seconds": 3600,
+  "concurrency": {"provider_cap": 1, "model_cap": 1, "evaluation_cap": 1}
+}
+```
+
 Every model entry pins one inference treatment:
 
 ```json
@@ -91,6 +101,10 @@ Copy `.env.example` outside the run artifact directory, fill the base URL and
 exactly one authentication value, keep the file untracked, and point the
 manifest at its absolute path. Credentials never belong in a command, manifest,
 transcript, or report.
+Every launched process receives a minimal runtime environment and a system
+default `PATH`; only the route-specific allowlist above is added for gateway
+Claude calls. Candidates and evaluators cannot inherit unrelated host
+credentials or a globally installed `sanka`.
 
 ## Sandboxes, skill, and resume
 
@@ -140,18 +154,22 @@ uv run python scripts/run_agent_matrix.py \
 ```
 
 Use repeated `--cell task:model:configuration` arguments for a calibration
-subset. Omit them only after the route and evaluator limits are healthy.
+subset. The three CLI caps must exactly match `execution.concurrency`; changing
+them requires a new manifest and therefore a new cell input digest. Omit the
+cell filter only after the route and evaluator limits are healthy.
 
 If generation fails, the coordinator stops admitting paid requests and drains
 evaluation for already-generated candidates. The raw Claude stream remains the
 canonical transcript. Normalized `telemetry.json` records model and route
-identity, timing, token classes, cost basis, wave, attempt, and transcript,
-overlay, and report hashes.
+identity, setup, agent, evaluation and end-to-end timing, token classes, cost
+basis, wave, attempt, and transcript, overlay, and report hashes. The report
+also includes stage makespan and observed generation/evaluation concurrency.
 
 ## Cost and reporting
 
-- API-key runs use Claude Code's reported cost unless provider readback or a
-  pinned treatment-specific price basis supersedes it.
+- API-key gateway runs keep actual `cost_usd` null unless provider readback or
+  a pinned treatment-specific price calculation supplies it. Claude Code's
+  estimate is API-equivalent only.
 - Subscription runs keep actual marginal `cost_usd` as null. Claude Code's
   estimate is reported separately as API-equivalent cost, never as money spent.
 - Gateway cost must use that gateway treatment's evidence. A similarly named

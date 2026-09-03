@@ -62,6 +62,13 @@ _TOKEN_FIELDS = (
     "total_tokens",
 )
 
+_TIME_FIELDS = (
+    "duration_seconds",
+    "setup_seconds",
+    "evaluation_seconds",
+    "end_to_end_seconds",
+)
+
 _FAMILY_ORDER = (
     "noop",
     "compatibility-bridge",
@@ -183,11 +190,11 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
         outcomes: dict[str, list[bool]] = {}
         cost_usd = 0.0
         equivalent_cost_usd = 0.0
-        duration_seconds = 0.0
+        time_totals = dict.fromkeys(_TIME_FIELDS, 0.0)
         numeric_counts = {
             "cost_usd": 0,
             "reported_equivalent_cost_usd": 0,
-            "duration_seconds": 0,
+            **dict.fromkeys(_TIME_FIELDS, 0),
             **dict.fromkeys(_TOKEN_FIELDS, 0),
         }
         token_totals = dict.fromkeys(_TOKEN_FIELDS, 0.0)
@@ -207,11 +214,7 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
                 task_outcomes.append(result.get("fully_migrated") is True)
                 stats = result.get("provenance", {}).get("candidate_stats")
                 if isinstance(stats, dict):
-                    for field in (
-                        "cost_usd",
-                        "reported_equivalent_cost_usd",
-                        "duration_seconds",
-                    ):
+                    for field in ("cost_usd", "reported_equivalent_cost_usd", *_TIME_FIELDS):
                         value = stats.get(field)
                         if isinstance(value, int | float):
                             numeric_counts[field] += 1
@@ -219,8 +222,8 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
                                 cost_usd += float(value)
                             elif field == "reported_equivalent_cost_usd":
                                 equivalent_cost_usd += float(value)
-                            else:
-                                duration_seconds += float(value)
+                            elif field in _TIME_FIELDS:
+                                time_totals[field] += float(value)
                     for field in _TOKEN_FIELDS:
                         value = stats.get(field)
                         if isinstance(value, int | float):
@@ -259,7 +262,10 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
             for field, count in numeric_counts.items()
         }
         row_cost = cost_usd / per_sample if complete["cost_usd"] else None
-        row_duration = duration_seconds / per_sample if complete["duration_seconds"] else None
+        row_times = {
+            field: time_totals[field] / per_sample if complete[field] else None
+            for field in _TIME_FIELDS
+        }
         row_tokens = {
             field: token_totals[field] / per_sample if complete[field] else None
             for field in _TOKEN_FIELDS
@@ -283,14 +289,14 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
                     if complete["reported_equivalent_cost_usd"]
                     else None
                 ),
-                "duration_seconds": row_duration,
+                **row_times,
                 "tokens": row_tokens,
                 "cost_per_verified_route": (
                     row_cost / verified_routes if row_cost is not None and verified_routes else None
                 ),
                 "agent_seconds_per_verified_route": (
-                    row_duration / verified_routes
-                    if row_duration is not None and verified_routes
+                    row_times["duration_seconds"] / verified_routes
+                    if row_times["duration_seconds"] is not None and verified_routes
                     else None
                 ),
                 "diagnostic": diagnostic if has_metrics else None,
@@ -332,11 +338,10 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
             if control_entry is None or treatment_entry is None:
                 continue
             control_samples = {
-                sample_index(sample["candidate_id"]): sample["local"] or sample["docker"]
-                for sample in control_entry["samples"]
+                sample_index(sample["candidate_id"]): sample for sample in control_entry["samples"]
             }
             treatment_samples = {
-                sample_index(sample["candidate_id"]): sample["local"] or sample["docker"]
+                sample_index(sample["candidate_id"]): sample
                 for sample in treatment_entry["samples"]
             }
             shared = sorted(control_samples.keys() & treatment_samples.keys())
@@ -345,10 +350,20 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
             controls: list[bool] = []
             treated: list[bool] = []
             for sample in shared:
-                control_result = control_samples[sample]
-                treatment_result = treatment_samples[sample]
-                if not isinstance(control_result, dict) or not isinstance(treatment_result, dict):
+                control_sample = control_samples[sample]
+                treatment_sample = treatment_samples[sample]
+                matched = next(
+                    (
+                        (control_sample[runner], treatment_sample[runner])
+                        for runner in ("local", "docker")
+                        if isinstance(control_sample[runner], dict)
+                        and isinstance(treatment_sample[runner], dict)
+                    ),
+                    None,
+                )
+                if matched is None:
                     continue
+                control_result, treatment_result = matched
                 controls.append(control_result.get("fully_migrated") is True)
                 treated.append(treatment_result.get("fully_migrated") is True)
                 paired_results.append((control_result, treatment_result))
@@ -368,6 +383,9 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
                     treatment_outcomes, control_outcomes, comparison_weights
                 ).to_dict(),
                 "agent_seconds_delta": _numeric_delta(paired_results, "duration_seconds"),
+                "setup_seconds_delta": _numeric_delta(paired_results, "setup_seconds"),
+                "evaluation_seconds_delta": _numeric_delta(paired_results, "evaluation_seconds"),
+                "end_to_end_seconds_delta": _numeric_delta(paired_results, "end_to_end_seconds"),
                 "tokens_delta": token_deltas,
                 "total_tokens_delta": token_deltas["total_tokens"],
                 "cost_usd_delta": _numeric_delta(paired_results, "cost_usd"),
@@ -376,6 +394,25 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
                 ),
             }
         )
+
+    waves: list[dict[str, Any]] = []
+    for path in sorted((reports_dir.parent / "waves").glob("*.json")):
+        try:
+            wave = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(wave, dict) and isinstance(wave.get("elapsed_seconds"), int | float):
+            waves.append(wave)
+    throughput = {
+        "makespan_seconds": sum(float(wave["elapsed_seconds"]) for wave in waves),
+        "max_generation_total": max(
+            (int(wave.get("max_generation_total") or 0) for wave in waves), default=0
+        ),
+        "max_evaluations": max(
+            (int(wave.get("max_evaluations") or 0) for wave in waves), default=0
+        ),
+        "stages": waves,
+    }
 
     return {
         "tasks": tasks,
@@ -387,6 +424,7 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
         "parity_matched": parity_matched,
         "evaluator_versions": sorted(version for version in versions if version),
         "comparisons": comparisons,
+        "throughput": throughput,
     }
 
 
@@ -576,6 +614,9 @@ def _comparison_table(data: dict[str, Any]) -> str:
             f"<td>{_esc(comparison['pairs'])}</td>"
             f"<td>{_esc(delta(comparison['quality_delta'], scale=100, suffix=' pp'))}</td>"
             f"<td>{_esc(delta(comparison['agent_seconds_delta'], suffix=' s'))}</td>"
+            f"<td>{_esc(delta(comparison['setup_seconds_delta'], suffix=' s'))}</td>"
+            f"<td>{_esc(delta(comparison['evaluation_seconds_delta'], suffix=' s'))}</td>"
+            f"<td>{_esc(delta(comparison['end_to_end_seconds_delta'], suffix=' s'))}</td>"
             f"<td>{_esc(delta(comparison['total_tokens_delta'], suffix=' tokens'))}</td>"
             f"<td>{_esc(actual)}</td>"
             f"<td>{_esc(equivalent)}</td>"
@@ -589,9 +630,39 @@ def _comparison_table(data: dict[str, Any]) -> str:
         '<div class="table-wrap"><table>'
         '<thead><tr><th scope="col">Treatment</th><th scope="col">Pairs</th>'
         '<th scope="col">Quality</th><th scope="col">Agent time</th>'
+        '<th scope="col">Setup</th><th scope="col">Evaluation</th>'
+        '<th scope="col">End-to-end</th>'
         '<th scope="col">Total tokens</th><th scope="col">Actual cost</th>'
         '<th scope="col">API-equivalent</th></tr></thead>'
         f"<tbody>{''.join(rows)}</tbody></table></div>"
+    )
+
+
+def _throughput_table(data: dict[str, Any]) -> str:
+    throughput = data.get("throughput") or {}
+    stages = throughput.get("stages") or []
+    if not stages:
+        return ""
+    rows = "".join(
+        "<tr>"
+        f'<th scope="row">{_esc(stage.get("stage_id", "unknown"))}</th>'
+        f"<td>{_esc(stage.get('requested', 0))}</td>"
+        f"<td>{_esc(stage.get('completed', 0))}</td>"
+        f"<td>{float(stage['elapsed_seconds']):.1f} s</td>"
+        f"<td>{_esc(stage.get('max_generation_total', 0))}</td>"
+        f"<td>{_esc(stage.get('max_evaluations', 0))}</td>"
+        "</tr>"
+        for stage in stages
+    )
+    return (
+        '<h2>Suite throughput <span class="tag">wall clock and observed concurrency</span></h2>'
+        f'<p class="note">Sequential stage makespan: '
+        f"{float(throughput['makespan_seconds']):.1f} seconds.</p>"
+        '<div class="table-wrap"><table><thead><tr><th scope="col">Stage</th>'
+        '<th scope="col">Requested</th><th scope="col">Completed</th>'
+        '<th scope="col">Elapsed</th><th scope="col">Max generation</th>'
+        '<th scope="col">Max evaluation</th></tr></thead>'
+        f"<tbody>{rows}</tbody></table></div>"
     )
 
 
@@ -599,6 +670,7 @@ def render_html(data: dict[str, Any]) -> str:
     tasks = data["tasks"]
     tally = "".join(_tally_row(row, tasks) for row in data["rows"])
     comparisons = _comparison_table(data)
+    throughput = _throughput_table(data)
     diagnostics = _diagnostic_table(data)
     tables = "".join(_gate_table(task, data) for task in tasks)
     parity = (
@@ -755,6 +827,7 @@ never averaged into a compensating score.</p>
 &nbsp;&nbsp;one cell per task ({_esc(len(tasks))} task{"s" if len(tasks) != 1 else ""})</p>
 {agent_note}
 {comparisons}
+{throughput}
 {bridge_note}
 {diagnostics}
 <h2>Hard gates by task</h2>

@@ -85,6 +85,7 @@ from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sanka_bench.environment import isolated_environment
 from sanka_bench.hashing import digest_tree
 
 PROMPT_CORE = """Migrate this Django REST Framework application to FastAPI, natively.
@@ -402,7 +403,12 @@ def _enable_sanka_extension(sanka_bin: Path, *, workspace: Path, env: dict[str, 
     )
 
 
-def install_sanka_skill(sanka_bin: Path, workspace: Path, env: dict[str, str]) -> dict[str, str]:
+def install_sanka_skill(
+    sanka_bin: Path,
+    workspace: Path,
+    env: dict[str, str],
+    pinned_sha256: str | None = None,
+) -> dict[str, str]:
     outcome = _run_sanka_command(
         [
             str(sanka_bin),
@@ -448,6 +454,8 @@ def install_sanka_skill(sanka_bin: Path, workspace: Path, env: dict[str, str]) -
         raise RuntimeError(
             f"Sanka skill digest mismatch: expected {expected_digest}, got {actual_digest}"
         )
+    if pinned_sha256 and actual_digest != pinned_sha256.removeprefix("sha256:"):
+        raise RuntimeError("installed Sanka skill does not match the pinned manifest digest")
     return {
         "scope": "project",
         "path": str(target),
@@ -632,7 +640,9 @@ def main() -> int:
         help="codex only: USD per million output tokens, for computed cost",
     )
     parser.add_argument("--max-turns", type=int, default=60)
+    parser.add_argument("--wall-clock-seconds", type=int, default=3600)
     parser.add_argument("--sanka-bin", type=Path, default=None)
+    parser.add_argument("--sanka-skill-sha256")
     parser.add_argument(
         "--sanka-readiness-threshold",
         type=float,
@@ -682,11 +692,18 @@ def main() -> int:
     if not 0 <= args.sanka_readiness_threshold <= 1:
         print("--sanka-readiness-threshold must be between 0 and 1", file=sys.stderr)
         return 2
+    if args.wall_clock_seconds <= 0:
+        print("--wall-clock-seconds must be positive", file=sys.stderr)
+        return 2
     if args.agent_bin is None:
         args.agent_bin = "claude" if args.agent == "claude-code" else "codex"
 
     agent_version = subprocess.run(
-        [args.agent_bin, "--version"], capture_output=True, text=True, check=False
+        [args.agent_bin, "--version"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=isolated_environment(os.environ),
     ).stdout.strip()
 
     lane_started = time.monotonic()
@@ -713,7 +730,19 @@ def main() -> int:
         claude_config.mkdir()
         raw_dir.mkdir()
 
-        env = dict(os.environ)
+        env = isolated_environment(
+            os.environ,
+            {
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_AUTH_TOKEN",
+                "ANTHROPIC_BASE_URL",
+                "DEEPINFRA_API_KEY",
+                "FIREWORKS_API_KEY",
+                "OPENAI_API_KEY",
+                "SANKA_HOME",
+                "TOGETHER_API_KEY",
+            },
+        )
         for name in (
             "DJANGO_SETTINGS_MODULE",
             "BENCH_DB_PATH",
@@ -722,6 +751,19 @@ def main() -> int:
         ):
             env.pop(name, None)
         env["CLAUDE_CONFIG_DIR"] = str(claude_config)
+        if mode == "alone":
+            env.pop("SANKA_HOME", None)
+        if args.agent == "claude-code":
+            stripped = [
+                "DEEPINFRA_API_KEY",
+                "FIREWORKS_API_KEY",
+                "OPENAI_API_KEY",
+                "TOGETHER_API_KEY",
+            ]
+            if args.route_kind == "anthropic-native":
+                stripped.extend(["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"])
+            for name in stripped:
+                env.pop(name, None)
         if mode != "alone":
             env = _sanka_runtime_env(env)
         readiness_context: dict[str, object] | None = None
@@ -732,7 +774,9 @@ def main() -> int:
             assert args.sanka_bin is not None
             sanka_bin = args.sanka_bin.resolve()
             try:
-                skill_record = install_sanka_skill(sanka_bin, workspace, env)
+                skill_record = install_sanka_skill(
+                    sanka_bin, workspace, env, args.sanka_skill_sha256
+                )
                 _enable_sanka_extension(sanka_bin, workspace=workspace, env=env)
             except (OSError, RuntimeError) as exc:
                 print(f"with-sanka extension setup failed: {exc}", file=sys.stderr)
@@ -788,7 +832,7 @@ def main() -> int:
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
-                timeout=3600,
+                timeout=args.wall_clock_seconds,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
@@ -802,7 +846,7 @@ def main() -> int:
                 stderr=_as_text(exc.stderr),
             )
             terminal_reason = (
-                "wall-clock timeout (3600s) exhausted; the agent process was "
+                f"wall-clock timeout ({args.wall_clock_seconds}s) exhausted; the agent process was "
                 "killed and the workspace was frozen as-is"
             )
         measured_ms = (time.monotonic() - started) * 1000
@@ -935,6 +979,7 @@ def main() -> int:
         overlay = out_dir / "overlay"
         if overlay.exists():
             shutil.rmtree(overlay)
+        overlay.mkdir()
         for key in added:
             destination = overlay / key
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -946,18 +991,6 @@ def main() -> int:
         }
         _write_json_atomic(out_dir / "telemetry.json", telemetry)
 
-        if not added:
-            turns = stats.get("num_turns")
-            print(
-                "agent produced no new files; refusing to freeze an empty candidate "
-                f"(terminal: {terminal_reason or 'completed'}; "
-                f"turns: {turns if turns is not None else 'none recorded'}). "
-                "No error event plus no recorded activity is the signature of a "
-                "silent provider failure - classify it in the infrastructure "
-                "ledger instead of charging it as an agent-quality result.",
-                file=sys.stderr,
-            )
-            return 3
         _write_candidate(out_dir, args, agent_version, stats)
         _write_disclosure(
             out_dir,
@@ -1148,6 +1181,11 @@ def _agent_error_is_terminal(stats: dict[str, object], *, timed_out: bool) -> bo
     return not (timed_out and stats.get("subtype") == "codex-no-terminal-event")
 
 
+def _integer_token(item: dict[str, object], name: str) -> int | None:
+    value = item.get(name)
+    return int(value) if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def claude_stats(
     stdout: str,
     *,
@@ -1174,12 +1212,13 @@ def claude_stats(
         for client_model, item in raw_usage.items():
             if not isinstance(item, dict):
                 continue
+
             model_usage[str(client_model)] = {
-                "actual_model_id": actual_model_id,
-                "input_tokens": int(item.get("inputTokens") or 0),
-                "cache_creation_input_tokens": int(item.get("cacheCreationInputTokens") or 0),
-                "cache_read_input_tokens": int(item.get("cacheReadInputTokens") or 0),
-                "output_tokens": int(item.get("outputTokens") or 0),
+                "client_model_id": str(client_model),
+                "input_tokens": _integer_token(item, "inputTokens"),
+                "cache_creation_input_tokens": _integer_token(item, "cacheCreationInputTokens"),
+                "cache_read_input_tokens": _integer_token(item, "cacheReadInputTokens"),
+                "output_tokens": _integer_token(item, "outputTokens"),
             }
     token_fields = (
         "input_tokens",
@@ -1187,12 +1226,19 @@ def claude_stats(
         "cache_read_input_tokens",
         "output_tokens",
     )
-    totals = (
-        {field: sum(int(item[field]) for item in model_usage.values()) for field in token_fields}
-        if model_usage
-        else dict.fromkeys(token_fields)
+    totals = {
+        field: (
+            sum(int(item[field]) for item in model_usage.values())
+            if model_usage and all(item[field] is not None for item in model_usage.values())
+            else None
+        )
+        for field in token_fields
+    }
+    total_tokens = (
+        sum(int(value) for value in totals.values())
+        if all(value is not None for value in totals.values())
+        else None
     )
-    total_tokens = sum(int(value) for value in totals.values()) if model_usage else None
     raw_cost = payload.get("total_cost_usd")
     reported_cost = float(raw_cost) if isinstance(raw_cost, int | float) else None
     subscription = billing_mode == "subscription"
@@ -1204,9 +1250,13 @@ def claude_stats(
         "num_turns": payload.get("num_turns"),
         "duration_ms": duration_ms,
         "total_cost_usd": reported_cost,
-        "cost_usd": None if subscription else reported_cost,
-        "reported_equivalent_cost_usd": reported_cost if subscription else None,
-        "cost_basis": ("subscription-no-marginal-cost" if subscription else "claude-code-reported"),
+        "cost_usd": None,
+        "reported_equivalent_cost_usd": reported_cost,
+        "cost_basis": (
+            "subscription-no-marginal-cost"
+            if subscription
+            else "claude-code-reported-equivalent-unverified"
+        ),
         "requested_model_id": requested_model_id,
         "actual_model_id": actual_model_id,
         "billing_mode": billing_mode,

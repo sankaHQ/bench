@@ -195,6 +195,9 @@ def paired_reports(tmp_path: Path) -> Path:
         for sample in (1, 2):
             base_stats = {
                 "duration_seconds": 120.0,
+                "setup_seconds": 10.0,
+                "evaluation_seconds": 20.0,
+                "end_to_end_seconds": 150.0,
                 "input_tokens": 100,
                 "cache_creation_input_tokens": 20,
                 "cache_read_input_tokens": 40,
@@ -206,6 +209,9 @@ def paired_reports(tmp_path: Path) -> Path:
             with_stats = {
                 **base_stats,
                 "duration_seconds": 60.0,
+                "setup_seconds": 15.0,
+                "evaluation_seconds": 10.0,
+                "end_to_end_seconds": 85.0,
                 "total_tokens": 150,
                 "reported_equivalent_cost_usd": 0.75,
             }
@@ -239,6 +245,21 @@ def paired_reports(tmp_path: Path) -> Path:
                     stats=with_stats,
                 ),
             )
+    waves = tmp_path / "waves"
+    waves.mkdir()
+    (waves / "wave-1.json").write_text(
+        json.dumps(
+            {
+                "stage_id": "wave-1",
+                "requested": 12,
+                "completed": 12,
+                "elapsed_seconds": 240.0,
+                "max_generation_total": 2,
+                "max_evaluations": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
     return reports
 
 
@@ -253,6 +274,9 @@ def test_unknown_cost_stays_null_and_telemetry_aggregates_per_sample(
     assert alone["cost_usd"] is None
     assert alone["reported_equivalent_cost_usd"] == pytest.approx(2.0)
     assert alone["duration_seconds"] == pytest.approx(240.0)
+    assert alone["setup_seconds"] == pytest.approx(20.0)
+    assert alone["evaluation_seconds"] == pytest.approx(40.0)
+    assert alone["end_to_end_seconds"] == pytest.approx(300.0)
     assert alone["tokens"] == {
         "input_tokens": 200.0,
         "cache_creation_input_tokens": 40.0,
@@ -272,9 +296,38 @@ def test_report_pairs_only_exact_same_model_lanes(paired_reports: Path) -> None:
     assert comparison["pairs"] == 4
     assert comparison["quality_delta"]["estimate"] == pytest.approx(0.5)
     assert comparison["agent_seconds_delta"]["estimate"] == pytest.approx(-60.0)
+    assert comparison["setup_seconds_delta"]["estimate"] == pytest.approx(5.0)
+    assert comparison["evaluation_seconds_delta"]["estimate"] == pytest.approx(-10.0)
+    assert comparison["end_to_end_seconds_delta"]["estimate"] == pytest.approx(-65.0)
     assert comparison["total_tokens_delta"]["estimate"] == pytest.approx(-40.0)
     assert comparison["cost_usd_delta"] is None
     page = render_html(data)
     assert "Paired Sanka effects" in page
     assert "claude-code-gpt-5-6" in page
     assert "Readiness-aware rows are excluded" in page
+    assert "End-to-end" in page
+    assert "Suite throughput" in page
+    assert data["throughput"]["makespan_seconds"] == 240.0
+
+
+def test_report_does_not_pair_different_evaluator_runners(tmp_path: Path) -> None:
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    stats = {
+        "duration_seconds": 1.0,
+        "setup_seconds": 1.0,
+        "evaluation_seconds": 1.0,
+        "end_to_end_seconds": 3.0,
+    }
+    _write(
+        reports,
+        "alone.json",
+        _result("task-1", "claude-code-model-alone", migrated=False, stats=stats),
+    )
+    _write(
+        reports,
+        "with-docker.json",
+        _result("task-1", "claude-code-model-with-sanka", migrated=True, stats=stats),
+    )
+
+    assert collect(reports)["comparisons"] == []

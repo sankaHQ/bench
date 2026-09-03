@@ -38,6 +38,9 @@ def test_candidate_and_result_stats_accept_claude_usage_and_nullable_cost() -> N
     stats = {
         "turns": 3,
         "duration_seconds": 1.3,
+        "setup_seconds": 0.2,
+        "evaluation_seconds": 0.4,
+        "end_to_end_seconds": 1.9,
         "requested_model_id": "claude-sonnet-5",
         "actual_model_id": "claude-sonnet-5-20260901",
         "billing_mode": "subscription",

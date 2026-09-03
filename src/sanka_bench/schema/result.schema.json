@@ -270,6 +270,18 @@
           "type": "number",
           "minimum": 0
         },
+        "setup_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "evaluation_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "end_to_end_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
         "requested_model_id": {
           "type": "string",
           "minLength": 1

@@ -289,7 +289,9 @@ foreground coordinator. It preserves generated candidates across resumes,
 drains their evaluations after a provider failure, records serving tiers with
 `provider_variant`, validates telemetry and hashes, blocks aggregation if a
 credential appears in an artifact, and never activates a declared backup
-automatically. The manifest, qualification, environment, cost, and recovery
+automatically. Execution budgets and concurrency are manifest-pinned, and the
+report separates setup, agent, evaluation, end-to-end, and suite makespan. The
+manifest, qualification, environment, cost, and recovery
 contract is documented in
 [docs/measurement-runs.md](docs/measurement-runs.md).
 

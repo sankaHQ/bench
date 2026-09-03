@@ -32,7 +32,8 @@ For each family the report computes, over the tasks it covers:
 | `pass_rate` | passed task-samples ÷ all task-samples, with a 95 % Wilson interval |
 | `score` | mean over samples of the route-weighted Migration Quality Score v0.2 (routes of passed tasks ÷ suite routes), with a 95 % percentile-bootstrap interval (2 000 resamples of tasks with replacement, each resample averaging that task's sample outcomes) |
 | `verified_routes` | mean over samples of routes verified |
-| `cost_usd`, `duration_seconds` | summed over all task-samples and reported per sample (÷ samples) so runs of different `samples` compare |
+| `cost_usd`, `duration_seconds`, `setup_seconds`, `evaluation_seconds`, `end_to_end_seconds` | summed over all task-samples and reported per sample (÷ samples) so runs of different `samples` compare; `duration_seconds` is agent time |
+| `throughput` | sequential stage makespan plus observed peak generation and evaluation concurrency from `waves/*.json` |
 | `cost_per_verified_route` | `cost_usd ÷ verified_routes` per sample, mean over samples; `null` when cost is pending |
 | `scenario_parity` | Migration Quality Score v0.3 companion: passed ÷ total hidden scenarios for behavior, database, side-effect, and native compliance, pooled over task-samples |
 

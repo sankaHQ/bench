@@ -10,11 +10,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from sanka_bench.environment import isolated_environment
 
 QUALIFICATION_TEXT = "sanka-bench-claude-route-qualified\n"
 QUALIFICATION_PROMPT = (
@@ -94,12 +97,22 @@ def qualify(
         capture_output=True,
         text=True,
         check=False,
+        env=isolated_environment(os.environ),
     )
     if version.returncode != 0 or not version.stdout.strip():
         raise ValueError("Claude Code version probe failed")
 
     with tempfile.TemporaryDirectory(prefix="sanka-claude-qualification-") as temporary:
         workspace = Path(temporary)
+        claude_config = workspace / "claude-config"
+        claude_config.mkdir()
+        route_keys = (
+            {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"}
+            if route_kind == "gateway"
+            else set()
+        )
+        environment = isolated_environment(os.environ, route_keys)
+        environment["CLAUDE_CONFIG_DIR"] = str(claude_config)
         outcome = subprocess.run(
             [
                 str(claude_bin),
@@ -115,6 +128,7 @@ def qualify(
                 "--dangerously-skip-permissions",
             ],
             cwd=workspace,
+            env=environment,
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,

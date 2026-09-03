@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,9 +10,29 @@ from types import SimpleNamespace
 
 import pytest
 
+from sanka_bench.environment import isolated_environment
 from sanka_bench.schema import load_and_validate
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+
+
+def test_isolated_environment_drops_host_secrets_and_global_tool_path() -> None:
+    source = {
+        "HOME": "/Users/bench",
+        "PATH": "/opt/homebrew/bin:/bin",
+        "AWS_SECRET_ACCESS_KEY": "secret",
+        "ANTHROPIC_AUTH_TOKEN": "gateway-secret",
+    }
+
+    assert isolated_environment(source) == {
+        "HOME": "/Users/bench",
+        "PATH": os.defpath,
+    }
+    assert isolated_environment(source, {"ANTHROPIC_AUTH_TOKEN"}) == {
+        "HOME": "/Users/bench",
+        "PATH": os.defpath,
+        "ANTHROPIC_AUTH_TOKEN": "gateway-secret",
+    }
 
 
 @pytest.fixture(scope="module")
@@ -93,10 +114,10 @@ def test_subscription_stats_keep_tokens_without_claiming_actual_cost(harness: ob
     assert stats["cache_read_input_tokens"] == 40
     assert stats["output_tokens"] == 30
     assert stats["total_tokens"] == 190
-    assert stats["model_usage"]["gateway-alias"]["actual_model_id"] == "claude-sonnet-5"
+    assert stats["model_usage"]["gateway-alias"]["client_model_id"] == "gateway-alias"
 
 
-def test_api_key_stats_use_claude_reported_cost(harness: object) -> None:
+def test_gateway_stats_do_not_claim_claude_estimate_as_actual_cost(harness: object) -> None:
     stats = harness.claude_stats(  # type: ignore[attr-defined]
         json.dumps(
             {
@@ -114,9 +135,9 @@ def test_api_key_stats_use_claude_reported_cost(harness: object) -> None:
         measured_ms=900,
     )
 
-    assert stats["cost_usd"] == 0.75
-    assert stats["reported_equivalent_cost_usd"] is None
-    assert stats["cost_basis"] == "claude-code-reported"
+    assert stats["cost_usd"] is None
+    assert stats["reported_equivalent_cost_usd"] == 0.75
+    assert stats["cost_basis"] == "claude-code-reported-equivalent-unverified"
     assert stats["duration_ms"] == 900
 
 
@@ -142,6 +163,30 @@ def test_claude_stats_leave_missing_usage_null(harness: object) -> None:
     assert stats["output_tokens"] is None
     assert stats["total_tokens"] is None
     assert stats["cost_usd"] is None
+
+
+def test_claude_stats_do_not_turn_partial_usage_into_zero(harness: object) -> None:
+    stats = harness.claude_stats(  # type: ignore[attr-defined]
+        json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "num_turns": 1,
+                "is_error": False,
+                "modelUsage": {"gateway-alias": {"inputTokens": 10}},
+            }
+        ),
+        billing_mode="api_key",
+        requested_model_id="gateway-alias",
+        actual_model_id="gpt-5.6-20260901",
+        measured_ms=500,
+    )
+
+    assert stats["input_tokens"] == 10
+    assert stats["cache_creation_input_tokens"] is None
+    assert stats["cache_read_input_tokens"] is None
+    assert stats["output_tokens"] is None
+    assert stats["total_tokens"] is None
 
 
 def test_prompts_differ_only_by_the_sanka_paragraph(harness: object) -> None:
@@ -418,7 +463,7 @@ def test_install_sanka_skill_is_project_local_and_digest_verified(
         assert workspace == tmp_path
         assert env == {"PATH": "/bin"}
         commands.append(command)
-        target.mkdir(parents=True)
+        target.mkdir(parents=True, exist_ok=True)
         (target / "SKILL.md").write_bytes(content)
         return SimpleNamespace(
             stdout=json.dumps(
@@ -459,6 +504,10 @@ def test_install_sanka_skill_is_project_local_and_digest_verified(
         "status": "installed",
         "content_sha256": hashlib.sha256(content).hexdigest(),
     }
+    with pytest.raises(RuntimeError, match="pinned manifest digest"):
+        harness.install_sanka_skill(  # type: ignore[attr-defined]
+            Path("/tools/sanka"), tmp_path, {"PATH": "/bin"}, "sha256:" + "0" * 64
+        )
 
 
 def test_install_sanka_skill_rejects_a_false_digest(
@@ -628,6 +677,12 @@ def _fake_agent(
         f"printf '%s\\n' \"$@\" > '{tmp_path / 'fake-agent-argv.txt'}'\n"
         f"printf '%s\\n' \"${{CLAUDE_CONFIG_DIR:-}}\" > "
         f"'{tmp_path / 'fake-agent-claude-config.txt'}'\n"
+        f"printf '%s' \"${{UNRELATED_SECRET:-}}\" > '{tmp_path / 'fake-agent-secret.txt'}'\n"
+        f"printf '%s' \"${{OPENAI_API_KEY:-}}\" > '{tmp_path / 'fake-agent-openai-key.txt'}'\n"
+        f"printf '%s' \"${{ANTHROPIC_AUTH_TOKEN:-}}\" > "
+        f"'{tmp_path / 'fake-agent-anthropic-token.txt'}'\n"
+        f"printf '%s' \"$PATH\" > '{tmp_path / 'fake-agent-path.txt'}'\n"
+        f"command -v sanka > '{tmp_path / 'fake-agent-sanka.txt'}' 2>/dev/null || true\n"
         f"{touch_line}\n"
         f"{prints}"
         f"exit {exit_code}\n",
@@ -638,7 +693,11 @@ def _fake_agent(
 
 
 def _run_adapter(
-    task: Path, agent: Path, out: Path, sandbox: Path | None = None
+    task: Path,
+    agent: Path,
+    out: Path,
+    sandbox: Path | None = None,
+    extra_args: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [
         sys.executable,
@@ -656,6 +715,7 @@ def _run_adapter(
     ]
     if sandbox is not None:
         command.extend(["--sandbox", str(sandbox)])
+    command.extend(extra_args or [])
     return subprocess.run(
         command,
         capture_output=True,
@@ -690,6 +750,55 @@ def test_persistent_sandbox_keeps_workspace_config_and_raw_stream(tmp_path: Path
     assert (tmp_path / "fake-agent-claude-config.txt").read_text().strip() == str(
         sandbox / "claude-config"
     )
+
+
+def test_alone_agent_cannot_inherit_host_secrets_or_global_sanka(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    global_bin = tmp_path / "global-bin"
+    global_bin.mkdir()
+    (global_bin / "sanka").write_text("#!/bin/sh\n", encoding="utf-8")
+    (global_bin / "sanka").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{global_bin}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("UNRELATED_SECRET", "must-not-reach-agent")
+    agent = _fake_agent(
+        tmp_path,
+        result={"num_turns": 1, "is_error": False, "subtype": "success"},
+        touch="target_app.py",
+    )
+
+    outcome = _run_adapter(task, agent, tmp_path / "candidate")
+
+    assert outcome.returncode == 0, outcome.stderr
+    assert (tmp_path / "fake-agent-secret.txt").read_text() == ""
+    assert (tmp_path / "fake-agent-path.txt").read_text() == os.defpath
+    assert (tmp_path / "fake-agent-sanka.txt").read_text() == ""
+
+
+def test_gateway_agent_receives_only_anthropic_compatible_route_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    monkeypatch.setenv("OPENAI_API_KEY", "must-not-reach-claude")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "gateway-token")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://gateway.test")
+    agent = _fake_agent(
+        tmp_path,
+        result={"num_turns": 1, "is_error": False, "subtype": "success"},
+        touch="target_app.py",
+    )
+
+    outcome = _run_adapter(
+        task,
+        agent,
+        tmp_path / "candidate",
+        extra_args=["--route-kind", "gateway", "--billing-mode", "api_key"],
+    )
+
+    assert outcome.returncode == 0, outcome.stderr
+    assert (tmp_path / "fake-agent-openai-key.txt").read_text() == ""
+    assert (tmp_path / "fake-agent-anthropic-token.txt").read_text() == "gateway-token"
 
 
 def test_persistent_sandbox_refuses_a_nonempty_workspace(tmp_path: Path) -> None:
@@ -807,7 +916,7 @@ def test_successful_claude_turn_overrun_is_disclosed(tmp_path: Path) -> None:
     assert "completed within budget" not in disclosure
 
 
-def test_empty_workspace_exits_with_classification_code(tmp_path: Path) -> None:
+def test_completed_empty_workspace_is_frozen_as_a_quality_failure(tmp_path: Path) -> None:
     task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
     agent = _fake_agent(
         tmp_path,
@@ -823,10 +932,10 @@ def test_empty_workspace_exits_with_classification_code(tmp_path: Path) -> None:
     )
     out = tmp_path / "candidate"
     outcome = _run_adapter(task, agent, out)
-    assert outcome.returncode == 3
-    assert "refusing to freeze an empty candidate" in outcome.stderr
-    assert "infrastructure" in outcome.stderr
-    assert not (out / "overlay").exists()
+    assert outcome.returncode == 0, outcome.stderr
+    assert (out / "overlay").is_dir()
+    assert list((out / "overlay").iterdir()) == []
+    assert (out / "candidate.yaml").is_file()
 
 
 def test_non_budget_agent_error_stays_unfrozen(tmp_path: Path) -> None:

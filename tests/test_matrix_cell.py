@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -40,6 +41,7 @@ def _manifest(samples: int) -> dict[str, object]:
             "samples": samples,
             "expected_rows": 2 * 2 * 2 * samples,
             "max_turns": 120,
+            "wall_clock_seconds": 900,
             "authorization_scope": f"{2 * 2 * 2 * samples}-cell-v1",
         },
         "models": [
@@ -151,6 +153,7 @@ def test_v2_generation_command_passes_route_and_sandbox_metadata(
             "gateway_profile": "cliproxyapi-anthropic-v1",
         }
     ]
+    manifest["toolchain"]["sanka_skill_sha256"] = "sha256:" + "a" * 64  # type: ignore[index]
     cell = driver.resolve_cell(manifest, "001", "gpt56", "alone", 1)  # type: ignore[attr-defined]
     paths = driver.resolve_paths(tmp_path / "run-manifest.json", manifest, cell)  # type: ignore[attr-defined]
     tools = {
@@ -167,7 +170,17 @@ def test_v2_generation_command_passes_route_and_sandbox_metadata(
     assert command[command.index("--actual-model-id") + 1] == cell.actual_model_id
     assert command[command.index("--route-kind") + 1] == "gateway"
     assert command[command.index("--billing-mode") + 1] == "api_key"
+    assert command[command.index("--wall-clock-seconds") + 1] == "900"
     assert command[command.index("--gateway-profile") + 1] == "cliproxyapi-anthropic-v1"
+
+    with_sanka = driver.resolve_cell(  # type: ignore[attr-defined]
+        manifest, "001", "gpt56", "with-sanka", 1
+    )
+    tools["sanka"] = tmp_path / "sanka"
+    command = driver.generation_command(  # type: ignore[attr-defined]
+        manifest, with_sanka, paths, tools, attempt=1, prior_failure=None
+    )
+    assert command[command.index("--sanka-skill-sha256") + 1] == "sha256:" + "a" * 64
 
 
 def test_native_subscription_prerequisites_do_not_require_an_env_file(
@@ -193,17 +206,22 @@ def test_native_subscription_prerequisites_do_not_require_an_env_file(
     (task / "source").mkdir(parents=True)
     (task / "public-tests").mkdir()
     (task / "public-tests" / "scenarios.json").write_text("[]\n", encoding="utf-8")
-    for relative in (".venv/bin/python", ".venv/bin/sanka-bench", "claude"):
+    for relative in (".venv/bin/python", ".venv/bin/sanka-bench"):
         path = worktree / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
+    claude = worktree / "claude"
+    claude.write_text("#!/bin/sh\necho 2.1.241\n", encoding="utf-8")
+    claude.chmod(0o755)
     runner = worktree / "scripts" / "run_agent_candidate.py"
     runner.parent.mkdir()
     runner.write_text("# runner\n", encoding="utf-8")
     manifest["toolchain"] = {
         "worktree": str(worktree),
-        "claude_bin": str(worktree / "claude"),
-        "agent_runner_sha256": __import__("hashlib").sha256(runner.read_bytes()).hexdigest(),
+        "claude_bin": str(claude),
+        "claude_version": "2.1.241",
+        "claude_bin_sha256": "sha256:" + hashlib.sha256(claude.read_bytes()).hexdigest(),
+        "agent_runner_sha256": hashlib.sha256(runner.read_bytes()).hexdigest(),
     }
     monkeypatch.setattr(
         driver.subprocess,  # type: ignore[attr-defined]
@@ -216,6 +234,10 @@ def test_native_subscription_prerequisites_do_not_require_an_env_file(
     tools = driver.validate_prerequisites(manifest, cell, paths)  # type: ignore[attr-defined]
 
     assert "env" not in tools
+
+    claude.write_text("#!/bin/sh\necho changed\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Claude binary digest"):
+        driver.validate_prerequisites(manifest, cell, paths)  # type: ignore[attr-defined]
 
 
 def test_generation_command_offers_sanka_only_to_with_sanka_cells(
@@ -320,10 +342,15 @@ def test_route_environment_separates_subscription_and_gateway(driver: object) ->
         "PATH": "/bin",
         "ANTHROPIC_BASE_URL": "https://gateway.test",
         "ANTHROPIC_AUTH_TOKEN": "token",
+        "OPENAI_API_KEY": "unrelated",
     }
 
     assert driver.route_environment(base, native) == {"PATH": "/bin"}  # type: ignore[attr-defined]
-    assert driver.route_environment(base, gateway) == base  # type: ignore[attr-defined]
+    assert driver.route_environment(base, gateway) == {
+        "PATH": "/bin",
+        "ANTHROPIC_BASE_URL": "https://gateway.test",
+        "ANTHROPIC_AUTH_TOKEN": "token",
+    }  # type: ignore[attr-defined]
     with pytest.raises(ValueError, match="exactly one credential"):
         driver.route_environment(  # type: ignore[attr-defined]
             {**base, "ANTHROPIC_API_KEY": "second"}, gateway
@@ -386,3 +413,36 @@ def test_cell_telemetry_updates_are_merged_atomically(driver: object, tmp_path: 
     assert payload["evaluation"]["status"] == "passed"
     assert payload["failure_class"] is None
     assert not telemetry.with_suffix(".json.tmp").exists()
+
+
+def test_evaluation_timing_is_copied_into_the_result(driver: object, tmp_path: Path) -> None:
+    manifest = _manifest(samples=1)
+    cell = driver.resolve_cell(manifest, "001", "sonnet5", "alone", 1)  # type: ignore[attr-defined]
+    paths = driver.resolve_paths(tmp_path / "run-manifest.json", manifest, cell)  # type: ignore[attr-defined]
+    paths.candidate.mkdir(parents=True)
+    paths.report.parent.mkdir(parents=True)
+    (paths.candidate / "telemetry.json").write_text(
+        json.dumps(
+            {
+                "timing": {
+                    "generation_seconds": 12.0,
+                    "setup_seconds": 2.0,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    paths.report.write_text(
+        json.dumps({"provenance": {"candidate_stats": {"duration_seconds": 10.0}}}),
+        encoding="utf-8",
+    )
+
+    driver.update_report_timing(paths, 3.0)  # type: ignore[attr-defined]
+
+    stats = json.loads(paths.report.read_text(encoding="utf-8"))["provenance"]["candidate_stats"]
+    assert stats == {
+        "duration_seconds": 10.0,
+        "setup_seconds": 2.0,
+        "evaluation_seconds": 3.0,
+        "end_to_end_seconds": 15.0,
+    }

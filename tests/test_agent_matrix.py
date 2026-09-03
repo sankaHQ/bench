@@ -115,6 +115,7 @@ def manifest() -> dict[str, Any]:
 
 
 def official_manifest(root: Path) -> dict[str, Any]:
+    transcript = b'{"type":"result","subtype":"success"}\n'
     qualification = {
         "schema": "sanka-bench/claude-route-qualification/v1",
         "status": "qualified",
@@ -131,14 +132,36 @@ def official_manifest(root: Path) -> dict[str, Any]:
             "terminal_event": True,
             "usage_accounting": True,
         },
+        "claude": {
+            "version": "2.1.241",
+            "sha256": "sha256:" + "1" * 64,
+        },
+        "evidence": {
+            "prompt_sha256": "sha256:" + "2" * 64,
+            "provider_sha256": "sha256:" + "3" * 64,
+            "transcript_sha256": "sha256:" + hashlib.sha256(transcript).hexdigest(),
+        },
     }
     path = root / "qualifications" / "sonnet.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(qualification, sort_keys=True) + "\n", encoding="utf-8")
+    path.with_suffix(".jsonl").write_bytes(transcript)
     value = manifest()
     value["schema"] = "sanka-bench/model-matrix-run-manifest/v2"
     value["execution"]["configurations"] = ["alone", "with-sanka"]
     value["execution"]["expected_rows"] = 2
+    value["execution"]["max_turns"] = 60
+    value["execution"]["wall_clock_seconds"] = 3600
+    value["execution"]["concurrency"] = {
+        "provider_cap": 1,
+        "model_cap": 1,
+        "evaluation_cap": 1,
+    }
+    value["toolchain"] = {
+        "claude_version": "2.1.241",
+        "claude_bin_sha256": "sha256:" + "1" * 64,
+        "sanka_skill_sha256": "sha256:" + "5" * 64,
+    }
     value["models"] = [
         {
             "slug": "sonnet",
@@ -213,6 +236,19 @@ def test_manifest_preserves_provider_variants_and_declared_backups() -> None:
     assert backup["status"] == "unqualified"
 
 
+def test_manifest_rejects_unsafe_and_colliding_artifact_names() -> None:
+    unsafe = manifest()
+    unsafe["suite"]["tasks"] = ["../escape"]
+    unsafe["suite"]["route_weights"] = {"../escape": 1}
+    with pytest.raises(ValueError, match="unsafe task"):
+        build_cells(unsafe)
+
+    colliding = manifest()
+    colliding["models"][1]["candidate_slug"] = colliding["models"][0]["candidate_slug"]
+    with pytest.raises(ValueError, match="duplicate artifact"):
+        build_cells(colliding)
+
+
 def test_official_manifest_requires_claude_code_and_matching_qualification(
     tmp_path: Path,
 ) -> None:
@@ -237,6 +273,20 @@ def test_official_manifest_rejects_route_and_identity_mismatch(tmp_path: Path) -
     value = official_manifest(tmp_path)
     value["models"][0]["actual_model_id"] = "different-model"
     with pytest.raises(ValueError, match="actual model"):
+        validate_official_manifest(value, tmp_path)
+
+
+def test_official_manifest_requires_matching_harness_and_evidence_pins(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    qualification = tmp_path / value["models"][0]["qualification"]
+    evidence = json.loads(qualification.read_text(encoding="utf-8"))
+    del evidence["claude"]
+    qualification.write_text(json.dumps(evidence) + "\n", encoding="utf-8")
+    value["models"][0]["qualification_sha256"] = (
+        "sha256:" + hashlib.sha256(qualification.read_bytes()).hexdigest()
+    )
+
+    with pytest.raises(ValueError, match="Claude harness evidence"):
         validate_official_manifest(value, tmp_path)
 
 
@@ -280,7 +330,26 @@ def test_cell_input_digest_covers_model_prompts_toolchain_and_sample(tmp_path: P
         target = changed["models"][0] if section == "models" else changed[section]
         target[key] = replacement
         assert digest(changed) != original
+    changed = copy.deepcopy(value)
+    changed["execution"]["concurrency"]["model_cap"] = 2
+    assert digest(changed) != original
     assert digest(value, sample=2) != original
+
+
+def test_official_manifest_enforces_pinned_concurrency(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    path = write_manifest(tmp_path, value)
+
+    with pytest.raises(ValueError, match="pinned concurrency"):
+        RollingCoordinator(path, provider_cap=2, model_cap=1, evaluation_cap=1)
+
+
+def test_official_manifest_requires_positive_budgets(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["execution"]["wall_clock_seconds"] = 0
+
+    with pytest.raises(ValueError, match="positive execution budgets"):
+        validate_official_manifest(value, tmp_path)
 
 
 def test_resume_refuses_missing_or_stale_input_digest(tmp_path: Path) -> None:

@@ -29,6 +29,7 @@ from typing import Any
 
 from run_matrix_cell import ALLOWED_KEYS, read_allowlisted_env
 
+from sanka_bench.environment import isolated_environment
 from sanka_bench.hashing import digest_tree
 
 _KNOWN_SECRET = re.compile(rb"(?:sk-(?:ant-|proj-)?|fw_)[A-Za-z0-9_-]{16,}")
@@ -250,6 +251,8 @@ def cell_input_digest(
         "wall_clock_seconds",
         "prompt_sha256",
         "sanka_prompt_sha256",
+        "authorization_scope",
+        "concurrency",
     )
     toolchain_fields = (
         "claude_version",
@@ -284,10 +287,17 @@ def build_cells(manifest: dict[str, Any]) -> list[CellSpec]:
     if samples < 1:
         raise ValueError("execution.samples must be a positive integer")
     for task in manifest["suite"]["tasks"]:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", str(task)):
+            raise ValueError(f"unsafe task slug: {task}")
         suffix = str(task).rsplit("-", 1)[-1]
         for model in manifest["models"]:
+            for label in ("slug", "candidate_slug"):
+                if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", str(model[label])):
+                    raise ValueError(f"unsafe model {label}: {model[label]}")
             variant = str(model.get("provider_variant") or "standard")
             for config in configurations:
+                if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", str(config)):
+                    raise ValueError(f"unsafe configuration slug: {config}")
                 for sample in range(1, samples + 1):
                     cells.append(
                         CellSpec(
@@ -337,6 +347,8 @@ def build_cells(manifest: dict[str, Any]) -> list[CellSpec]:
         raise ValueError(f"manifest expands to {len(cells)} cells, expected {expected}")
     if len({cell.key for cell in cells}) != len(cells):
         raise ValueError("manifest expands to duplicate cell keys")
+    if len({cell.candidate_id for cell in cells}) != len(cells):
+        raise ValueError("manifest expands to duplicate artifact paths")
     return cells
 
 
@@ -349,6 +361,36 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
         return
     if manifest["execution"].get("configurations") != ["alone", "with-sanka"]:
         raise ValueError("official v2 configurations must be alone and with-sanka")
+    if any(
+        not isinstance(manifest["execution"].get(name), int)
+        or isinstance(manifest["execution"].get(name), bool)
+        or manifest["execution"][name] < 1
+        for name in ("max_turns", "wall_clock_seconds")
+    ):
+        raise ValueError("official v2 manifest requires positive execution budgets")
+    concurrency = manifest["execution"].get("concurrency")
+    if not isinstance(concurrency, dict) or any(
+        not isinstance(concurrency.get(name), int)
+        or isinstance(concurrency.get(name), bool)
+        or concurrency[name] < 1
+        for name in ("provider_cap", "model_cap", "evaluation_cap")
+    ):
+        raise ValueError("official v2 manifest requires positive concurrency pins")
+    toolchain = manifest.get("toolchain")
+    if not isinstance(toolchain, dict):
+        raise ValueError("official v2 manifest requires toolchain pins")
+    claude_version = toolchain.get("claude_version")
+    claude_sha = toolchain.get("claude_bin_sha256")
+    skill_sha = toolchain.get("sanka_skill_sha256")
+    if (
+        not isinstance(claude_version, str)
+        or not claude_version
+        or not isinstance(claude_sha, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", claude_sha) is None
+        or not isinstance(skill_sha, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", skill_sha) is None
+    ):
+        raise ValueError("official v2 manifest requires Claude and Sanka skill pins")
     root = root.resolve()
     for model in manifest["models"]:
         if model.get("harness") != "claude-code":
@@ -385,6 +427,23 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
             checks.get(name) is not True for name in required_checks
         ):
             raise ValueError("qualification checks are incomplete")
+        claude = evidence.get("claude")
+        if not isinstance(claude, dict) or (
+            claude.get("version") != claude_version or claude.get("sha256") != claude_sha
+        ):
+            raise ValueError("qualification Claude harness evidence does not match the manifest")
+        hashes = evidence.get("evidence")
+        if not isinstance(hashes, dict) or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(hashes.get(name) or "")) is None
+            for name in ("prompt_sha256", "provider_sha256", "transcript_sha256")
+        ):
+            raise ValueError("qualification evidence hashes are incomplete")
+        transcript = path.with_suffix(".jsonl")
+        if (
+            not transcript.is_file()
+            or qualification_digest(transcript) != hashes["transcript_sha256"]
+        ):
+            raise ValueError("qualification transcript digest does not match its evidence")
         for field in (
             "requested_model_id",
             "actual_model_id",
@@ -433,7 +492,9 @@ def worktree_preflight(manifest: dict[str, Any]) -> dict[str, str]:
         raise ValueError("toolchain.worktree and an exact benchmark_sha are required")
     worktree = Path(raw).resolve()
     actual = subprocess.check_output(
-        ["git", "-C", str(worktree), "rev-parse", "HEAD"], text=True
+        ["git", "-C", str(worktree), "rev-parse", "HEAD"],
+        text=True,
+        env=isolated_environment(os.environ),
     ).strip()
     if actual != expected:
         raise ValueError(f"worktree SHA mismatch: expected {expected}, got {actual}")
@@ -449,6 +510,7 @@ def worktree_preflight(manifest: dict[str, Any]) -> dict[str, str]:
         capture_output=True,
         text=True,
         check=False,
+        env=isolated_environment(os.environ),
     )
     if status.returncode != 0 or status.stdout.strip():
         raise ValueError("benchmark worktree has tracked changes")
@@ -724,6 +786,15 @@ class RollingCoordinator:
         validate_official_manifest(self.manifest, self.root)
         validate_backups(self.manifest)
         self.cells = build_cells(self.manifest)
+        if self.manifest.get("schema") == "sanka-bench/model-matrix-run-manifest/v2":
+            pinned = self.manifest["execution"]["concurrency"]
+            requested = {
+                "provider_cap": provider_cap,
+                "model_cap": model_cap,
+                "evaluation_cap": evaluation_cap,
+            }
+            if requested != pinned:
+                raise ValueError(f"CLI concurrency does not match pinned concurrency: {pinned}")
         self.provider_cap = provider_cap
         self.model_cap = model_cap
         self.evaluation_cap = evaluation_cap
@@ -759,7 +830,7 @@ class RollingCoordinator:
         command = render_command(template, self.manifest_path, cell, phase)
         worker_log = self.root / "waves" / f"{stage_id}-{cell.candidate_id}-{phase}.log"
         worker_log.parent.mkdir(parents=True, exist_ok=True)
-        environment = dict(os.environ)
+        environment = isolated_environment(os.environ)
         environment.update(
             {
                 "SANKA_BENCH_WAVE_ID": stage_id,
@@ -908,6 +979,7 @@ class RollingCoordinator:
                 stdout=handle,
                 stderr=subprocess.STDOUT,
                 check=False,
+                env=isolated_environment(os.environ),
             )
         return outcome.returncode
 
