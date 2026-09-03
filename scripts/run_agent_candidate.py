@@ -524,7 +524,6 @@ def _prepare_readiness_context(
     # sanka-cli reviews the core plan (which wraps the extension plan); apply wants the
     # core hash from the CLI response. Older engines had a single hash: fall back to it.
     context["core_plan_hash"] = _cli_data(planned.stdout).get("plan_hash") or context["plan_hash"]
-    _write_parity_notes(workspace, plan, context)
     if context["decision"] == "emit-scaffold":
         _run_sanka_command(
             [
@@ -540,6 +539,9 @@ def _prepare_readiness_context(
             workspace=workspace,
             env=env,
         )
+    # Written only after apply: sanka fingerprints the workspace when it reviews the
+    # plan and refuses to apply once any file changed, and this file is one.
+    _write_parity_notes(workspace, plan, context)
     return context
 
 
