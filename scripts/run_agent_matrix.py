@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -86,6 +87,7 @@ class StageResult:
     generation_failures: int = 0
     evaluation_failures: int = 0
     drained_evaluations: int = 0
+    retried_generations: int = 0
     max_generation_total: int = 0
     max_evaluations: int = 0
     max_generation_by_provider: dict[str, int] | None = None
@@ -107,6 +109,7 @@ class StageResult:
             "evaluation_failures": self.evaluation_failures,
             "failures": self.failures,
             "drained_evaluations": self.drained_evaluations,
+            "retried_generations": self.retried_generations,
             "max_generation_total": self.max_generation_total,
             "max_evaluations": self.max_evaluations,
             "max_generation_by_provider": dict(self.max_generation_by_provider or {}),
@@ -247,6 +250,83 @@ def cell_state(root: Path, cell: CellSpec) -> str:
     if paths.log.exists() or paths.candidate.exists() or paths.report.exists():
         return "ambiguous"
     return "untouched"
+
+
+RETRYABLE_MARKER = "agent reported an error"
+
+
+def retryable_failure(manifest: dict[str, Any], root: Path, cell: CellSpec) -> str | None:
+    """Return the disclosed reason when a failed generation may be retried once.
+
+    Only provider-side incidents qualify: the driver log's agent error must match one of
+    ``execution.auto_retry.patterns`` (capacity, rate limits, transient 5xx), the cell must
+    not have been retried before, and the failed attempt must have produced no candidate
+    overlay — i.e. no model output that a second attempt could be "retrying into shape".
+    Quality failures never come through here: they end with a candidate and a report.
+    """
+    policy = manifest["execution"].get("auto_retry")
+    if not isinstance(policy, dict):
+        return None
+    patterns = [str(item) for item in policy.get("patterns", [])]
+    if not patterns:
+        return None
+    if cell.candidate_id in manifest["execution"].get("infrastructure_retries", {}):
+        return None
+    paths = artifacts(root, cell)
+    overlay = paths.candidate / "overlay"
+    if overlay.exists() and any(overlay.rglob("*")):
+        return None
+    errors = [line for line in marker_lines(paths.log) if line.startswith(RETRYABLE_MARKER)]
+    if not errors:
+        return None
+    reason = errors[-1][len(RETRYABLE_MARKER) :].strip(" :")
+    lowered = reason.lower()
+    if not any(pattern.lower() in lowered for pattern in patterns):
+        return None
+    return reason[:400]
+
+
+def authorize_retry(
+    manifest_path: Path, manifest: dict[str, Any], root: Path, cell: CellSpec, reason: str
+) -> Path:
+    """Move attempt 1 into an incident ledger and authorize attempt 2 in the manifest.
+
+    This is the same protocol an operator follows by hand after a halt: the failed
+    attempt's log and candidate directory become the ledger, ``incident.json`` records the
+    evidence, and ``execution.infrastructure_retries`` carries the attempt-2 authorization
+    that the cell driver turns into ``--attempt 2 --prior-failure`` so GENERATED.md
+    discloses the retry.
+    """
+    paths = artifacts(root, cell)
+    incident = root / "incidents" / "auto-retry" / cell.candidate_id
+    attempt_dir = incident / "attempt-1"
+    attempt_dir.mkdir(parents=True, exist_ok=True)
+    evidence = [line for line in marker_lines(paths.log) if not line.startswith("RUN_START")]
+    if paths.log.exists():
+        shutil.move(str(paths.log), str(attempt_dir / paths.log.name))
+    if paths.candidate.exists():
+        shutil.move(str(paths.candidate), str(attempt_dir / "candidate"))
+    ledger = incident / "incident.json"
+    atomic_json(
+        ledger,
+        {
+            "cell": cell.key,
+            "candidate_id": cell.candidate_id,
+            "recorded_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "classification": "infrastructure: provider incident matched execution.auto_retry",
+            "reason": reason,
+            "evidence": evidence[-12:],
+            "authorized_retry_scope": "this cell only, attempt 2, same treatment",
+        },
+    )
+    retries = manifest["execution"].setdefault("infrastructure_retries", {})
+    retries[cell.candidate_id] = {
+        "attempt": 2,
+        "prior_failure": reason,
+        "authorization_ledger": ledger.relative_to(root).as_posix(),
+    }
+    atomic_json(manifest_path, manifest)
+    return ledger
 
 
 def prioritized(root: Path, cells: Iterable[CellSpec]) -> list[CellSpec]:
@@ -452,27 +532,50 @@ class RollingCoordinator:
                 if self.stop_generation.is_set():
                     result.stopped_before_generation += 1
                     return
-                await self.activity.generation_started(cell)
-                self.event(
-                    "generation-start",
-                    stage_id=stage_id,
-                    cell=cell.key,
-                    provider_variant=cell.provider_variant,
-                )
-                try:
-                    returncode = await self._process(cell, "generate", stage_id)
-                finally:
-                    await self.activity.generation_finished(cell)
-                self.event(
-                    "generation-end",
-                    stage_id=stage_id,
-                    cell=cell.key,
-                    returncode=returncode,
-                )
-                if returncode != 0:
-                    result.generation_failures += 1
-                    self.stop_generation.set()
-                    return
+                for attempt in (1, 2):
+                    await self.activity.generation_started(cell)
+                    self.event(
+                        "generation-start",
+                        stage_id=stage_id,
+                        cell=cell.key,
+                        provider_variant=cell.provider_variant,
+                        attempt=attempt,
+                    )
+                    try:
+                        returncode = await self._process(cell, "generate", stage_id)
+                    finally:
+                        await self.activity.generation_finished(cell)
+                    self.event(
+                        "generation-end",
+                        stage_id=stage_id,
+                        cell=cell.key,
+                        returncode=returncode,
+                        attempt=attempt,
+                    )
+                    if returncode == 0:
+                        break
+                    reason = (
+                        retryable_failure(self.manifest, self.root, cell) if attempt == 1 else None
+                    )
+                    if reason is None:
+                        result.generation_failures += 1
+                        self.stop_generation.set()
+                        return
+                    ledger = authorize_retry(
+                        self.manifest_path, self.manifest, self.root, cell, reason
+                    )
+                    result.retried_generations += 1
+                    self.event(
+                        "generation-retry",
+                        stage_id=stage_id,
+                        cell=cell.key,
+                        reason=reason,
+                        ledger=ledger.relative_to(self.root).as_posix(),
+                    )
+                    backoff = float(
+                        self.manifest["execution"]["auto_retry"].get("backoff_seconds", 60)
+                    )
+                    await asyncio.sleep(backoff)
 
         # A provider failure stops new paid generations, but every already
         # generated pass@1 candidate is still immutable evidence. Drain those
