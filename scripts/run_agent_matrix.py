@@ -60,6 +60,7 @@ class CellSpec:
     route_kind: str
     billing_mode: str
     gateway_profile: str | None
+    input_digest: str
     config: str
     route_weight: int
     sample: int = 1
@@ -82,6 +83,7 @@ class CellArtifacts:
     candidate: Path
     report: Path
     log: Path
+    sandbox: Path
 
 
 @dataclass
@@ -125,6 +127,45 @@ class StageResult:
         }
 
 
+def cell_input_digest(
+    manifest: dict[str, Any],
+    *,
+    task: str,
+    model: dict[str, Any],
+    config: str,
+    sample: int,
+) -> str:
+    execution_fields = (
+        "max_turns",
+        "wall_clock_seconds",
+        "prompt_sha256",
+        "sanka_prompt_sha256",
+    )
+    toolchain_fields = (
+        "claude_version",
+        "claude_bin_sha256",
+        "agent_runner_sha256",
+        "evaluator_sha256",
+        "sanka_cli",
+        "extension_version",
+        "sanka_skill_sha256",
+    )
+    toolchain = manifest.get("toolchain", {})
+    payload = {
+        "benchmark_sha": manifest["benchmark_sha"],
+        "cell": {"task": task, "config": config, "sample": sample},
+        "model": model,
+        "execution": {
+            key: manifest["execution"].get(key)
+            for key in execution_fields
+            if key in manifest["execution"]
+        },
+        "toolchain": {key: toolchain.get(key) for key in toolchain_fields if key in toolchain},
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 def build_cells(manifest: dict[str, Any]) -> list[CellSpec]:
     cells: list[CellSpec] = []
     weights = manifest["suite"]["route_weights"]
@@ -162,6 +203,18 @@ def build_cells(manifest: dict[str, Any]) -> list[CellSpec]:
                                 str(model["gateway_profile"])
                                 if model.get("gateway_profile") is not None
                                 else None
+                            ),
+                            input_digest=(
+                                cell_input_digest(
+                                    manifest,
+                                    task=str(task),
+                                    model=model,
+                                    config=str(config),
+                                    sample=sample,
+                                )
+                                if manifest.get("schema")
+                                == "sanka-bench/model-matrix-run-manifest/v2"
+                                else ""
                             ),
                             config=str(config),
                             route_weight=int(weights[task]),
@@ -297,6 +350,7 @@ def artifacts(root: Path, cell: CellSpec) -> CellArtifacts:
         candidate=root / "candidates" / cell.task / cell.candidate_id,
         report=root / "reports" / f"{cell.task}-{cell.candidate_id}.json",
         log=root / "logs" / f"run-{cell.task_suffix}-{cell.candidate_id}.log",
+        sandbox=root / "sandboxes" / cell.candidate_id,
     )
 
 
@@ -309,6 +363,17 @@ def marker_lines(path: Path) -> list[str]:
 def cell_state(root: Path, cell: CellSpec) -> str:
     paths = artifacts(root, cell)
     lines = marker_lines(paths.log)
+    if cell.input_digest and (
+        paths.log.exists()
+        or paths.candidate.exists()
+        or paths.report.exists()
+        or paths.sandbox.exists()
+    ):
+        recorded = [
+            line.removeprefix("INPUT_DIGEST=") for line in lines if line.startswith("INPUT_DIGEST=")
+        ]
+        if recorded != [cell.input_digest]:
+            return "ambiguous"
     driver_lines = [line for line in lines if line.startswith("DRIVER_DONE ")]
     if driver_lines:
         marker = driver_lines[-1]
@@ -330,7 +395,12 @@ def cell_state(root: Path, cell: CellSpec) -> str:
         if not paths.candidate.is_dir() or paths.report.exists():
             return "ambiguous"
         return "generated"
-    if paths.log.exists() or paths.candidate.exists() or paths.report.exists():
+    if (
+        paths.log.exists()
+        or paths.candidate.exists()
+        or paths.report.exists()
+        or paths.sandbox.exists()
+    ):
         return "ambiguous"
     return "untouched"
 
@@ -389,6 +459,8 @@ def authorize_retry(
         shutil.move(str(paths.log), str(attempt_dir / paths.log.name))
     if paths.candidate.exists():
         shutil.move(str(paths.candidate), str(attempt_dir / "candidate"))
+    if paths.sandbox.exists():
+        shutil.move(str(paths.sandbox), str(attempt_dir / "sandbox"))
     ledger = incident / "incident.json"
     atomic_json(
         ledger,
@@ -413,7 +485,17 @@ def authorize_retry(
 
 
 def prioritized(root: Path, cells: Iterable[CellSpec]) -> list[CellSpec]:
+    cells = list(cells)
     states = {cell.key: cell_state(root, cell) for cell in cells}
+    pairs: dict[tuple[str, str, int], int] = {}
+    for cell in cells:
+        pairs.setdefault((cell.task, cell.model_slug, cell.sample), len(pairs) + 1)
+
+    def lane_rank(cell: CellSpec) -> int:
+        pair = pairs[(cell.task, cell.model_slug, cell.sample)]
+        preferred = "alone" if pair % 2 else "with-sanka"
+        return 0 if cell.config == preferred else 1
+
     return sorted(
         cells,
         key=lambda cell: (
@@ -421,8 +503,9 @@ def prioritized(root: Path, cells: Iterable[CellSpec]) -> list[CellSpec]:
             -cell.route_weight,
             cell.provider,
             cell.model_slug,
-            0 if cell.config == "alone" else 1,
             cell.task,
+            cell.sample,
+            lane_rank(cell),
         ),
     )
 
@@ -573,6 +656,7 @@ class RollingCoordinator:
                 "SANKA_BENCH_WAVE_CONCURRENCY": str(self.stage_concurrency),
                 "SANKA_BENCH_TIMING_METHODOLOGY": "rolling-provider-queue",
                 "SANKA_BENCH_COORDINATOR_RUN_ID": str(self.manifest["authorization"]["run_id"]),
+                "SANKA_BENCH_INPUT_DIGEST": cell.input_digest,
             }
         )
         with worker_log.open("wb") as handle:

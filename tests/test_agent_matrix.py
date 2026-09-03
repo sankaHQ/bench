@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import subprocess
@@ -17,7 +18,9 @@ sys.path.insert(0, str(SCRIPTS))
 from run_agent_matrix import (  # noqa: E402
     RollingCoordinator,
     artifacts,
+    authorize_retry,
     build_cells,
+    cell_input_digest,
     cell_state,
     ensure_authorized,
     prioritized,
@@ -231,6 +234,116 @@ def test_official_manifest_rejects_route_and_identity_mismatch(tmp_path: Path) -
     value["models"][0]["actual_model_id"] = "different-model"
     with pytest.raises(ValueError, match="actual model"):
         validate_official_manifest(value, tmp_path)
+
+
+def test_cell_input_digest_covers_model_prompts_toolchain_and_sample(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["execution"].update(
+        {
+            "max_turns": 60,
+            "wall_clock_seconds": 3600,
+            "prompt_sha256": "sha256:" + "1" * 64,
+            "sanka_prompt_sha256": "sha256:" + "2" * 64,
+        }
+    )
+    value.setdefault("toolchain", {}).update(
+        {
+            "claude_version": "2.1.241",
+            "claude_bin_sha256": "sha256:" + "3" * 64,
+            "sanka_cli": "sanka, version 0.3.0",
+            "sanka_skill_sha256": "sha256:" + "4" * 64,
+        }
+    )
+
+    def digest(candidate: dict[str, Any], sample: int = 1) -> str:
+        return cell_input_digest(
+            candidate,
+            task="drf-fastapi-001",
+            model=candidate["models"][0],
+            config="alone",
+            sample=sample,
+        )
+
+    original = digest(value)
+    assert original.startswith("sha256:")
+    for section, key, replacement in (
+        ("models", "requested_model_id", "different-model"),
+        ("execution", "prompt_sha256", "sha256:" + "5" * 64),
+        ("toolchain", "claude_version", "2.1.242"),
+        ("toolchain", "sanka_skill_sha256", "sha256:" + "6" * 64),
+    ):
+        changed = copy.deepcopy(value)
+        target = changed["models"][0] if section == "models" else changed[section]
+        target[key] = replacement
+        assert digest(changed) != original
+    assert digest(value, sample=2) != original
+
+
+def test_resume_refuses_missing_or_stale_input_digest(tmp_path: Path) -> None:
+    cells = build_cells(official_manifest(tmp_path))
+    cell = cells[0]
+    paths = artifacts(tmp_path, cell)
+    paths.candidate.mkdir(parents=True)
+    paths.log.parent.mkdir(parents=True)
+    paths.log.write_text("GENERATION_DONE run_exit=0 wall_seconds=1\n", encoding="utf-8")
+    assert cell_state(tmp_path, cell) == "ambiguous"
+
+    paths.log.write_text(
+        f"INPUT_DIGEST=sha256:{'0' * 64}\nGENERATION_DONE run_exit=0 wall_seconds=1\n",
+        encoding="utf-8",
+    )
+    assert cell_state(tmp_path, cell) == "ambiguous"
+
+    paths.log.write_text(
+        f"INPUT_DIGEST={cell.input_digest}\nGENERATION_DONE run_exit=0 wall_seconds=1\n",
+        encoding="utf-8",
+    )
+    assert cell_state(tmp_path, cell) == "generated"
+
+    sandbox_only = cells[1]
+    artifacts(tmp_path, sandbox_only).sandbox.mkdir(parents=True)
+    assert cell_state(tmp_path, sandbox_only) == "ambiguous"
+
+
+def test_retry_preserves_the_failed_sandbox_with_the_incident(tmp_path: Path) -> None:
+    value = manifest()
+    manifest_path = write_manifest(tmp_path, value)
+    cell = build_cells(value)[0]
+    paths = artifacts(tmp_path, cell)
+    paths.log.parent.mkdir(parents=True)
+    paths.log.write_text("agent reported an error: at capacity\n", encoding="utf-8")
+    paths.candidate.mkdir(parents=True)
+    paths.sandbox.mkdir(parents=True)
+    (paths.sandbox / "raw.jsonl").write_text("evidence\n", encoding="utf-8")
+
+    ledger = authorize_retry(manifest_path, value, tmp_path, cell, "at capacity")
+
+    attempt = ledger.parent / "attempt-1"
+    assert (attempt / "sandbox" / "raw.jsonl").read_text() == "evidence\n"
+    assert not paths.sandbox.exists()
+
+
+def test_prioritized_alternates_the_first_lane_for_each_pair(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["suite"] = {
+        "tasks": ["drf-fastapi-001", "drf-fastapi-007"],
+        "route_weights": {"drf-fastapi-001": 14, "drf-fastapi-007": 7},
+    }
+    value["execution"]["samples"] = 2
+    value["execution"]["expected_rows"] = 8
+
+    ordered = prioritized(tmp_path, build_cells(value))
+
+    assert [(cell.task, cell.sample, cell.config) for cell in ordered] == [
+        ("drf-fastapi-001", 1, "alone"),
+        ("drf-fastapi-001", 1, "with-sanka"),
+        ("drf-fastapi-001", 2, "with-sanka"),
+        ("drf-fastapi-001", 2, "alone"),
+        ("drf-fastapi-007", 1, "alone"),
+        ("drf-fastapi-007", 1, "with-sanka"),
+        ("drf-fastapi-007", 2, "with-sanka"),
+        ("drf-fastapi-007", 2, "alone"),
+    ]
 
     value = official_manifest(tmp_path)
     value["models"][0]["route_kind"] = "gateway"

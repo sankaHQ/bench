@@ -353,6 +353,15 @@ def ensure_generation_authorized(manifest: dict[str, Any]) -> None:
         raise ValueError("generation must be owned by the authorized foreground coordinator")
 
 
+def required_input_digest(manifest: dict[str, Any]) -> str | None:
+    if manifest.get("schema") != "sanka-bench/model-matrix-run-manifest/v2":
+        return None
+    value = os.environ.get("SANKA_BENCH_INPUT_DIGEST", "")
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+        raise ValueError("official generation requires the coordinator input digest")
+    return value
+
+
 def retry_metadata(manifest: dict[str, Any], cell: Cell, root: Path) -> tuple[int, str | None]:
     retries = manifest["execution"].get("infrastructure_retries", {})
     metadata = retries.get(cell.candidate_id)
@@ -443,6 +452,7 @@ def normalize_candidate_metadata(paths: Paths, cell: Cell) -> bool:
 def run_generation(
     manifest: dict[str, Any], cell: Cell, paths: Paths, tools: dict[str, Path]
 ) -> int:
+    input_digest = required_input_digest(manifest)
     if paths.candidate.exists() or paths.report.exists() or paths.log.exists():
         raise ValueError(f"pass@1 artifact already exists for {cell.candidate_id}")
     for directory in (paths.candidate.parent, paths.report.parent, paths.log.parent):
@@ -486,6 +496,8 @@ def run_generation(
         f"SANKA_EXTENSION={toolchain.get('extension_version', 'not offered')}",
         f"WAVE_ID={os.environ.get('SANKA_BENCH_WAVE_ID', 'rolling-unset')}",
     ]
+    if input_digest is not None:
+        header.insert(1, f"INPUT_DIGEST={input_digest}")
     paths.log.write_text("\n".join(header) + "\n", encoding="utf-8")
     started = time.monotonic()
     with paths.log.open("a", encoding="utf-8") as handle:

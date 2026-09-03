@@ -330,3 +330,18 @@ def test_route_environment_separates_subscription_and_gateway(driver: object) ->
         )
     with pytest.raises(ValueError, match="base URL"):
         driver.route_environment({"ANTHROPIC_AUTH_TOKEN": "token"}, gateway)  # type: ignore[attr-defined]
+
+
+def test_official_generation_requires_the_coordinator_input_digest(
+    driver: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest = _manifest(samples=1)
+    manifest["schema"] = "sanka-bench/model-matrix-run-manifest/v2"
+    monkeypatch.delenv("SANKA_BENCH_INPUT_DIGEST", raising=False)
+    with pytest.raises(ValueError, match="input digest"):
+        driver.required_input_digest(manifest)  # type: ignore[attr-defined]
+
+    expected = "sha256:" + "a" * 64
+    monkeypatch.setenv("SANKA_BENCH_INPUT_DIGEST", expected)
+    assert driver.required_input_digest(manifest) == expected  # type: ignore[attr-defined]
+    assert driver.required_input_digest(_manifest(samples=1)) is None  # type: ignore[attr-defined]
