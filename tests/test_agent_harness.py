@@ -9,6 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from sanka_bench.schema import load_and_validate
+
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
 
@@ -53,6 +55,93 @@ def test_agent_stats_parses_last_json_line(harness: object) -> None:
     assert stats["num_turns"] == 12
     assert stats["is_error"] is False
     assert stats_of("no json here") == {}
+
+
+def test_subscription_stats_keep_tokens_without_claiming_actual_cost(harness: object) -> None:
+    stdout = json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "num_turns": 3,
+            "duration_ms": 1200,
+            "total_cost_usd": 1.25,
+            "is_error": False,
+            "modelUsage": {
+                "gateway-alias": {
+                    "inputTokens": 100,
+                    "cacheCreationInputTokens": 20,
+                    "cacheReadInputTokens": 40,
+                    "outputTokens": 30,
+                }
+            },
+        }
+    )
+
+    stats = harness.claude_stats(  # type: ignore[attr-defined]
+        stdout,
+        billing_mode="subscription",
+        requested_model_id="gateway-alias",
+        actual_model_id="claude-sonnet-5",
+        measured_ms=1300,
+    )
+
+    assert stats["cost_usd"] is None
+    assert stats["reported_equivalent_cost_usd"] == 1.25
+    assert stats["cost_basis"] == "subscription-no-marginal-cost"
+    assert stats["input_tokens"] == 100
+    assert stats["cache_creation_input_tokens"] == 20
+    assert stats["cache_read_input_tokens"] == 40
+    assert stats["output_tokens"] == 30
+    assert stats["total_tokens"] == 190
+    assert stats["model_usage"]["gateway-alias"]["actual_model_id"] == "claude-sonnet-5"
+
+
+def test_api_key_stats_use_claude_reported_cost(harness: object) -> None:
+    stats = harness.claude_stats(  # type: ignore[attr-defined]
+        json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "num_turns": 1,
+                "total_cost_usd": 0.75,
+                "is_error": False,
+                "modelUsage": {"gpt-alias": {"inputTokens": 10, "outputTokens": 5}},
+            }
+        ),
+        billing_mode="api_key",
+        requested_model_id="gpt-alias",
+        actual_model_id="gpt-5.6-20260901",
+        measured_ms=900,
+    )
+
+    assert stats["cost_usd"] == 0.75
+    assert stats["reported_equivalent_cost_usd"] is None
+    assert stats["cost_basis"] == "claude-code-reported"
+    assert stats["duration_ms"] == 900
+
+
+def test_claude_stats_leave_missing_usage_null(harness: object) -> None:
+    stats = harness.claude_stats(  # type: ignore[attr-defined]
+        json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "num_turns": 1,
+                "is_error": False,
+            }
+        ),
+        billing_mode="subscription",
+        requested_model_id="claude-sonnet-5",
+        actual_model_id="claude-sonnet-5",
+        measured_ms=500,
+    )
+
+    assert stats["input_tokens"] is None
+    assert stats["cache_creation_input_tokens"] is None
+    assert stats["cache_read_input_tokens"] is None
+    assert stats["output_tokens"] is None
+    assert stats["total_tokens"] is None
+    assert stats["cost_usd"] is None
 
 
 def test_prompts_differ_only_by_the_sanka_paragraph(harness: object) -> None:
@@ -676,6 +765,13 @@ def test_stream_transcript_is_preserved_and_result_is_last_event(tmp_path: Path)
     assert json.loads((out / "agent-result.json").read_text(encoding="utf-8")) == result
     disclosure = (out / "GENERATED.md").read_text(encoding="utf-8")
     assert "completed within budget" in disclosure
+    telemetry = json.loads((out / "telemetry.json").read_text(encoding="utf-8"))
+    assert telemetry["schema"] == "sanka-bench/agent-cell-telemetry/v1"
+    assert telemetry["digests"]["transcript_sha256"].startswith("sha256:")
+    assert telemetry["digests"]["overlay_sha256"].startswith("sha256:")
+    assert telemetry["timing"]["agent_wall_seconds"] >= 0
+    candidate = load_and_validate(out / "candidate.yaml", "candidate")
+    assert candidate["stats"]["actual_model_id"] == "claude-sonnet-5"
 
 
 def test_unparseable_nonzero_exit_is_an_agent_run_failure(tmp_path: Path) -> None:

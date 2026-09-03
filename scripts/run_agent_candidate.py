@@ -82,7 +82,10 @@ import sys
 import tempfile
 import time
 from contextlib import nullcontext
+from datetime import UTC, datetime
 from pathlib import Path
+
+from sanka_bench.hashing import digest_tree
 
 PROMPT_CORE = """Migrate this Django REST Framework application to FastAPI, natively.
 
@@ -576,6 +579,16 @@ def _prepare_readiness_context(
     return context
 
 
+def _sha256_bytes(value: bytes) -> str:
+    return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
+def _write_json_atomic(path: Path, payload: dict[str, object]) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", type=Path, required=True)
@@ -595,9 +608,8 @@ def main() -> int:
     parser.add_argument("--gateway-profile", default=None)
     parser.add_argument(
         "--provider",
-        default="openai",
-        choices=("openai", "deepinfra", "fireworks", "together"),
-        help="codex only: which OpenAI-compatible API serves the model",
+        default=None,
+        help="actual serving provider disclosed by this treatment",
     )
     parser.add_argument(
         "--provider-variant",
@@ -635,11 +647,19 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.provider is None:
+        args.provider = "anthropic" if args.agent == "claude-code" else "openai"
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.provider_variant):
         print(
             "--provider-variant must be a slug containing only letters, digits, '.', '_' or '-'",
             file=sys.stderr,
         )
+        return 2
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.provider):
+        print("--provider must be a slug", file=sys.stderr)
+        return 2
+    if args.agent == "codex" and args.provider not in PROVIDER_BASE_URLS:
+        print(f"unsupported Codex provider: {args.provider}", file=sys.stderr)
         return 2
 
     task_dir = args.task.resolve()
@@ -669,6 +689,7 @@ def main() -> int:
         [args.agent_bin, "--version"], capture_output=True, text=True, check=False
     ).stdout.strip()
 
+    lane_started = time.monotonic()
     sandbox_context = (
         tempfile.TemporaryDirectory(prefix="sanka-agent-")
         if args.sandbox is None
@@ -757,6 +778,7 @@ def main() -> int:
             ]
         terminal_reason: str | None = None
         timed_out = False
+        agent_started_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         started = time.monotonic()
         try:
             outcome = subprocess.run(
@@ -784,10 +806,17 @@ def main() -> int:
                 "killed and the workspace was frozen as-is"
             )
         measured_ms = (time.monotonic() - started) * 1000
+        agent_ended_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         if args.agent == "codex":
             stats = _codex_stats(outcome.stdout, args, measured_ms)
         else:
-            stats = _agent_stats(outcome.stdout)
+            stats = claude_stats(
+                outcome.stdout,
+                billing_mode=args.billing_mode,
+                requested_model_id=args.model,
+                actual_model_id=args.actual_model_id or args.model,
+                measured_ms=measured_ms,
+            )
         out_dir = args.out.resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
         raw = outcome.stdout.strip().splitlines()
@@ -802,6 +831,50 @@ def main() -> int:
             (out_dir / "sanka-skill.json").write_text(
                 json.dumps(skill_record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
             )
+        telemetry: dict[str, object] = {
+            "schema": "sanka-bench/agent-cell-telemetry/v1",
+            "input_digest": os.environ.get("SANKA_BENCH_INPUT_DIGEST") or None,
+            "harness": args.agent,
+            "requested_model_id": args.model,
+            "actual_model_id": args.actual_model_id or args.model,
+            "provider": args.provider,
+            "provider_variant": args.provider_variant,
+            "route_kind": args.route_kind,
+            "billing_mode": args.billing_mode,
+            "gateway_profile": args.gateway_profile,
+            "started_at": agent_started_at,
+            "ended_at": agent_ended_at,
+            "timing": {
+                "lane_setup_seconds": round(started - lane_started, 6),
+                "agent_wall_seconds": round(measured_ms / 1000, 6),
+            },
+            "usage": {
+                key: stats.get(key)
+                for key in (
+                    "input_tokens",
+                    "cache_creation_input_tokens",
+                    "cache_read_input_tokens",
+                    "output_tokens",
+                    "total_tokens",
+                    "model_usage",
+                )
+            },
+            "cost": {
+                "cost_usd": stats.get("cost_usd"),
+                "reported_equivalent_cost_usd": stats.get("reported_equivalent_cost_usd"),
+                "basis": stats.get("cost_basis"),
+            },
+            "toolchain": {
+                "agent_version": agent_version or None,
+                "sanka_versions": sanka_versions,
+                "sanka_skill": skill_record,
+            },
+            "digests": {
+                "transcript_sha256": _sha256_bytes(outcome.stdout.encode()),
+                "overlay_sha256": None,
+            },
+        }
+        _write_json_atomic(out_dir / "telemetry.json", telemetry)
         if readiness_context is not None:
             (out_dir / "sanka-readiness.json").write_text(
                 json.dumps(readiness_context, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -866,6 +939,12 @@ def main() -> int:
             destination = overlay / key
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(workspace / key, destination)
+
+        telemetry["digests"] = {
+            "transcript_sha256": _sha256_bytes(outcome.stdout.encode()),
+            "overlay_sha256": digest_tree(overlay),
+        }
+        _write_json_atomic(out_dir / "telemetry.json", telemetry)
 
         if not added:
             turns = stats.get("num_turns")
@@ -1069,6 +1148,78 @@ def _agent_error_is_terminal(stats: dict[str, object], *, timed_out: bool) -> bo
     return not (timed_out and stats.get("subtype") == "codex-no-terminal-event")
 
 
+def claude_stats(
+    stdout: str,
+    *,
+    billing_mode: str,
+    requested_model_id: str,
+    actual_model_id: str,
+    measured_ms: float,
+) -> dict[str, object]:
+    payload: dict[str, object] | None = None
+    for line in reversed([line for line in stdout.splitlines() if line.strip()]):
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict) and "num_turns" in value:
+            payload = value
+            break
+    if payload is None:
+        return {}
+
+    raw_usage = payload.get("modelUsage")
+    model_usage: dict[str, dict[str, object]] = {}
+    if isinstance(raw_usage, dict):
+        for client_model, item in raw_usage.items():
+            if not isinstance(item, dict):
+                continue
+            model_usage[str(client_model)] = {
+                "actual_model_id": actual_model_id,
+                "input_tokens": int(item.get("inputTokens") or 0),
+                "cache_creation_input_tokens": int(item.get("cacheCreationInputTokens") or 0),
+                "cache_read_input_tokens": int(item.get("cacheReadInputTokens") or 0),
+                "output_tokens": int(item.get("outputTokens") or 0),
+            }
+    token_fields = (
+        "input_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+        "output_tokens",
+    )
+    totals = (
+        {field: sum(int(item[field]) for item in model_usage.values()) for field in token_fields}
+        if model_usage
+        else dict.fromkeys(token_fields)
+    )
+    total_tokens = sum(int(value) for value in totals.values()) if model_usage else None
+    raw_cost = payload.get("total_cost_usd")
+    reported_cost = float(raw_cost) if isinstance(raw_cost, int | float) else None
+    subscription = billing_mode == "subscription"
+    raw_duration = payload.get("duration_ms")
+    duration_ms = (
+        float(raw_duration) if isinstance(raw_duration, int | float) else float(measured_ms)
+    )
+    return {
+        "num_turns": payload.get("num_turns"),
+        "duration_ms": duration_ms,
+        "total_cost_usd": reported_cost,
+        "cost_usd": None if subscription else reported_cost,
+        "reported_equivalent_cost_usd": reported_cost if subscription else None,
+        "cost_basis": ("subscription-no-marginal-cost" if subscription else "claude-code-reported"),
+        "requested_model_id": requested_model_id,
+        "actual_model_id": actual_model_id,
+        "billing_mode": billing_mode,
+        **totals,
+        "total_tokens": total_tokens,
+        "model_usage": model_usage,
+        "is_error": payload.get("is_error"),
+        "subtype": payload.get("subtype"),
+        "result": payload.get("result"),
+        "terminal_event": payload.get("type"),
+    }
+
+
 def _agent_stats(stdout: str) -> dict[str, object]:
     for line in reversed([line for line in stdout.splitlines() if line.strip()]):
         try:
@@ -1105,16 +1256,43 @@ def _write_candidate(
         "  command: scripts/run_agent_candidate.py (prompt and budget in GENERATED.md)",
     ]
     duration = stats.get("duration_ms")
-    cost = stats.get("total_cost_usd")
+    cost = stats.get("cost_usd") if "cost_usd" in stats else stats.get("total_cost_usd")
+    equivalent_cost = stats.get("reported_equivalent_cost_usd")
     turns = stats.get("num_turns")
-    if any(isinstance(value, int | float) for value in (duration, cost, turns)):
-        lines.append("stats:")
-        if isinstance(turns, int | float):
-            lines.append(f"  turns: {int(turns)}")
-        if isinstance(duration, int | float):
-            lines.append(f"  duration_seconds: {round(duration / 1000, 1)}")
-        if isinstance(cost, int | float):
-            lines.append(f"  cost_usd: {round(float(cost), 4)}")
+    lines.extend(
+        [
+            "stats:",
+            f"  requested_model_id: {json.dumps(args.model)}",
+            f"  actual_model_id: {json.dumps(args.actual_model_id or args.model)}",
+            f"  billing_mode: {json.dumps(args.billing_mode)}",
+            f"  cost_basis: {json.dumps(str(stats.get('cost_basis') or 'agent-reported'))}",
+        ]
+    )
+    if isinstance(turns, int | float):
+        lines.append(f"  turns: {int(turns)}")
+    if isinstance(duration, int | float):
+        lines.append(f"  duration_seconds: {round(duration / 1000, 3)}")
+    for field in (
+        "input_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+        "output_tokens",
+        "total_tokens",
+    ):
+        value = stats.get(field)
+        if isinstance(value, int | float):
+            lines.append(f"  {field}: {int(value)}")
+    lines.append(
+        f"  cost_usd: {round(float(cost), 6) if isinstance(cost, int | float) else 'null'}"
+    )
+    lines.append(
+        "  reported_equivalent_cost_usd: "
+        + (
+            str(round(float(equivalent_cost), 6))
+            if isinstance(equivalent_cost, int | float)
+            else "null"
+        )
+    )
     (out_dir / "candidate.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -1133,8 +1311,12 @@ def _write_disclosure(
 ) -> None:
     duration = stats.get("duration_ms")
     minutes = f"{int(duration) / 60000:.1f} min" if isinstance(duration, int | float) else "unknown"
-    cost = stats.get("total_cost_usd")
+    cost = stats.get("cost_usd") if "cost_usd" in stats else stats.get("total_cost_usd")
     cost_text = f"${float(cost):.2f}" if isinstance(cost, int | float) else "unknown"
+    equivalent = stats.get("reported_equivalent_cost_usd")
+    equivalent_text = (
+        f"${float(equivalent):.2f}" if isinstance(equivalent, int | float) else "not applicable"
+    )
     if args.agent == "claude-code":
         budget_text = str(args.max_turns)
     else:
@@ -1155,7 +1337,7 @@ def _write_disclosure(
     elif args.attempt == 1:
         attempt_text += " (pass@1; no retries)"
     agent_label = "Claude Code" if args.agent == "claude-code" else "Codex CLI"
-    provider = "anthropic" if args.agent == "claude-code" else args.provider
+    provider = args.provider
     web_search_text = (
         "Claude Code default tool set"
         if args.agent == "claude-code"
@@ -1188,11 +1370,15 @@ intervention between prompt and frozen overlay.
 | Web search | {web_search_text} |
 | Recovered transport notices | {stats.get("recovered_error_events", 0)} |
 | Cost basis | {stats.get("cost_basis", "agent-reported")} |
-| Model | `{args.model}` |
+| Requested model | `{args.model}` |
+| Actual model | `{args.actual_model_id or args.model}` |
+| Route / billing | {args.route_kind} / {args.billing_mode} |
+| Gateway profile | {args.gateway_profile or "not applicable"} |
 | Turn budget | {budget_text} |
 | Turns used | {stats.get("num_turns", "unknown")} |
 | Duration | {minutes} |
-| Reported cost | {cost_text} |
+| Actual cost | {cost_text} |
+| Claude Code API-equivalent estimate | {equivalent_text} |
 | Terminal | {terminal_reason or "completed within budget"} |
 | Attempt | {attempt_text} |
 | Sanka CLI | {sanka_versions or "not offered"} |

@@ -20,6 +20,7 @@ _EXCLUDED_PARTS = {
     "reports",
 }
 _EXCLUDED_SUFFIXES = {".pyc", ".sqlite3"}
+_EXCLUDED_ROOT_NAMES = {"telemetry.json"}
 
 
 def digest_payload(payload: Any) -> str:
@@ -36,6 +37,8 @@ def digest_tree(root: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(candidate for candidate in root.rglob("*") if candidate.is_file()):
         relative = path.relative_to(root)
+        if len(relative.parts) == 1 and relative.name in _EXCLUDED_ROOT_NAMES:
+            continue
         if any(
             part in _EXCLUDED_PARTS or part.startswith(".sanka-bench-output-")
             for part in relative.parts

@@ -413,11 +413,11 @@ def generation_command(
         str(int(manifest["execution"]["max_turns"])),
         "--provider-variant",
         cell.provider_variant,
+        "--provider",
+        cell.provider,
     ]
     if cell.gateway_profile is not None:
         command.extend(["--gateway-profile", cell.gateway_profile])
-    if cell.agent == "codex":
-        command.extend(["--provider", cell.provider])
     if attempt > 1:
         assert prior_failure is not None
         command.extend(["--attempt", str(attempt), "--prior-failure", prior_failure])
@@ -446,6 +446,22 @@ def normalize_candidate_metadata(paths: Paths, cell: Cell) -> bool:
     ):
         raise ValueError("provider variant disclosure is missing from GENERATED.md")
     candidate_yaml.write_text(text.replace(expected_line, ""), encoding="utf-8")
+    return True
+
+
+def update_cell_telemetry(paths: Paths, **sections: object) -> bool:
+    path = paths.candidate / "telemetry.json"
+    if not path.is_file():
+        return False
+    payload = load_json(path)
+    for name, value in sections.items():
+        if isinstance(value, dict) and isinstance(payload.get(name), dict):
+            payload[name].update(value)
+        else:
+            payload[name] = value
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
     return True
 
 
@@ -518,7 +534,33 @@ def run_generation(
             "METADATA_NORMALIZED provider_variant_from_candidate_yaml=removed "
             "disclosure_preserved=GENERATED.md overlay_unchanged=true",
         )
-    wall = round(time.monotonic() - started)
+    generation_seconds = time.monotonic() - started
+    wall = round(generation_seconds)
+    telemetry_path = paths.candidate / "telemetry.json"
+    setup_seconds = generation_seconds
+    if telemetry_path.is_file():
+        telemetry = load_json(telemetry_path)
+        timing = telemetry.get("timing")
+        if isinstance(timing, dict) and isinstance(timing.get("agent_wall_seconds"), int | float):
+            setup_seconds = max(0.0, generation_seconds - float(timing["agent_wall_seconds"]))
+    updated = update_cell_telemetry(
+        paths,
+        timing={
+            "generation_seconds": round(generation_seconds, 6),
+            "setup_seconds": round(setup_seconds, 6),
+        },
+        wave={
+            "id": os.environ.get("SANKA_BENCH_WAVE_ID", "rolling-unset"),
+            "admitted_concurrency": int(os.environ.get("SANKA_BENCH_WAVE_CONCURRENCY", "1")),
+            "methodology": os.environ.get(
+                "SANKA_BENCH_TIMING_METHODOLOGY", "rolling-provider-queue"
+            ),
+            "attempt": attempt,
+        },
+        failure_class=None if outcome.returncode == 0 else "generation-driver-error",
+    )
+    if manifest.get("schema") == "sanka-bench/model-matrix-run-manifest/v2" and not updated:
+        raise ValueError("official candidate runner did not write telemetry")
     append_line(paths.log, f"GENERATION_END_UTC={utc_now()}")
     append_line(paths.log, f"GENERATION_DONE run_exit={outcome.returncode} wall_seconds={wall}")
     if outcome.returncode != 0:
@@ -564,7 +606,30 @@ def run_evaluation(cell: Cell, paths: Paths, tools: dict[str, Path]) -> int:
             stderr=subprocess.STDOUT,
             check=False,
         )
-    wall = round(time.monotonic() - started)
+    evaluation_seconds = time.monotonic() - started
+    wall = round(evaluation_seconds)
+    report_status: str | None = None
+    report_digest: str | None = None
+    if paths.report.is_file():
+        report_digest = "sha256:" + hashlib.sha256(paths.report.read_bytes()).hexdigest()
+        try:
+            report_status = str(load_json(paths.report).get("status") or "unknown")
+        except (OSError, TypeError, json.JSONDecodeError):
+            report_status = "invalid"
+    update_cell_telemetry(
+        paths,
+        timing={"evaluation_seconds": round(evaluation_seconds, 6)},
+        evaluation={
+            "exit_code": outcome.returncode,
+            "status": report_status,
+            "report_sha256": report_digest,
+        },
+        failure_class=(
+            None
+            if outcome.returncode == 0 and paths.report.is_file()
+            else "evaluation-driver-error"
+        ),
+    )
     append_line(paths.log, f"EVAL_END_UTC={utc_now()}")
     append_line(paths.log, f"EVAL_DONE eval_exit={outcome.returncode} wall_seconds={wall}")
     recorded = "recorded" if paths.report.is_file() else "unknown"

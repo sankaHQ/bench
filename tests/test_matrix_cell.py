@@ -250,7 +250,7 @@ def test_generation_command_offers_sanka_only_to_with_sanka_cells(
         manifest, sanka, paths, tools, attempt=1, prior_failure=None
     )
     assert command[command.index("--sanka-bin") + 1] == str(tmp_path / "sanka")
-    assert "--provider" not in command
+    assert command[command.index("--provider") + 1] == "anthropic"
 
 
 def test_generation_requires_the_authorized_coordinator(
@@ -345,3 +345,44 @@ def test_official_generation_requires_the_coordinator_input_digest(
     monkeypatch.setenv("SANKA_BENCH_INPUT_DIGEST", expected)
     assert driver.required_input_digest(manifest) == expected  # type: ignore[attr-defined]
     assert driver.required_input_digest(_manifest(samples=1)) is None  # type: ignore[attr-defined]
+
+
+def test_cell_telemetry_updates_are_merged_atomically(driver: object, tmp_path: Path) -> None:
+    manifest = _manifest(samples=1)
+    cell = driver.resolve_cell(manifest, "001", "sonnet5", "alone", 1)  # type: ignore[attr-defined]
+    paths = driver.resolve_paths(tmp_path / "run-manifest.json", manifest, cell)  # type: ignore[attr-defined]
+    paths.candidate.mkdir(parents=True)
+    telemetry = paths.candidate / "telemetry.json"
+    telemetry.write_text(
+        json.dumps(
+            {
+                "schema": "sanka-bench/agent-cell-telemetry/v1",
+                "timing": {"agent_wall_seconds": 1.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    driver.update_cell_telemetry(  # type: ignore[attr-defined]
+        paths,
+        timing={"generation_seconds": 1.5, "setup_seconds": 0.5},
+        wave={"id": "wave-1", "admitted_concurrency": 2},
+    )
+    driver.update_cell_telemetry(  # type: ignore[attr-defined]
+        paths,
+        timing={"evaluation_seconds": 0.25},
+        evaluation={"status": "passed", "report_sha256": "sha256:" + "a" * 64},
+        failure_class=None,
+    )
+
+    payload = json.loads(telemetry.read_text(encoding="utf-8"))
+    assert payload["timing"] == {
+        "agent_wall_seconds": 1.0,
+        "generation_seconds": 1.5,
+        "setup_seconds": 0.5,
+        "evaluation_seconds": 0.25,
+    }
+    assert payload["wave"]["id"] == "wave-1"
+    assert payload["evaluation"]["status"] == "passed"
+    assert payload["failure_class"] is None
+    assert not telemetry.with_suffix(".json.tmp").exists()
