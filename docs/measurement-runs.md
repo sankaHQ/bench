@@ -30,6 +30,20 @@ drains evaluation for every already-generated candidate. This prevents a
 provider incident from stranding completed work or causing an accidental
 second model call.
 
+One class of failure may be retried without an operator: a provider incident
+that produced no model output. When the manifest declares
+`execution.auto_retry` with `patterns` (case-insensitive substrings such as
+`at capacity`, `rate limit`, `overloaded`) and an optional `backoff_seconds`,
+a failed generation whose driver log ends in a matching `agent reported an
+error` line and whose candidate has no overlay is moved into
+`incidents/auto-retry/<candidate>/attempt-1/`, recorded in `incident.json`,
+authorized as attempt 2 in `execution.infrastructure_retries`, and generated
+once more after the backoff. The cell driver passes `--attempt 2
+--prior-failure` to the agent runner, so GENERATED.md discloses the retry. A
+second failure, an unmatched error, a previously retried cell, or any attempt
+that left candidate files halts admissions exactly as before. Quality failures
+never qualify: they end with a candidate and a report.
+
 The coordinator receives an explicit manifest and a cell-driver command. The
 command template may use `{python}`, `{manifest}`, `{phase}`, `{task}`,
 `{task_suffix}`, `{model}`, `{config}`, `{provider}`, and

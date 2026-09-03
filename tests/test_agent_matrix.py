@@ -314,3 +314,90 @@ def test_samples_multiply_cells_and_suffix_their_identities() -> None:
     data["execution"]["samples"] = 0
     with pytest.raises(ValueError):
         build_cells(data)
+
+
+class FlakyCoordinator(FakeCoordinator):
+    """Fails the first generation of ``fail_key`` like a provider capacity error."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.attempts: dict[str, int] = {}
+
+    async def _process(self, cell, phase: str, stage_id: str) -> int:  # type: ignore[override]
+        if phase == "generate" and cell.key == self.fail_key:
+            self.attempts[cell.key] = self.attempts.get(cell.key, 0) + 1
+            if self.attempts[cell.key] == 1:
+                paths = artifacts(self.root, cell)
+                paths.log.parent.mkdir(parents=True, exist_ok=True)
+                paths.log.write_text(
+                    "RUN_START_UTC=2026-09-03T00:00:00Z\n"
+                    'agent reported an error: {"type": "turn.failed", "error": {"message": '
+                    '"Selected model is at capacity. Please try a different model."}}\n'
+                    "GENERATION_DONE run_exit=1 wall_seconds=18\n"
+                    "DRIVER_DONE run_exit=1 eval_exit=skipped\n",
+                    encoding="utf-8",
+                )
+                return 20
+            self.generation_starts.append(cell.key)
+            paths = artifacts(self.root, cell)
+            paths.candidate.mkdir(parents=True)
+            paths.log.write_text("GENERATION_DONE run_exit=0 wall_seconds=1\n", encoding="utf-8")
+            return 0
+        return await super()._process(cell, phase, stage_id)
+
+
+def test_capacity_failure_is_retried_once_with_a_disclosed_ledger() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        value = manifest()
+        value["execution"]["auto_retry"] = {
+            "patterns": ["at capacity", "rate limit", "overloaded"],
+            "backoff_seconds": 0,
+        }
+        path = write_manifest(root, value)
+        cells = build_cells(value)
+        flaky = next(cell for cell in cells if cell.model_slug == "a-fail")
+
+        coordinator = FlakyCoordinator(
+            path, provider_cap=1, model_cap=1, evaluation_cap=1, fail_key=flaky.key
+        )
+        result = asyncio.run(coordinator.run_stage("test-retry", cells))
+
+        assert result.retried_generations == 1
+        assert result.generation_failures == 0
+        assert result.stopped_before_generation == 0
+        assert coordinator.attempts[flaky.key] == 2
+        assert cell_state(root, flaky) == "terminal"
+        ledger = root / "incidents" / "auto-retry" / flaky.candidate_id / "incident.json"
+        assert ledger.is_file()
+        assert (
+            ledger.parent / "attempt-1" / f"run-{flaky.task_suffix}-{flaky.candidate_id}.log"
+        ).is_file()
+        persisted = json.loads(path.read_text(encoding="utf-8"))
+        retry = persisted["execution"]["infrastructure_retries"][flaky.candidate_id]
+        assert retry["attempt"] == 2
+        assert "at capacity" in retry["prior_failure"]
+        assert retry["authorization_ledger"] == ledger.relative_to(root).as_posix()
+        events = [
+            json.loads(line)
+            for line in (root / "scheduler-events.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert any(event["event"] == "generation-retry" for event in events)
+
+
+def test_unmatched_agent_error_still_halts_admissions() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        value = manifest()
+        value["execution"]["auto_retry"] = {"patterns": ["at capacity"], "backoff_seconds": 0}
+        path = write_manifest(root, value)
+        cells = build_cells(value)
+        failed = next(cell for cell in cells if cell.model_slug == "a-fail")
+        coordinator = FakeCoordinator(
+            path, provider_cap=1, model_cap=1, evaluation_cap=1, fail_key=failed.key
+        )
+        result = asyncio.run(coordinator.run_stage("test-halt", cells))
+        assert result.generation_failures == 1
+        assert result.retried_generations == 0
+        assert not (root / "incidents").exists()
