@@ -23,3 +23,14 @@ def test_tree_hash_excludes_runtime_artifacts(tmp_path: Path) -> None:
     docker_output.mkdir()
     (docker_output / "result.json").write_text("{}\n", encoding="utf-8")
     assert digest_tree(tmp_path) == original
+
+
+def test_candidate_telemetry_does_not_change_the_content_digest(tmp_path: Path) -> None:
+    (tmp_path / "target_app.py").write_text("app = object()\n", encoding="utf-8")
+    before = digest_tree(tmp_path)
+
+    (tmp_path / "telemetry.json").write_text('{"status":"generated"}\n', encoding="utf-8")
+    assert digest_tree(tmp_path) == before
+
+    (tmp_path / "target_app.py").write_text("app = None\n", encoding="utf-8")
+    assert digest_tree(tmp_path) != before

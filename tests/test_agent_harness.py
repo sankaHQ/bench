@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -8,7 +10,29 @@ from types import SimpleNamespace
 
 import pytest
 
+from sanka_bench.environment import isolated_environment
+from sanka_bench.schema import load_and_validate
+
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+
+
+def test_isolated_environment_drops_host_secrets_and_global_tool_path() -> None:
+    source = {
+        "HOME": "/Users/bench",
+        "PATH": "/opt/homebrew/bin:/bin",
+        "AWS_SECRET_ACCESS_KEY": "secret",
+        "ANTHROPIC_AUTH_TOKEN": "gateway-secret",
+    }
+
+    assert isolated_environment(source) == {
+        "HOME": "/Users/bench",
+        "PATH": os.defpath,
+    }
+    assert isolated_environment(source, {"ANTHROPIC_AUTH_TOKEN"}) == {
+        "HOME": "/Users/bench",
+        "PATH": os.defpath,
+        "ANTHROPIC_AUTH_TOKEN": "gateway-secret",
+    }
 
 
 @pytest.fixture(scope="module")
@@ -54,6 +78,117 @@ def test_agent_stats_parses_last_json_line(harness: object) -> None:
     assert stats_of("no json here") == {}
 
 
+def test_subscription_stats_keep_tokens_without_claiming_actual_cost(harness: object) -> None:
+    stdout = json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "num_turns": 3,
+            "duration_ms": 1200,
+            "total_cost_usd": 1.25,
+            "is_error": False,
+            "modelUsage": {
+                "gateway-alias": {
+                    "inputTokens": 100,
+                    "cacheCreationInputTokens": 20,
+                    "cacheReadInputTokens": 40,
+                    "outputTokens": 30,
+                }
+            },
+        }
+    )
+
+    stats = harness.claude_stats(  # type: ignore[attr-defined]
+        stdout,
+        billing_mode="subscription",
+        requested_model_id="gateway-alias",
+        actual_model_id="claude-sonnet-5",
+        measured_ms=1300,
+    )
+
+    assert stats["cost_usd"] is None
+    assert stats["reported_equivalent_cost_usd"] == 1.25
+    assert stats["cost_basis"] == "subscription-no-marginal-cost"
+    assert stats["input_tokens"] == 100
+    assert stats["cache_creation_input_tokens"] == 20
+    assert stats["cache_read_input_tokens"] == 40
+    assert stats["output_tokens"] == 30
+    assert stats["total_tokens"] == 190
+    assert stats["model_usage"]["gateway-alias"]["client_model_id"] == "gateway-alias"
+
+
+def test_gateway_stats_do_not_claim_claude_estimate_as_actual_cost(harness: object) -> None:
+    stats = harness.claude_stats(  # type: ignore[attr-defined]
+        json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "num_turns": 1,
+                "total_cost_usd": 0.75,
+                "is_error": False,
+                "modelUsage": {"gpt-alias": {"inputTokens": 10, "outputTokens": 5}},
+            }
+        ),
+        billing_mode="api_key",
+        requested_model_id="gpt-alias",
+        actual_model_id="gpt-5.6-20260901",
+        measured_ms=900,
+    )
+
+    assert stats["cost_usd"] is None
+    assert stats["reported_equivalent_cost_usd"] == 0.75
+    assert stats["cost_basis"] == "claude-code-reported-equivalent-unverified"
+    assert stats["duration_ms"] == 900
+
+
+def test_claude_stats_leave_missing_usage_null(harness: object) -> None:
+    stats = harness.claude_stats(  # type: ignore[attr-defined]
+        json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "num_turns": 1,
+                "is_error": False,
+            }
+        ),
+        billing_mode="subscription",
+        requested_model_id="claude-sonnet-5",
+        actual_model_id="claude-sonnet-5",
+        measured_ms=500,
+    )
+
+    assert stats["input_tokens"] is None
+    assert stats["cache_creation_input_tokens"] is None
+    assert stats["cache_read_input_tokens"] is None
+    assert stats["output_tokens"] is None
+    assert stats["total_tokens"] is None
+    assert stats["cost_usd"] is None
+
+
+def test_claude_stats_do_not_turn_partial_usage_into_zero(harness: object) -> None:
+    stats = harness.claude_stats(  # type: ignore[attr-defined]
+        json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "num_turns": 1,
+                "is_error": False,
+                "modelUsage": {"gateway-alias": {"inputTokens": 10}},
+            }
+        ),
+        billing_mode="api_key",
+        requested_model_id="gateway-alias",
+        actual_model_id="gpt-5.6-20260901",
+        measured_ms=500,
+    )
+
+    assert stats["input_tokens"] == 10
+    assert stats["cache_creation_input_tokens"] is None
+    assert stats["cache_read_input_tokens"] is None
+    assert stats["output_tokens"] is None
+    assert stats["total_tokens"] is None
+
+
 def test_prompts_differ_only_by_the_sanka_paragraph(harness: object) -> None:
     core = harness.PROMPT_CORE  # type: ignore[attr-defined]
     extra = harness.PROMPT_SANKA  # type: ignore[attr-defined]
@@ -66,26 +201,14 @@ def test_prompts_differ_only_by_the_sanka_paragraph(harness: object) -> None:
     assert "representative sample" in core
     assert "FastAPI `APIRoute`" in core
     assert "raw Starlette `Route`" in core
-    # the +Sanka variant is strictly additive: same contract, one extra tool
-    assert "scan" in extra and "plan --to fastapi" in extra and "bench-candidate" in extra
-    # readiness-aware availability, not a copy mandate: the agent is told to read
-    # the readiness report and treat low-readiness output as reference material,
-    # with the source application staying the specification
-    assert "readiness" in extra
-    assert "reference material" in extra
-    assert "remains the specification" in extra
-    assert "cp -R" not in extra
-    assert "contract" not in extra.lower()
-    # capability, not instructions: the packaged verifier is named with its exact
-    # command and its scope (public scenarios + scan-derived edge probes)
-    verifier = harness._verifier_prompt(Path("/tools/sanka"))  # type: ignore[attr-defined]
-    rendered = extra.format(sanka="/tools/sanka", verifier=verifier)
-    assert (
-        "/tools/sanka verify . --to fastapi --scenarios public-tests/scenarios.json "
-        "--candidate . --entrypoint target_app.py --db-env BENCH_DB_PATH --edge-probes --json"
-    ) in rendered
-    assert "hidden grading set" in rendered
-    assert "checklist" not in rendered.lower()
+    # the +Sanka variant is strictly additive: the installed project skill owns
+    # usage guidance, so the benchmark prompt only discloses availability.
+    rendered = extra.format(sanka="/tools/sanka")
+    assert "project-local `sanka-cli` skill" in rendered
+    assert "/tools/sanka" in rendered
+    assert "scan" not in rendered
+    assert "plan" not in rendered
+    assert "apply" not in rendered
 
 
 def test_candidate_modes_preserve_official_arms_and_add_diagnostic_arm(
@@ -311,6 +434,17 @@ def test_as_text_normalizes_timeout_output(harness: object) -> None:
     assert as_text("already text") == "already text"
 
 
+@pytest.mark.parametrize(
+    ("event_type", "expected"),
+    [("system", False), ("assistant", True), ("result", True), ("tool_use", True)],
+)
+def test_timeout_activity_requires_a_model_event(
+    harness: object, event_type: str, expected: bool
+) -> None:
+    stdout = json.dumps({"type": event_type, "subtype": "init"}) + "\n"
+    assert harness._has_model_activity(stdout) is expected  # type: ignore[attr-defined]
+
+
 def test_sanka_runtime_env_adds_fixture_packages_without_mutating_input(
     harness: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -325,6 +459,93 @@ def test_sanka_runtime_env_adds_fixture_packages_without_mutating_input(
     assert result["PYTHONPATH"].split(harness.os.pathsep) == [  # type: ignore[attr-defined]
         "/bench/.venv/lib/python3.14/site-packages",
     ]
+
+
+def test_install_sanka_skill_is_project_local_and_digest_verified(
+    harness: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = b"---\nname: sanka-cli\n---\n"
+    target = tmp_path / ".claude" / "skills" / "sanka-cli"
+    commands: list[list[str]] = []
+
+    def fake_run(
+        command: list[str], *, workspace: Path, env: dict[str, str], **_kwargs: object
+    ) -> SimpleNamespace:
+        assert workspace == tmp_path
+        assert env == {"PATH": "/bin"}
+        commands.append(command)
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "SKILL.md").write_bytes(content)
+        return SimpleNamespace(
+            stdout=json.dumps(
+                {
+                    "skill": "sanka-cli",
+                    "scope": "project",
+                    "content_sha256": hashlib.sha256(content).hexdigest(),
+                    "installations": [
+                        {"harness": "claude", "path": str(target), "status": "installed"}
+                    ],
+                }
+            )
+        )
+
+    monkeypatch.setattr(harness, "_run_sanka_command", fake_run)
+
+    record = harness.install_sanka_skill(  # type: ignore[attr-defined]
+        Path("/tools/sanka"), tmp_path, {"PATH": "/bin"}
+    )
+
+    assert commands == [
+        [
+            "/tools/sanka",
+            "--output",
+            "json",
+            "skill",
+            "install",
+            "claude",
+            "--scope",
+            "project",
+            "--project-dir",
+            str(tmp_path),
+        ]
+    ]
+    assert record == {
+        "scope": "project",
+        "path": str(target),
+        "status": "installed",
+        "content_sha256": hashlib.sha256(content).hexdigest(),
+    }
+    with pytest.raises(RuntimeError, match="pinned manifest digest"):
+        harness.install_sanka_skill(  # type: ignore[attr-defined]
+            Path("/tools/sanka"), tmp_path, {"PATH": "/bin"}, "sha256:" + "0" * 64
+        )
+
+
+def test_install_sanka_skill_rejects_a_false_digest(
+    harness: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / ".claude" / "skills" / "sanka-cli"
+    target.mkdir(parents=True)
+    (target / "SKILL.md").write_text("installed content\n", encoding="utf-8")
+    monkeypatch.setattr(
+        harness,
+        "_run_sanka_command",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            stdout=json.dumps(
+                {
+                    "skill": "sanka-cli",
+                    "scope": "project",
+                    "content_sha256": "0" * 64,
+                    "installations": [
+                        {"harness": "claude", "path": str(target), "status": "installed"}
+                    ],
+                }
+            )
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="digest mismatch"):
+        harness.install_sanka_skill(Path("/tools/sanka"), tmp_path, {})  # type: ignore[attr-defined]
 
 
 def test_codex_command_uses_responses_and_custom_openai_provider(
@@ -449,6 +670,8 @@ def _fake_agent(
     touch: str | None,
     exit_code: int | None = None,
     preamble: list[dict] | None = None,
+    pre_sleep_events: list[dict] | None = None,
+    sleep_seconds: int = 0,
 ) -> Path:
     """Emulate the Claude CLI: print stream events then the result, and exit 1
     whenever the result reports ``is_error`` (the real CLI does exactly that on
@@ -460,12 +683,25 @@ def _fake_agent(
     if result is not None:
         lines.append(json.dumps(result))
     prints = "".join(f"printf '%s\\n' '{line}'\n" for line in lines)
+    early_prints = "".join(
+        f"printf '%s\\n' '{json.dumps(event)}'\n" for event in (pre_sleep_events or [])
+    )
     touch_line = f"touch '{touch}'" if touch else ":"
     script.write_text(
         "#!/bin/sh\n"
         'if [ "$1" = "--version" ]; then echo fake-agent-1.0; exit 0; fi\n'
         f"printf '%s\\n' \"$@\" > '{tmp_path / 'fake-agent-argv.txt'}'\n"
+        f"printf '%s\\n' \"${{CLAUDE_CONFIG_DIR:-}}\" > "
+        f"'{tmp_path / 'fake-agent-claude-config.txt'}'\n"
+        f"printf '%s' \"${{UNRELATED_SECRET:-}}\" > '{tmp_path / 'fake-agent-secret.txt'}'\n"
+        f"printf '%s' \"${{OPENAI_API_KEY:-}}\" > '{tmp_path / 'fake-agent-openai-key.txt'}'\n"
+        f"printf '%s' \"${{ANTHROPIC_AUTH_TOKEN:-}}\" > "
+        f"'{tmp_path / 'fake-agent-anthropic-token.txt'}'\n"
+        f"printf '%s' \"$PATH\" > '{tmp_path / 'fake-agent-path.txt'}'\n"
+        f"command -v sanka > '{tmp_path / 'fake-agent-sanka.txt'}' 2>/dev/null || true\n"
         f"{touch_line}\n"
+        f"{early_prints}"
+        f"sleep {sleep_seconds}\n"
         f"{prints}"
         f"exit {exit_code}\n",
         encoding="utf-8",
@@ -474,27 +710,128 @@ def _fake_agent(
     return script
 
 
-def _run_adapter(task: Path, agent: Path, out: Path) -> subprocess.CompletedProcess[str]:
+def _run_adapter(
+    task: Path,
+    agent: Path,
+    out: Path,
+    sandbox: Path | None = None,
+    extra_args: list[str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    command = [
+        sys.executable,
+        str(SCRIPTS / "run_agent_candidate.py"),
+        "--task",
+        str(task),
+        "--candidate-id",
+        "claude-code-fake-alone",
+        "--out",
+        str(out),
+        "--agent-bin",
+        str(agent),
+        "--max-turns",
+        "60",
+    ]
+    if sandbox is not None:
+        command.extend(["--sandbox", str(sandbox)])
+    command.extend(extra_args or [])
     return subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPTS / "run_agent_candidate.py"),
-            "--task",
-            str(task),
-            "--candidate-id",
-            "claude-code-fake-alone",
-            "--out",
-            str(out),
-            "--agent-bin",
-            str(agent),
-            "--max-turns",
-            "60",
-        ],
+        command,
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
     )
+
+
+def test_persistent_sandbox_keeps_workspace_config_and_raw_stream(tmp_path: Path) -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    agent = _fake_agent(
+        tmp_path,
+        result={
+            "num_turns": 1,
+            "duration_ms": 1000,
+            "total_cost_usd": 0.1,
+            "is_error": False,
+            "subtype": "success",
+            "result": "done",
+        },
+        touch="target_app.py",
+    )
+    sandbox = tmp_path / "sandbox"
+
+    outcome = _run_adapter(task, agent, tmp_path / "candidate", sandbox)
+
+    assert outcome.returncode == 0, outcome.stderr
+    assert (sandbox / "workspace" / "target_app.py").is_file()
+    assert (sandbox / "claude-config").is_dir()
+    assert (sandbox / "raw" / "agent-log.jsonl").is_file()
+    assert (tmp_path / "fake-agent-claude-config.txt").read_text().strip() == str(
+        sandbox / "claude-config"
+    )
+
+
+def test_alone_agent_cannot_inherit_host_secrets_or_global_sanka(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    global_bin = tmp_path / "global-bin"
+    global_bin.mkdir()
+    (global_bin / "sanka").write_text("#!/bin/sh\n", encoding="utf-8")
+    (global_bin / "sanka").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{global_bin}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("UNRELATED_SECRET", "must-not-reach-agent")
+    agent = _fake_agent(
+        tmp_path,
+        result={"num_turns": 1, "is_error": False, "subtype": "success"},
+        touch="target_app.py",
+    )
+
+    outcome = _run_adapter(task, agent, tmp_path / "candidate")
+
+    assert outcome.returncode == 0, outcome.stderr
+    assert (tmp_path / "fake-agent-secret.txt").read_text() == ""
+    assert (tmp_path / "fake-agent-path.txt").read_text() == os.defpath
+    assert (tmp_path / "fake-agent-sanka.txt").read_text() == ""
+
+
+def test_gateway_agent_receives_only_anthropic_compatible_route_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    monkeypatch.setenv("OPENAI_API_KEY", "must-not-reach-claude")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "gateway-token")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://gateway.test")
+    agent = _fake_agent(
+        tmp_path,
+        result={"num_turns": 1, "is_error": False, "subtype": "success"},
+        touch="target_app.py",
+    )
+
+    outcome = _run_adapter(
+        task,
+        agent,
+        tmp_path / "candidate",
+        extra_args=["--route-kind", "gateway", "--billing-mode", "api_key"],
+    )
+
+    assert outcome.returncode == 0, outcome.stderr
+    assert (tmp_path / "fake-agent-openai-key.txt").read_text() == ""
+    assert (tmp_path / "fake-agent-anthropic-token.txt").read_text() == "gateway-token"
+
+
+def test_persistent_sandbox_refuses_a_nonempty_workspace(tmp_path: Path) -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    agent = _fake_agent(tmp_path, result=None, touch=None)
+    sandbox = tmp_path / "sandbox"
+    workspace = sandbox / "workspace"
+    workspace.mkdir(parents=True)
+    (workspace / "prior-attempt.txt").write_text("keep me\n", encoding="utf-8")
+
+    outcome = _run_adapter(task, agent, tmp_path / "candidate", sandbox)
+
+    assert outcome.returncode == 2
+    assert "sandbox workspace is not empty" in outcome.stderr
+    assert (workspace / "prior-attempt.txt").read_text() == "keep me\n"
 
 
 def test_turn_budget_exhaustion_freezes_the_workspace(tmp_path: Path) -> None:
@@ -555,6 +892,13 @@ def test_stream_transcript_is_preserved_and_result_is_last_event(tmp_path: Path)
     assert json.loads((out / "agent-result.json").read_text(encoding="utf-8")) == result
     disclosure = (out / "GENERATED.md").read_text(encoding="utf-8")
     assert "completed within budget" in disclosure
+    telemetry = json.loads((out / "telemetry.json").read_text(encoding="utf-8"))
+    assert telemetry["schema"] == "sanka-bench/agent-cell-telemetry/v1"
+    assert telemetry["digests"]["transcript_sha256"].startswith("sha256:")
+    assert telemetry["digests"]["overlay_sha256"].startswith("sha256:")
+    assert telemetry["timing"]["agent_wall_seconds"] >= 0
+    candidate = load_and_validate(out / "candidate.yaml", "candidate")
+    assert candidate["stats"]["actual_model_id"] == "claude-sonnet-5"
 
 
 def test_unparseable_nonzero_exit_is_an_agent_run_failure(tmp_path: Path) -> None:
@@ -590,7 +934,7 @@ def test_successful_claude_turn_overrun_is_disclosed(tmp_path: Path) -> None:
     assert "completed within budget" not in disclosure
 
 
-def test_empty_workspace_exits_with_classification_code(tmp_path: Path) -> None:
+def test_completed_empty_workspace_is_frozen_as_a_quality_failure(tmp_path: Path) -> None:
     task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
     agent = _fake_agent(
         tmp_path,
@@ -606,10 +950,57 @@ def test_empty_workspace_exits_with_classification_code(tmp_path: Path) -> None:
     )
     out = tmp_path / "candidate"
     outcome = _run_adapter(task, agent, out)
-    assert outcome.returncode == 3
-    assert "refusing to freeze an empty candidate" in outcome.stderr
-    assert "infrastructure" in outcome.stderr
+    assert outcome.returncode == 0, outcome.stderr
+    assert (out / "overlay").is_dir()
+    assert list((out / "overlay").iterdir()) == []
+    assert (out / "candidate.yaml").is_file()
+
+
+def test_silent_timeout_without_workspace_activity_is_an_infrastructure_failure(
+    tmp_path: Path,
+) -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    agent = _fake_agent(
+        tmp_path,
+        result=None,
+        touch=None,
+        pre_sleep_events=[{"type": "system", "subtype": "init"}],
+        sleep_seconds=2,
+    )
+    out = tmp_path / "candidate"
+
+    outcome = _run_adapter(
+        task,
+        agent,
+        out,
+        extra_args=["--wall-clock-seconds", "1"],
+    )
+
+    assert outcome.returncode == 1
+    assert "agent reported an error: wall-clock timeout" in outcome.stderr
     assert not (out / "overlay").exists()
+
+
+def test_timeout_with_workspace_activity_is_frozen_for_scoring(tmp_path: Path) -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    agent = _fake_agent(
+        tmp_path,
+        result=None,
+        touch="target_app.py",
+        sleep_seconds=2,
+    )
+    out = tmp_path / "candidate"
+
+    outcome = _run_adapter(
+        task,
+        agent,
+        out,
+        extra_args=["--wall-clock-seconds", "1"],
+    )
+
+    assert outcome.returncode == 0, outcome.stderr
+    assert (out / "overlay" / "target_app.py").is_file()
+    assert "wall-clock timeout (1s) exhausted" in (out / "GENERATED.md").read_text()
 
 
 def test_non_budget_agent_error_stays_unfrozen(tmp_path: Path) -> None:

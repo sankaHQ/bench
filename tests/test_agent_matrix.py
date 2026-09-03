@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import hashlib
 import json
 import subprocess
 import sys
@@ -10,18 +12,25 @@ from typing import Any
 
 import pytest
 
+from sanka_bench.hashing import digest_tree
+
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 from run_agent_matrix import (  # noqa: E402
     RollingCoordinator,
+    artifact_issues,
     artifacts,
+    authorize_retry,
     build_cells,
+    cell_input_digest,
     cell_state,
     ensure_authorized,
     prioritized,
     render_command,
+    secret_hits,
     validate_backups,
+    validate_official_manifest,
     worktree_preflight,
 )
 
@@ -105,6 +114,73 @@ def manifest() -> dict[str, Any]:
     }
 
 
+def official_manifest(root: Path) -> dict[str, Any]:
+    transcript = b'{"type":"result","subtype":"success"}\n'
+    qualification = {
+        "schema": "sanka-bench/claude-route-qualification/v1",
+        "status": "qualified",
+        "requested_model_id": "claude-sonnet-5",
+        "actual_model_id": "claude-sonnet-5-20260901",
+        "provider": "anthropic",
+        "provider_variant": "subscription-standard",
+        "route_kind": "anthropic-native",
+        "billing_mode": "subscription",
+        "gateway_profile": None,
+        "checks": {
+            "tool_use": True,
+            "streaming": True,
+            "terminal_event": True,
+            "usage_accounting": True,
+        },
+        "claude": {
+            "version": "2.1.241",
+            "sha256": "sha256:" + "1" * 64,
+        },
+        "evidence": {
+            "prompt_sha256": "sha256:" + "2" * 64,
+            "provider_sha256": "sha256:" + "3" * 64,
+            "transcript_sha256": "sha256:" + hashlib.sha256(transcript).hexdigest(),
+        },
+    }
+    path = root / "qualifications" / "sonnet.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(qualification, sort_keys=True) + "\n", encoding="utf-8")
+    path.with_suffix(".jsonl").write_bytes(transcript)
+    value = manifest()
+    value["schema"] = "sanka-bench/model-matrix-run-manifest/v2"
+    value["execution"]["configurations"] = ["alone", "with-sanka"]
+    value["execution"]["expected_rows"] = 2
+    value["execution"]["max_turns"] = 60
+    value["execution"]["wall_clock_seconds"] = 3600
+    value["execution"]["concurrency"] = {
+        "provider_cap": 1,
+        "model_cap": 1,
+        "evaluation_cap": 1,
+    }
+    value["toolchain"] = {
+        "claude_version": "2.1.241",
+        "claude_bin_sha256": "sha256:" + "1" * 64,
+        "sanka_skill_sha256": "sha256:" + "5" * 64,
+    }
+    value["models"] = [
+        {
+            "slug": "sonnet",
+            "candidate_slug": "claude-code-sonnet",
+            "harness": "claude-code",
+            "provider": "anthropic",
+            "provider_variant": "subscription-standard",
+            "requested_model_id": "claude-sonnet-5",
+            "actual_model_id": "claude-sonnet-5-20260901",
+            "route_kind": "anthropic-native",
+            "billing_mode": "subscription",
+            "gateway_profile": None,
+            "qualification": "qualifications/sonnet.json",
+            "qualification_sha256": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+    ]
+    return value
+
+
 class FakeCoordinator(RollingCoordinator):
     def __init__(self, *args: Any, fail_key: str, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -158,6 +234,211 @@ def test_manifest_preserves_provider_variants_and_declared_backups() -> None:
     backup = value["models"][2]["backups"][0]
     assert backup["provider_variant"] == "on-demand-fast"
     assert backup["status"] == "unqualified"
+
+
+def test_manifest_rejects_unsafe_and_colliding_artifact_names() -> None:
+    unsafe = manifest()
+    unsafe["suite"]["tasks"] = ["../escape"]
+    unsafe["suite"]["route_weights"] = {"../escape": 1}
+    with pytest.raises(ValueError, match="unsafe task"):
+        build_cells(unsafe)
+
+    colliding = manifest()
+    colliding["models"][1]["candidate_slug"] = colliding["models"][0]["candidate_slug"]
+    with pytest.raises(ValueError, match="duplicate artifact"):
+        build_cells(colliding)
+
+
+def test_official_manifest_requires_claude_code_and_matching_qualification(
+    tmp_path: Path,
+) -> None:
+    value = official_manifest(tmp_path)
+    validate_official_manifest(value, tmp_path)
+
+    value["models"][0]["harness"] = "codex"
+    with pytest.raises(ValueError, match="Claude Code"):
+        validate_official_manifest(value, tmp_path)
+
+
+def test_official_manifest_rejects_changed_qualification_evidence(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    qualification = tmp_path / value["models"][0]["qualification"]
+    qualification.write_text('{"status":"changed"}\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="qualification digest"):
+        validate_official_manifest(value, tmp_path)
+
+
+def test_official_manifest_rejects_route_and_identity_mismatch(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["models"][0]["actual_model_id"] = "different-model"
+    with pytest.raises(ValueError, match="actual model"):
+        validate_official_manifest(value, tmp_path)
+
+
+def test_official_manifest_requires_matching_harness_and_evidence_pins(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    qualification = tmp_path / value["models"][0]["qualification"]
+    evidence = json.loads(qualification.read_text(encoding="utf-8"))
+    del evidence["claude"]
+    qualification.write_text(json.dumps(evidence) + "\n", encoding="utf-8")
+    value["models"][0]["qualification_sha256"] = (
+        "sha256:" + hashlib.sha256(qualification.read_bytes()).hexdigest()
+    )
+
+    with pytest.raises(ValueError, match="Claude harness evidence"):
+        validate_official_manifest(value, tmp_path)
+
+
+def test_cell_input_digest_covers_model_prompts_toolchain_and_sample(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["execution"].update(
+        {
+            "max_turns": 60,
+            "wall_clock_seconds": 3600,
+            "prompt_sha256": "sha256:" + "1" * 64,
+            "sanka_prompt_sha256": "sha256:" + "2" * 64,
+        }
+    )
+    value.setdefault("toolchain", {}).update(
+        {
+            "claude_version": "2.1.241",
+            "claude_bin_sha256": "sha256:" + "3" * 64,
+            "sanka_cli": "sanka, version 0.3.0",
+            "sanka_skill_sha256": "sha256:" + "4" * 64,
+        }
+    )
+
+    def digest(candidate: dict[str, Any], sample: int = 1) -> str:
+        return cell_input_digest(
+            candidate,
+            task="drf-fastapi-001",
+            model=candidate["models"][0],
+            config="alone",
+            sample=sample,
+        )
+
+    original = digest(value)
+    assert original.startswith("sha256:")
+    for section, key, replacement in (
+        ("models", "requested_model_id", "different-model"),
+        ("execution", "prompt_sha256", "sha256:" + "5" * 64),
+        ("toolchain", "claude_version", "2.1.242"),
+        ("toolchain", "sanka_skill_sha256", "sha256:" + "6" * 64),
+    ):
+        changed = copy.deepcopy(value)
+        target = changed["models"][0] if section == "models" else changed[section]
+        target[key] = replacement
+        assert digest(changed) != original
+    changed = copy.deepcopy(value)
+    changed["execution"]["concurrency"]["model_cap"] = 2
+    assert digest(changed) != original
+    assert digest(value, sample=2) != original
+
+
+def test_official_manifest_enforces_pinned_concurrency(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    path = write_manifest(tmp_path, value)
+
+    with pytest.raises(ValueError, match="pinned concurrency"):
+        RollingCoordinator(path, provider_cap=2, model_cap=1, evaluation_cap=1)
+
+
+def test_current_wave_is_persisted_before_report_aggregation(tmp_path: Path) -> None:
+    path = write_manifest(tmp_path)
+    coordinator = RollingCoordinator(path, provider_cap=1, model_cap=1, evaluation_cap=1)
+    observed = False
+
+    def aggregate(stage_id: str) -> int:
+        nonlocal observed
+        observed = (tmp_path / "waves" / f"{stage_id}.json").is_file()
+        return 0
+
+    coordinator.aggregate = aggregate  # type: ignore[method-assign]
+
+    asyncio.run(coordinator.run_stage("current", []))
+
+    assert observed
+
+
+def test_official_manifest_requires_positive_budgets(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["execution"]["wall_clock_seconds"] = 0
+
+    with pytest.raises(ValueError, match="positive execution budgets"):
+        validate_official_manifest(value, tmp_path)
+
+
+def test_resume_refuses_missing_or_stale_input_digest(tmp_path: Path) -> None:
+    cells = build_cells(official_manifest(tmp_path))
+    cell = cells[0]
+    paths = artifacts(tmp_path, cell)
+    paths.candidate.mkdir(parents=True)
+    paths.log.parent.mkdir(parents=True)
+    paths.log.write_text("GENERATION_DONE run_exit=0 wall_seconds=1\n", encoding="utf-8")
+    assert cell_state(tmp_path, cell) == "ambiguous"
+
+    paths.log.write_text(
+        f"INPUT_DIGEST=sha256:{'0' * 64}\nGENERATION_DONE run_exit=0 wall_seconds=1\n",
+        encoding="utf-8",
+    )
+    assert cell_state(tmp_path, cell) == "ambiguous"
+
+    paths.log.write_text(
+        f"INPUT_DIGEST={cell.input_digest}\nGENERATION_DONE run_exit=0 wall_seconds=1\n",
+        encoding="utf-8",
+    )
+    assert cell_state(tmp_path, cell) == "generated"
+
+    sandbox_only = cells[1]
+    artifacts(tmp_path, sandbox_only).sandbox.mkdir(parents=True)
+    assert cell_state(tmp_path, sandbox_only) == "ambiguous"
+
+
+def test_retry_preserves_the_failed_sandbox_with_the_incident(tmp_path: Path) -> None:
+    value = manifest()
+    manifest_path = write_manifest(tmp_path, value)
+    cell = build_cells(value)[0]
+    paths = artifacts(tmp_path, cell)
+    paths.log.parent.mkdir(parents=True)
+    paths.log.write_text("agent reported an error: at capacity\n", encoding="utf-8")
+    paths.candidate.mkdir(parents=True)
+    paths.sandbox.mkdir(parents=True)
+    (paths.sandbox / "raw.jsonl").write_text("evidence\n", encoding="utf-8")
+
+    ledger = authorize_retry(manifest_path, value, tmp_path, cell, "at capacity")
+
+    attempt = ledger.parent / "attempt-1"
+    assert (attempt / "sandbox" / "raw.jsonl").read_text() == "evidence\n"
+    assert not paths.sandbox.exists()
+
+
+def test_prioritized_alternates_the_first_lane_for_each_pair(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["suite"] = {
+        "tasks": ["drf-fastapi-001", "drf-fastapi-007"],
+        "route_weights": {"drf-fastapi-001": 14, "drf-fastapi-007": 7},
+    }
+    value["execution"]["samples"] = 2
+    value["execution"]["expected_rows"] = 8
+
+    ordered = prioritized(tmp_path, build_cells(value))
+
+    assert [(cell.task, cell.sample, cell.config) for cell in ordered] == [
+        ("drf-fastapi-001", 1, "alone"),
+        ("drf-fastapi-001", 1, "with-sanka"),
+        ("drf-fastapi-001", 2, "with-sanka"),
+        ("drf-fastapi-001", 2, "alone"),
+        ("drf-fastapi-007", 1, "alone"),
+        ("drf-fastapi-007", 1, "with-sanka"),
+        ("drf-fastapi-007", 2, "with-sanka"),
+        ("drf-fastapi-007", 2, "alone"),
+    ]
+
+    value = official_manifest(tmp_path)
+    value["models"][0]["route_kind"] = "gateway"
+    with pytest.raises(ValueError, match=r"gateway.*api_key"):
+        validate_official_manifest(value, tmp_path)
 
 
 def test_qualified_backup_requires_evidence() -> None:
@@ -401,3 +682,136 @@ def test_unmatched_agent_error_still_halts_admissions() -> None:
         assert result.generation_failures == 1
         assert result.retried_generations == 0
         assert not (root / "incidents").exists()
+
+
+def test_secret_scan_reports_path_without_value(tmp_path: Path) -> None:
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "run.log").write_text("leaked-secret-value", encoding="utf-8")
+
+    assert secret_hits(tmp_path, ["leaked-secret-value"]) == ["logs/run.log"]
+
+
+def test_secret_scan_ignores_short_placeholders(tmp_path: Path) -> None:
+    (tmp_path / "report.json").write_text("test", encoding="utf-8")
+
+    assert secret_hits(tmp_path, ["", "test"]) == []
+
+
+def test_artifact_audit_verifies_telemetry_transcript_candidate_and_report(
+    tmp_path: Path,
+) -> None:
+    value = official_manifest(tmp_path)
+    cell = build_cells(value)[0]
+    paths = artifacts(tmp_path, cell)
+    paths.candidate.mkdir(parents=True)
+    paths.sandbox.joinpath("raw").mkdir(parents=True)
+    paths.log.parent.mkdir(parents=True)
+    paths.report.parent.mkdir(parents=True)
+    transcript = b'{"type":"result","subtype":"success"}\n'
+    (paths.candidate / "agent-log.jsonl").write_bytes(transcript)
+    (paths.sandbox / "raw" / "agent-log.jsonl").write_bytes(transcript)
+    overlay = paths.candidate / "overlay"
+    overlay.mkdir()
+    (overlay / "app.py").write_text("app = object()\n", encoding="utf-8")
+    paths.report.write_text(
+        json.dumps(
+            {
+                "status": "failed",
+                "provenance": {"candidate_digest": "sha256:" + "0" * 64},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (paths.candidate / "telemetry.json").write_text(
+        json.dumps(
+            {
+                "schema": "sanka-bench/agent-cell-telemetry/v1",
+                "input_digest": cell.input_digest,
+                "digests": {
+                    "transcript_sha256": "sha256:" + hashlib.sha256(transcript).hexdigest(),
+                    "overlay_sha256": "sha256:" + "0" * 64,
+                },
+                "evaluation": {
+                    "status": "passed",
+                    "report_sha256": "sha256:"
+                    + hashlib.sha256(paths.report.read_bytes()).hexdigest(),
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    paths.log.write_text(
+        f"INPUT_DIGEST={cell.input_digest}\nDRIVER_DONE run_exit=0 eval_exit=0\n",
+        encoding="utf-8",
+    )
+
+    issues = artifact_issues(tmp_path, [cell])
+
+    assert any("overlay digest" in issue for issue in issues)
+    assert any("candidate digest" in issue for issue in issues)
+    assert any("evaluation status" in issue for issue in issues)
+    assert not any("transcript digest" in issue for issue in issues)
+    assert not any("report digest" in issue for issue in issues)
+
+    telemetry = json.loads((paths.candidate / "telemetry.json").read_text(encoding="utf-8"))
+    telemetry["digests"]["overlay_sha256"] = digest_tree(overlay)
+    telemetry["evaluation"]["status"] = "failed"
+    report = json.loads(paths.report.read_text(encoding="utf-8"))
+    report["provenance"]["candidate_digest"] = digest_tree(paths.candidate)
+    paths.report.write_text(json.dumps(report) + "\n", encoding="utf-8")
+    telemetry["evaluation"]["report_sha256"] = (
+        "sha256:" + hashlib.sha256(paths.report.read_bytes()).hexdigest()
+    )
+    (paths.candidate / "telemetry.json").write_text(json.dumps(telemetry) + "\n", encoding="utf-8")
+
+    assert artifact_issues(tmp_path, [cell]) == []
+
+
+def test_artifact_audit_requires_raw_evidence_for_failed_generation(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    cell = build_cells(value)[0]
+    paths = artifacts(tmp_path, cell)
+    paths.log.parent.mkdir(parents=True)
+    paths.log.write_text(
+        f"INPUT_DIGEST={cell.input_digest}\nDRIVER_DONE run_exit=1 eval_exit=skipped\n",
+        encoding="utf-8",
+    )
+
+    issues = artifact_issues(tmp_path, [cell])
+
+    assert any("missing telemetry" in issue for issue in issues)
+    assert any("missing transcript" in issue for issue in issues)
+    assert not any("candidate overlay" in issue for issue in issues)
+
+
+def test_artifact_audit_keeps_v1_results_readable(tmp_path: Path) -> None:
+    cell = build_cells(manifest())[0]
+    paths = artifacts(tmp_path, cell)
+    paths.candidate.mkdir(parents=True)
+    paths.report.parent.mkdir(parents=True)
+    paths.report.write_text('{"status":"failed"}\n', encoding="utf-8")
+    paths.log.parent.mkdir(parents=True)
+    paths.log.write_text("DRIVER_DONE run_exit=0 eval_exit=0\n", encoding="utf-8")
+
+    assert artifact_issues(tmp_path, [cell]) == []
+
+
+def test_aggregate_refuses_secret_or_incomplete_artifacts(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["execution"]["aggregate_command"] = [
+        "{python}",
+        "-c",
+        "from pathlib import Path; Path('published').write_text('bad')",
+    ]
+    path = write_manifest(tmp_path, value)
+    coordinator = RollingCoordinator(path, provider_cap=1, model_cap=1, evaluation_cap=1)
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "leak.log").write_text("sk-ant-this-is-a-secret", encoding="utf-8")
+
+    assert coordinator.aggregate("blocked") != 0
+    assert not (tmp_path / "published").exists()
+    events = (tmp_path / "scheduler-events.jsonl").read_text(encoding="utf-8")
+    assert "publication-gate-failed" in events
+    assert "sk-ant-this-is-a-secret" not in events

@@ -72,6 +72,7 @@ store.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -80,7 +81,12 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import nullcontext
+from datetime import UTC, datetime
 from pathlib import Path
+
+from sanka_bench.environment import isolated_environment
+from sanka_bench.hashing import digest_tree
 
 PROMPT_CORE = """Migrate this Django REST Framework application to FastAPI, natively.
 
@@ -118,33 +124,8 @@ consider the task done until every scenario matches exactly.
 """
 
 PROMPT_SANKA = """
-The Sanka migration CLI is installed at: {sanka}
-It can scan the source, report how much of it it can migrate natively, and
-generate FastAPI code for the routes it supports:
-
-    {sanka} scan .
-    {sanka} plan . --to fastapi --strategy native --generation minimal \
-        --package-manager uv --output .sanka/output/fastapi
-    {sanka} apply --root . --plan-hash <hash from the plan> --bench-candidate ./bench-candidate
-
-The extension the CLI needs for this source is already installed and enabled in
-this workspace. Run scan, plan, and apply before you edit any file: they refuse
-to run against a source tree that changed after the plan was reviewed.
-
-Read the plan's readiness report before adopting anything: it states, per
-route, whether native generation is supported and why not when it is not
-(`plan --to fastapi --json` prints the full detail, including per-route
-`parity_notes`: the source's exact authentication order and error strings,
-pagination, ordering, file, uniqueness, and validation-message behavior). At
-high readiness the
-generated overlay under bench-candidate/overlay/ is a strong starting point —
-copy the generated files and continue from them. At low readiness apply may
-refuse outright or emit only a few routes; treat whatever it produces as
-reference material, not as the thing to submit. Either way the original
-application remains the specification: derive every route's exact semantics
-from the source and verify by differential testing against it, never against
-the generated code.
-{verifier}"""
+The project-local `sanka-cli` skill and Sanka migration CLI at {sanka} are available.
+"""
 
 VERIFIER_COMMAND = (
     "{sanka} verify . --to fastapi --scenarios public-tests/scenarios.json "
@@ -422,6 +403,67 @@ def _enable_sanka_extension(sanka_bin: Path, *, workspace: Path, env: dict[str, 
     )
 
 
+def install_sanka_skill(
+    sanka_bin: Path,
+    workspace: Path,
+    env: dict[str, str],
+    pinned_sha256: str | None = None,
+) -> dict[str, str]:
+    outcome = _run_sanka_command(
+        [
+            str(sanka_bin),
+            "--output",
+            "json",
+            "skill",
+            "install",
+            "claude",
+            "--scope",
+            "project",
+            "--project-dir",
+            str(workspace),
+        ],
+        workspace=workspace,
+        env=env,
+    )
+    try:
+        payload = json.loads(outcome.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Sanka skill installer returned invalid JSON") from exc
+    installations = payload.get("installations") if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("skill") != "sanka-cli"
+        or payload.get("scope") != "project"
+        or not isinstance(installations, list)
+        or len(installations) != 1
+        or not isinstance(installations[0], dict)
+        or installations[0].get("harness") != "claude"
+    ):
+        raise RuntimeError("Sanka skill installer returned an unexpected installation record")
+    installation = installations[0]
+    target = Path(str(installation.get("path") or "")).resolve()
+    expected = workspace.resolve() / ".claude" / "skills" / "sanka-cli"
+    if target != expected or not target.is_relative_to(workspace.resolve()):
+        raise RuntimeError(f"Sanka skill path escaped the workspace: {target}")
+    skill_file = target / "SKILL.md"
+    expected_digest = str(payload.get("content_sha256") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_digest) or not skill_file.is_file():
+        raise RuntimeError("Sanka skill installation is incomplete")
+    actual_digest = hashlib.sha256(skill_file.read_bytes()).hexdigest()
+    if actual_digest != expected_digest:
+        raise RuntimeError(
+            f"Sanka skill digest mismatch: expected {expected_digest}, got {actual_digest}"
+        )
+    if pinned_sha256 and actual_digest != pinned_sha256.removeprefix("sha256:"):
+        raise RuntimeError("installed Sanka skill does not match the pinned manifest digest")
+    return {
+        "scope": "project",
+        "path": str(target),
+        "status": str(installation.get("status") or ""),
+        "content_sha256": actual_digest,
+    }
+
+
 def _cli_data(stdout: str) -> dict[str, object]:
     """The `data` object of a sanka-cli JSON response, or {} when there is none."""
     try:
@@ -545,6 +587,16 @@ def _prepare_readiness_context(
     return context
 
 
+def _sha256_bytes(value: bytes) -> str:
+    return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
+def _write_json_atomic(path: Path, payload: dict[str, object]) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", type=Path, required=True)
@@ -554,14 +606,18 @@ def main() -> int:
         help="<agent>-<model-slug>-alone or ...-with-sanka",
     )
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--sandbox", type=Path)
     parser.add_argument("--agent", default="claude-code", choices=("claude-code", "codex"))
     parser.add_argument("--agent-bin", default=None)
     parser.add_argument("--model", default="claude-sonnet-5")
+    parser.add_argument("--actual-model-id", default=None)
+    parser.add_argument("--route-kind", default="legacy")
+    parser.add_argument("--billing-mode", default="unknown")
+    parser.add_argument("--gateway-profile", default=None)
     parser.add_argument(
         "--provider",
-        default="openai",
-        choices=("openai", "deepinfra", "fireworks", "together"),
-        help="codex only: which OpenAI-compatible API serves the model",
+        default=None,
+        help="actual serving provider disclosed by this treatment",
     )
     parser.add_argument(
         "--provider-variant",
@@ -584,7 +640,9 @@ def main() -> int:
         help="codex only: USD per million output tokens, for computed cost",
     )
     parser.add_argument("--max-turns", type=int, default=60)
+    parser.add_argument("--wall-clock-seconds", type=int, default=3600)
     parser.add_argument("--sanka-bin", type=Path, default=None)
+    parser.add_argument("--sanka-skill-sha256")
     parser.add_argument(
         "--sanka-readiness-threshold",
         type=float,
@@ -599,11 +657,19 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.provider is None:
+        args.provider = "anthropic" if args.agent == "claude-code" else "openai"
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.provider_variant):
         print(
             "--provider-variant must be a slug containing only letters, digits, '.', '_' or '-'",
             file=sys.stderr,
         )
+        return 2
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.provider):
+        print("--provider must be a slug", file=sys.stderr)
+        return 2
+    if args.agent == "codex" and args.provider not in PROVIDER_BASE_URLS:
+        print(f"unsupported Codex provider: {args.provider}", file=sys.stderr)
         return 2
 
     task_dir = args.task.resolve()
@@ -626,21 +692,57 @@ def main() -> int:
     if not 0 <= args.sanka_readiness_threshold <= 1:
         print("--sanka-readiness-threshold must be between 0 and 1", file=sys.stderr)
         return 2
+    if args.wall_clock_seconds <= 0:
+        print("--wall-clock-seconds must be positive", file=sys.stderr)
+        return 2
     if args.agent_bin is None:
         args.agent_bin = "claude" if args.agent == "claude-code" else "codex"
 
     agent_version = subprocess.run(
-        [args.agent_bin, "--version"], capture_output=True, text=True, check=False
+        [args.agent_bin, "--version"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=isolated_environment(os.environ),
     ).stdout.strip()
 
-    with tempfile.TemporaryDirectory(prefix="sanka-agent-") as temp:
-        workspace = Path(temp) / "workspace"
+    lane_started = time.monotonic()
+    sandbox_context = (
+        tempfile.TemporaryDirectory(prefix="sanka-agent-")
+        if args.sandbox is None
+        else nullcontext(str(args.sandbox.resolve()))
+    )
+    with sandbox_context as temp:
+        sandbox = Path(temp)
+        sandbox.mkdir(parents=True, exist_ok=True)
+        workspace = sandbox / "workspace"
+        if workspace.exists():
+            if any(workspace.iterdir()):
+                print(f"sandbox workspace is not empty: {workspace}", file=sys.stderr)
+                return 2
+            workspace.rmdir()
         shutil.copytree(source, workspace)
         public_tests = workspace / "public-tests"
         public_tests.mkdir()
         shutil.copy2(scenarios, public_tests / "scenarios.json")
+        claude_config = sandbox / "claude-config"
+        raw_dir = sandbox / "raw"
+        claude_config.mkdir()
+        raw_dir.mkdir()
 
-        env = dict(os.environ)
+        env = isolated_environment(
+            os.environ,
+            {
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_AUTH_TOKEN",
+                "ANTHROPIC_BASE_URL",
+                "DEEPINFRA_API_KEY",
+                "FIREWORKS_API_KEY",
+                "OPENAI_API_KEY",
+                "SANKA_HOME",
+                "TOGETHER_API_KEY",
+            },
+        )
         for name in (
             "DJANGO_SETTINGS_MODULE",
             "BENCH_DB_PATH",
@@ -648,21 +750,39 @@ def main() -> int:
             "CLAUDE_CODE_ENTRYPOINT",
         ):
             env.pop(name, None)
+        env["CLAUDE_CONFIG_DIR"] = str(claude_config)
+        if mode == "alone":
+            env.pop("SANKA_HOME", None)
+        if args.agent == "claude-code":
+            stripped = [
+                "DEEPINFRA_API_KEY",
+                "FIREWORKS_API_KEY",
+                "OPENAI_API_KEY",
+                "TOGETHER_API_KEY",
+            ]
+            if args.route_kind == "anthropic-native":
+                stripped.extend(["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"])
+            for name in stripped:
+                env.pop(name, None)
         if mode != "alone":
             env = _sanka_runtime_env(env)
         readiness_context: dict[str, object] | None = None
+        skill_record: dict[str, str] | None = None
         sanka_versions: str | None = None
         prompt = PROMPT_CORE.format(python=sys.executable)
         if mode == "with-sanka":
             assert args.sanka_bin is not None
             sanka_bin = args.sanka_bin.resolve()
             try:
+                skill_record = install_sanka_skill(
+                    sanka_bin, workspace, env, args.sanka_skill_sha256
+                )
                 _enable_sanka_extension(sanka_bin, workspace=workspace, env=env)
             except (OSError, RuntimeError) as exc:
                 print(f"with-sanka extension setup failed: {exc}", file=sys.stderr)
                 return 1
             sanka_versions = _sanka_tool_versions(sanka_bin, workspace=workspace, env=env)
-            prompt += PROMPT_SANKA.format(sanka=sanka_bin, verifier=_verifier_prompt(sanka_bin))
+            prompt += PROMPT_SANKA.format(sanka=sanka_bin)
         elif mode == "readiness-aware":
             assert args.sanka_bin is not None
             try:
@@ -680,7 +800,7 @@ def main() -> int:
             )
             prompt += _readiness_prompt(readiness_context, args.sanka_bin.resolve())
         if args.agent == "codex":
-            codex_home = Path(temp) / "codex-home"
+            codex_home = sandbox / "codex-home"
             command = _codex_command(args, prompt, codex_home)
             env["CODEX_HOME"] = str(codex_home)
         else:
@@ -702,6 +822,7 @@ def main() -> int:
             ]
         terminal_reason: str | None = None
         timed_out = False
+        agent_started_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         started = time.monotonic()
         try:
             outcome = subprocess.run(
@@ -711,7 +832,7 @@ def main() -> int:
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
-                timeout=3600,
+                timeout=args.wall_clock_seconds,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
@@ -725,28 +846,108 @@ def main() -> int:
                 stderr=_as_text(exc.stderr),
             )
             terminal_reason = (
-                "wall-clock timeout (3600s) exhausted; the agent process was "
+                f"wall-clock timeout ({args.wall_clock_seconds}s) exhausted; the agent process was "
                 "killed and the workspace was frozen as-is"
             )
         measured_ms = (time.monotonic() - started) * 1000
+        agent_ended_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         if args.agent == "codex":
             stats = _codex_stats(outcome.stdout, args, measured_ms)
         else:
-            stats = _agent_stats(outcome.stdout)
+            stats = claude_stats(
+                outcome.stdout,
+                billing_mode=args.billing_mode,
+                requested_model_id=args.model,
+                actual_model_id=args.actual_model_id or args.model,
+                measured_ms=measured_ms,
+            )
         out_dir = args.out.resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
         raw = outcome.stdout.strip().splitlines()
-        if raw:
-            (out_dir / "agent-result.json").write_text(raw[-1] + "\n", encoding="utf-8")
-        if outcome.stdout:
-            (out_dir / "agent-log.jsonl").write_text(outcome.stdout, encoding="utf-8")
-        if outcome.stderr:
-            (out_dir / "agent-stderr.log").write_text(outcome.stderr, encoding="utf-8")
+        for directory in (out_dir, raw_dir):
+            if raw:
+                (directory / "agent-result.json").write_text(raw[-1] + "\n", encoding="utf-8")
+            if outcome.stdout:
+                (directory / "agent-log.jsonl").write_text(outcome.stdout, encoding="utf-8")
+            if outcome.stderr:
+                (directory / "agent-stderr.log").write_text(outcome.stderr, encoding="utf-8")
+        if skill_record is not None:
+            (out_dir / "sanka-skill.json").write_text(
+                json.dumps(skill_record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+        pristine = {
+            path.relative_to(source).as_posix(): path.read_bytes()
+            for path in sorted(source.rglob("*"))
+            if path.is_file()
+        }
+        added: list[str] = []
+        modified: list[str] = []
+        for path in sorted(workspace.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(workspace)
+            if _excluded(relative):
+                continue
+            key = relative.as_posix()
+            if key not in pristine:
+                added.append(key)
+            elif path.read_bytes() != pristine[key]:
+                modified.append(key)
+        telemetry: dict[str, object] = {
+            "schema": "sanka-bench/agent-cell-telemetry/v1",
+            "input_digest": os.environ.get("SANKA_BENCH_INPUT_DIGEST") or None,
+            "harness": args.agent,
+            "requested_model_id": args.model,
+            "actual_model_id": args.actual_model_id or args.model,
+            "provider": args.provider,
+            "provider_variant": args.provider_variant,
+            "route_kind": args.route_kind,
+            "billing_mode": args.billing_mode,
+            "gateway_profile": args.gateway_profile,
+            "started_at": agent_started_at,
+            "ended_at": agent_ended_at,
+            "timing": {
+                "lane_setup_seconds": round(started - lane_started, 6),
+                "agent_wall_seconds": round(measured_ms / 1000, 6),
+            },
+            "usage": {
+                key: stats.get(key)
+                for key in (
+                    "input_tokens",
+                    "cache_creation_input_tokens",
+                    "cache_read_input_tokens",
+                    "output_tokens",
+                    "total_tokens",
+                    "model_usage",
+                )
+            },
+            "cost": {
+                "cost_usd": stats.get("cost_usd"),
+                "reported_equivalent_cost_usd": stats.get("reported_equivalent_cost_usd"),
+                "basis": stats.get("cost_basis"),
+            },
+            "toolchain": {
+                "agent_version": agent_version or None,
+                "sanka_versions": sanka_versions,
+                "sanka_skill": skill_record,
+            },
+            "digests": {
+                "transcript_sha256": _sha256_bytes(outcome.stdout.encode()),
+                "overlay_sha256": None,
+            },
+        }
+        _write_json_atomic(out_dir / "telemetry.json", telemetry)
         if readiness_context is not None:
             (out_dir / "sanka-readiness.json").write_text(
                 json.dumps(readiness_context, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
+        if timed_out and not _has_model_activity(outcome.stdout) and not added and not modified:
+            print(
+                "agent reported an error: wall-clock timeout with no model activity",
+                file=sys.stderr,
+            )
+            return 1
         if not timed_out and outcome.returncode != 0 and not stats:
             # Only a run with no parseable terminal result is an agent-run
             # failure. A parseable result is authoritative over the process exit
@@ -780,45 +981,21 @@ def main() -> int:
                 "frozen as-is and the overrun is disclosed"
             )
 
-        pristine = {
-            path.relative_to(source).as_posix(): path.read_bytes()
-            for path in sorted(source.rglob("*"))
-            if path.is_file()
-        }
-        added: list[str] = []
-        modified: list[str] = []
-        for path in sorted(workspace.rglob("*")):
-            if not path.is_file():
-                continue
-            relative = path.relative_to(workspace)
-            if _excluded(relative):
-                continue
-            key = relative.as_posix()
-            if key not in pristine:
-                added.append(key)
-            elif path.read_bytes() != pristine[key]:
-                modified.append(key)
-
         overlay = out_dir / "overlay"
         if overlay.exists():
             shutil.rmtree(overlay)
+        overlay.mkdir()
         for key in added:
             destination = overlay / key
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(workspace / key, destination)
 
-        if not added:
-            turns = stats.get("num_turns")
-            print(
-                "agent produced no new files; refusing to freeze an empty candidate "
-                f"(terminal: {terminal_reason or 'completed'}; "
-                f"turns: {turns if turns is not None else 'none recorded'}). "
-                "No error event plus no recorded activity is the signature of a "
-                "silent provider failure - classify it in the infrastructure "
-                "ledger instead of charging it as an agent-quality result.",
-                file=sys.stderr,
-            )
-            return 3
+        telemetry["digests"] = {
+            "transcript_sha256": _sha256_bytes(outcome.stdout.encode()),
+            "overlay_sha256": digest_tree(overlay),
+        }
+        _write_json_atomic(out_dir / "telemetry.json", telemetry)
+
         _write_candidate(out_dir, args, agent_version, stats)
         _write_disclosure(
             out_dir,
@@ -999,6 +1176,29 @@ def _as_text(value: object) -> str:
     return str(value)
 
 
+def _has_model_activity(stdout: str) -> bool:
+    activity_types = {
+        "assistant",
+        "user",
+        "result",
+        "tool",
+        "tool_use",
+        "tool_result",
+        "item.started",
+        "item.completed",
+        "turn.completed",
+        "turn.failed",
+    }
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict) and event.get("type") in activity_types:
+            return True
+    return False
+
+
 def _agent_error_is_terminal(stats: dict[str, object], *, timed_out: bool) -> bool:
     if not stats.get("is_error"):
         return False
@@ -1007,6 +1207,95 @@ def _agent_error_is_terminal(stats: dict[str, object], *, timed_out: bool) -> bo
     # it can be graded instead of misclassifying budget exhaustion as provider
     # infrastructure. A real turn.failed remains terminal even at the deadline.
     return not (timed_out and stats.get("subtype") == "codex-no-terminal-event")
+
+
+def _integer_token(item: dict[str, object], name: str) -> int | None:
+    value = item.get(name)
+    return int(value) if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def claude_stats(
+    stdout: str,
+    *,
+    billing_mode: str,
+    requested_model_id: str,
+    actual_model_id: str,
+    measured_ms: float,
+) -> dict[str, object]:
+    payload: dict[str, object] | None = None
+    for line in reversed([line for line in stdout.splitlines() if line.strip()]):
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict) and "num_turns" in value:
+            payload = value
+            break
+    if payload is None:
+        return {}
+
+    raw_usage = payload.get("modelUsage")
+    model_usage: dict[str, dict[str, object]] = {}
+    if isinstance(raw_usage, dict):
+        for client_model, item in raw_usage.items():
+            if not isinstance(item, dict):
+                continue
+
+            model_usage[str(client_model)] = {
+                "client_model_id": str(client_model),
+                "input_tokens": _integer_token(item, "inputTokens"),
+                "cache_creation_input_tokens": _integer_token(item, "cacheCreationInputTokens"),
+                "cache_read_input_tokens": _integer_token(item, "cacheReadInputTokens"),
+                "output_tokens": _integer_token(item, "outputTokens"),
+            }
+    token_fields = (
+        "input_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+        "output_tokens",
+    )
+    totals = {
+        field: (
+            sum(int(item[field]) for item in model_usage.values())
+            if model_usage and all(item[field] is not None for item in model_usage.values())
+            else None
+        )
+        for field in token_fields
+    }
+    total_tokens = (
+        sum(int(value) for value in totals.values())
+        if all(value is not None for value in totals.values())
+        else None
+    )
+    raw_cost = payload.get("total_cost_usd")
+    reported_cost = float(raw_cost) if isinstance(raw_cost, int | float) else None
+    subscription = billing_mode == "subscription"
+    raw_duration = payload.get("duration_ms")
+    duration_ms = (
+        float(raw_duration) if isinstance(raw_duration, int | float) else float(measured_ms)
+    )
+    return {
+        "num_turns": payload.get("num_turns"),
+        "duration_ms": duration_ms,
+        "total_cost_usd": reported_cost,
+        "cost_usd": None,
+        "reported_equivalent_cost_usd": reported_cost,
+        "cost_basis": (
+            "subscription-no-marginal-cost"
+            if subscription
+            else "claude-code-reported-equivalent-unverified"
+        ),
+        "requested_model_id": requested_model_id,
+        "actual_model_id": actual_model_id,
+        "billing_mode": billing_mode,
+        **totals,
+        "total_tokens": total_tokens,
+        "model_usage": model_usage,
+        "is_error": payload.get("is_error"),
+        "subtype": payload.get("subtype"),
+        "result": payload.get("result"),
+        "terminal_event": payload.get("type"),
+    }
 
 
 def _agent_stats(stdout: str) -> dict[str, object]:
@@ -1045,16 +1334,43 @@ def _write_candidate(
         "  command: scripts/run_agent_candidate.py (prompt and budget in GENERATED.md)",
     ]
     duration = stats.get("duration_ms")
-    cost = stats.get("total_cost_usd")
+    cost = stats.get("cost_usd") if "cost_usd" in stats else stats.get("total_cost_usd")
+    equivalent_cost = stats.get("reported_equivalent_cost_usd")
     turns = stats.get("num_turns")
-    if any(isinstance(value, int | float) for value in (duration, cost, turns)):
-        lines.append("stats:")
-        if isinstance(turns, int | float):
-            lines.append(f"  turns: {int(turns)}")
-        if isinstance(duration, int | float):
-            lines.append(f"  duration_seconds: {round(duration / 1000, 1)}")
-        if isinstance(cost, int | float):
-            lines.append(f"  cost_usd: {round(float(cost), 4)}")
+    lines.extend(
+        [
+            "stats:",
+            f"  requested_model_id: {json.dumps(args.model)}",
+            f"  actual_model_id: {json.dumps(args.actual_model_id or args.model)}",
+            f"  billing_mode: {json.dumps(args.billing_mode)}",
+            f"  cost_basis: {json.dumps(str(stats.get('cost_basis') or 'agent-reported'))}",
+        ]
+    )
+    if isinstance(turns, int | float):
+        lines.append(f"  turns: {int(turns)}")
+    if isinstance(duration, int | float):
+        lines.append(f"  duration_seconds: {round(duration / 1000, 3)}")
+    for field in (
+        "input_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+        "output_tokens",
+        "total_tokens",
+    ):
+        value = stats.get(field)
+        if isinstance(value, int | float):
+            lines.append(f"  {field}: {int(value)}")
+    lines.append(
+        f"  cost_usd: {round(float(cost), 6) if isinstance(cost, int | float) else 'null'}"
+    )
+    lines.append(
+        "  reported_equivalent_cost_usd: "
+        + (
+            str(round(float(equivalent_cost), 6))
+            if isinstance(equivalent_cost, int | float)
+            else "null"
+        )
+    )
     (out_dir / "candidate.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -1073,8 +1389,12 @@ def _write_disclosure(
 ) -> None:
     duration = stats.get("duration_ms")
     minutes = f"{int(duration) / 60000:.1f} min" if isinstance(duration, int | float) else "unknown"
-    cost = stats.get("total_cost_usd")
+    cost = stats.get("cost_usd") if "cost_usd" in stats else stats.get("total_cost_usd")
     cost_text = f"${float(cost):.2f}" if isinstance(cost, int | float) else "unknown"
+    equivalent = stats.get("reported_equivalent_cost_usd")
+    equivalent_text = (
+        f"${float(equivalent):.2f}" if isinstance(equivalent, int | float) else "not applicable"
+    )
     if args.agent == "claude-code":
         budget_text = str(args.max_turns)
     else:
@@ -1095,7 +1415,7 @@ def _write_disclosure(
     elif args.attempt == 1:
         attempt_text += " (pass@1; no retries)"
     agent_label = "Claude Code" if args.agent == "claude-code" else "Codex CLI"
-    provider = "anthropic" if args.agent == "claude-code" else args.provider
+    provider = args.provider
     web_search_text = (
         "Claude Code default tool set"
         if args.agent == "claude-code"
@@ -1128,11 +1448,15 @@ intervention between prompt and frozen overlay.
 | Web search | {web_search_text} |
 | Recovered transport notices | {stats.get("recovered_error_events", 0)} |
 | Cost basis | {stats.get("cost_basis", "agent-reported")} |
-| Model | `{args.model}` |
+| Requested model | `{args.model}` |
+| Actual model | `{args.actual_model_id or args.model}` |
+| Route / billing | {args.route_kind} / {args.billing_mode} |
+| Gateway profile | {args.gateway_profile or "not applicable"} |
 | Turn budget | {budget_text} |
 | Turns used | {stats.get("num_turns", "unknown")} |
 | Duration | {minutes} |
-| Reported cost | {cost_text} |
+| Actual cost | {cost_text} |
+| Claude Code API-equivalent estimate | {equivalent_text} |
 | Terminal | {terminal_reason or "completed within budget"} |
 | Attempt | {attempt_text} |
 | Sanka CLI | {sanka_versions or "not offered"} |

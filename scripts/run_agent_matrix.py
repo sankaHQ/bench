@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -19,12 +20,19 @@ import subprocess
 import sys
 import time
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from run_matrix_cell import ALLOWED_KEYS, read_allowlisted_env
+
+from sanka_bench.environment import isolated_environment
+from sanka_bench.hashing import digest_tree
+
+_KNOWN_SECRET = re.compile(rb"(?:sk-(?:ant-|proj-)?|fw_)[A-Za-z0-9_-]{16,}")
 
 
 def utc_now() -> str:
@@ -45,6 +53,110 @@ def atomic_json(path: Path, value: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
+def secret_hits(root: Path, secret_values: Sequence[str]) -> list[str]:
+    """Return artifact paths containing credentials without returning credential text."""
+    needles = {value.encode() for value in secret_values if len(value) >= 8}
+    hits: list[str] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        content = path.read_bytes()
+        if any(needle in content for needle in needles) or _KNOWN_SECRET.search(content):
+            hits.append(path.relative_to(root).as_posix())
+    return hits
+
+
+def artifact_issues(root: Path, cells: Sequence[CellSpec]) -> list[str]:
+    """Verify resumable cell evidence before publishing aggregate output."""
+    issues: list[str] = []
+    for cell in cells:
+        if not cell.input_digest:  # v1 predates normalized cell telemetry
+            continue
+        state = cell_state(root, cell)
+        label = cell.key
+        if state == "untouched":
+            continue
+        if state == "ambiguous":
+            issues.append(f"{label}: ambiguous cell artifacts")
+            continue
+        paths = artifacts(root, cell)
+        marker = next(
+            (line for line in reversed(marker_lines(paths.log)) if line.startswith("DRIVER_DONE ")),
+            "",
+        )
+        successful_generation = state == "generated" or "run_exit=0" in marker
+
+        telemetry_path = paths.candidate / "telemetry.json"
+        transcript_path = paths.candidate / "agent-log.jsonl"
+        raw_transcript_path = paths.sandbox / "raw" / "agent-log.jsonl"
+        overlay = paths.candidate / "overlay"
+        for name, path in (
+            ("telemetry", telemetry_path),
+            ("transcript", transcript_path),
+            ("raw transcript", raw_transcript_path),
+        ):
+            if not path.is_file():
+                issues.append(f"{label}: missing {name}")
+        if successful_generation and not overlay.is_dir():
+            issues.append(f"{label}: missing candidate overlay")
+        if issues and any(issue.startswith(f"{label}: missing") for issue in issues):
+            continue
+
+        try:
+            telemetry = load_json(telemetry_path)
+        except (OSError, TypeError, json.JSONDecodeError):
+            issues.append(f"{label}: invalid telemetry")
+            continue
+        if telemetry.get("schema") != "sanka-bench/agent-cell-telemetry/v1":
+            issues.append(f"{label}: telemetry schema mismatch")
+        if telemetry.get("input_digest") != cell.input_digest:
+            issues.append(f"{label}: telemetry input digest mismatch")
+        digests = telemetry.get("digests")
+        if not isinstance(digests, dict):
+            issues.append(f"{label}: missing telemetry digests")
+            continue
+        transcript_digest = "sha256:" + hashlib.sha256(transcript_path.read_bytes()).hexdigest()
+        if digests.get("transcript_sha256") != transcript_digest:
+            issues.append(f"{label}: transcript digest mismatch")
+        if raw_transcript_path.read_bytes() != transcript_path.read_bytes():
+            issues.append(f"{label}: raw transcript mismatch")
+        if successful_generation and digests.get("overlay_sha256") != digest_tree(overlay):
+            issues.append(f"{label}: overlay digest mismatch")
+
+        if state != "terminal" or not successful_generation:
+            continue
+        try:
+            report = load_json(paths.report)
+        except (OSError, TypeError, json.JSONDecodeError):
+            issues.append(f"{label}: invalid report")
+            continue
+        report_digest = "sha256:" + hashlib.sha256(paths.report.read_bytes()).hexdigest()
+        evaluation = telemetry.get("evaluation")
+        if not isinstance(evaluation, dict) or evaluation.get("report_sha256") != report_digest:
+            issues.append(f"{label}: report digest mismatch")
+        if not isinstance(evaluation, dict) or evaluation.get("status") != report.get("status"):
+            issues.append(f"{label}: evaluation status mismatch")
+        provenance = report.get("provenance")
+        if not isinstance(provenance, dict) or provenance.get("candidate_digest") != digest_tree(
+            paths.candidate
+        ):
+            issues.append(f"{label}: candidate digest mismatch")
+    return issues
+
+
+def credential_values(manifest: dict[str, Any]) -> list[str]:
+    names = {name for name in ALLOWED_KEYS if name.endswith(("_KEY", "_TOKEN"))}
+    values = [os.environ[name] for name in names if os.environ.get(name)]
+    raw_path = str(manifest.get("toolchain", {}).get("env_path") or "")
+    if raw_path and not raw_path.startswith("PENDING_"):
+        path = Path(raw_path).expanduser()
+        if path.is_file():
+            values.extend(
+                value for name, value in read_allowlisted_env(path).items() if name in names
+            )
+    return values
+
+
 @dataclass(frozen=True)
 class CellSpec:
     task: str
@@ -53,6 +165,13 @@ class CellSpec:
     candidate_slug: str
     provider: str
     provider_variant: str
+    harness: str
+    requested_model_id: str
+    actual_model_id: str
+    route_kind: str
+    billing_mode: str
+    gateway_profile: str | None
+    input_digest: str
     config: str
     route_weight: int
     sample: int = 1
@@ -75,6 +194,7 @@ class CellArtifacts:
     candidate: Path
     report: Path
     log: Path
+    sandbox: Path
 
 
 @dataclass
@@ -118,6 +238,47 @@ class StageResult:
         }
 
 
+def cell_input_digest(
+    manifest: dict[str, Any],
+    *,
+    task: str,
+    model: dict[str, Any],
+    config: str,
+    sample: int,
+) -> str:
+    execution_fields = (
+        "max_turns",
+        "wall_clock_seconds",
+        "prompt_sha256",
+        "sanka_prompt_sha256",
+        "authorization_scope",
+        "concurrency",
+    )
+    toolchain_fields = (
+        "claude_version",
+        "claude_bin_sha256",
+        "agent_runner_sha256",
+        "evaluator_sha256",
+        "sanka_cli",
+        "extension_version",
+        "sanka_skill_sha256",
+    )
+    toolchain = manifest.get("toolchain", {})
+    payload = {
+        "benchmark_sha": manifest["benchmark_sha"],
+        "cell": {"task": task, "config": config, "sample": sample},
+        "model": model,
+        "execution": {
+            key: manifest["execution"].get(key)
+            for key in execution_fields
+            if key in manifest["execution"]
+        },
+        "toolchain": {key: toolchain.get(key) for key in toolchain_fields if key in toolchain},
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 def build_cells(manifest: dict[str, Any]) -> list[CellSpec]:
     cells: list[CellSpec] = []
     weights = manifest["suite"]["route_weights"]
@@ -126,10 +287,17 @@ def build_cells(manifest: dict[str, Any]) -> list[CellSpec]:
     if samples < 1:
         raise ValueError("execution.samples must be a positive integer")
     for task in manifest["suite"]["tasks"]:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", str(task)):
+            raise ValueError(f"unsafe task slug: {task}")
         suffix = str(task).rsplit("-", 1)[-1]
         for model in manifest["models"]:
+            for label in ("slug", "candidate_slug"):
+                if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", str(model[label])):
+                    raise ValueError(f"unsafe model {label}: {model[label]}")
             variant = str(model.get("provider_variant") or "standard")
             for config in configurations:
+                if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", str(config)):
+                    raise ValueError(f"unsafe configuration slug: {config}")
                 for sample in range(1, samples + 1):
                     cells.append(
                         CellSpec(
@@ -139,6 +307,35 @@ def build_cells(manifest: dict[str, Any]) -> list[CellSpec]:
                             candidate_slug=str(model["candidate_slug"]),
                             provider=str(model["provider"]),
                             provider_variant=variant,
+                            harness=str(model.get("harness") or model.get("agent") or ""),
+                            requested_model_id=str(
+                                model.get("requested_model_id") or model.get("model_id") or ""
+                            ),
+                            actual_model_id=str(
+                                model.get("actual_model_id")
+                                or model.get("requested_model_id")
+                                or model.get("model_id")
+                                or ""
+                            ),
+                            route_kind=str(model.get("route_kind") or "legacy"),
+                            billing_mode=str(model.get("billing_mode") or "unknown"),
+                            gateway_profile=(
+                                str(model["gateway_profile"])
+                                if model.get("gateway_profile") is not None
+                                else None
+                            ),
+                            input_digest=(
+                                cell_input_digest(
+                                    manifest,
+                                    task=str(task),
+                                    model=model,
+                                    config=str(config),
+                                    sample=sample,
+                                )
+                                if manifest.get("schema")
+                                == "sanka-bench/model-matrix-run-manifest/v2"
+                                else ""
+                            ),
                             config=str(config),
                             route_weight=int(weights[task]),
                             sample=sample,
@@ -150,7 +347,115 @@ def build_cells(manifest: dict[str, Any]) -> list[CellSpec]:
         raise ValueError(f"manifest expands to {len(cells)} cells, expected {expected}")
     if len({cell.key for cell in cells}) != len(cells):
         raise ValueError("manifest expands to duplicate cell keys")
+    if len({cell.candidate_id for cell in cells}) != len(cells):
+        raise ValueError("manifest expands to duplicate artifact paths")
     return cells
+
+
+def qualification_digest(path: Path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
+    if manifest.get("schema") != "sanka-bench/model-matrix-run-manifest/v2":
+        return
+    if manifest["execution"].get("configurations") != ["alone", "with-sanka"]:
+        raise ValueError("official v2 configurations must be alone and with-sanka")
+    if any(
+        not isinstance(manifest["execution"].get(name), int)
+        or isinstance(manifest["execution"].get(name), bool)
+        or manifest["execution"][name] < 1
+        for name in ("max_turns", "wall_clock_seconds")
+    ):
+        raise ValueError("official v2 manifest requires positive execution budgets")
+    concurrency = manifest["execution"].get("concurrency")
+    if not isinstance(concurrency, dict) or any(
+        not isinstance(concurrency.get(name), int)
+        or isinstance(concurrency.get(name), bool)
+        or concurrency[name] < 1
+        for name in ("provider_cap", "model_cap", "evaluation_cap")
+    ):
+        raise ValueError("official v2 manifest requires positive concurrency pins")
+    toolchain = manifest.get("toolchain")
+    if not isinstance(toolchain, dict):
+        raise ValueError("official v2 manifest requires toolchain pins")
+    claude_version = toolchain.get("claude_version")
+    claude_sha = toolchain.get("claude_bin_sha256")
+    skill_sha = toolchain.get("sanka_skill_sha256")
+    if (
+        not isinstance(claude_version, str)
+        or not claude_version
+        or not isinstance(claude_sha, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", claude_sha) is None
+        or not isinstance(skill_sha, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", skill_sha) is None
+    ):
+        raise ValueError("official v2 manifest requires Claude and Sanka skill pins")
+    root = root.resolve()
+    for model in manifest["models"]:
+        if model.get("harness") != "claude-code":
+            raise ValueError("official v2 matrices require the Claude Code harness")
+        route_kind = model.get("route_kind")
+        billing_mode = model.get("billing_mode")
+        gateway_profile = model.get("gateway_profile")
+        if route_kind == "anthropic-native":
+            if billing_mode != "subscription" or gateway_profile is not None:
+                raise ValueError(
+                    "anthropic-native routes require subscription billing and no gateway profile"
+                )
+        elif route_kind == "gateway":
+            if billing_mode != "api_key" or not gateway_profile:
+                raise ValueError("gateway routes require api_key billing and a gateway profile")
+        else:
+            raise ValueError("route_kind must be anthropic-native or gateway")
+
+        path = (root / str(model.get("qualification") or "")).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError("qualification path escapes the run directory")
+        expected_digest = model.get("qualification_sha256")
+        if not path.is_file() or qualification_digest(path) != expected_digest:
+            raise ValueError("qualification digest does not match the manifest")
+        evidence = load_json(path)
+        if (
+            evidence.get("schema") != "sanka-bench/claude-route-qualification/v1"
+            or evidence.get("status") != "qualified"
+        ):
+            raise ValueError("qualification record is not qualified")
+        checks = evidence.get("checks")
+        required_checks = ("tool_use", "streaming", "terminal_event", "usage_accounting")
+        if not isinstance(checks, dict) or any(
+            checks.get(name) is not True for name in required_checks
+        ):
+            raise ValueError("qualification checks are incomplete")
+        claude = evidence.get("claude")
+        if not isinstance(claude, dict) or (
+            claude.get("version") != claude_version or claude.get("sha256") != claude_sha
+        ):
+            raise ValueError("qualification Claude harness evidence does not match the manifest")
+        hashes = evidence.get("evidence")
+        if not isinstance(hashes, dict) or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(hashes.get(name) or "")) is None
+            for name in ("prompt_sha256", "provider_sha256", "transcript_sha256")
+        ):
+            raise ValueError("qualification evidence hashes are incomplete")
+        transcript = path.with_suffix(".jsonl")
+        if (
+            not transcript.is_file()
+            or qualification_digest(transcript) != hashes["transcript_sha256"]
+        ):
+            raise ValueError("qualification transcript digest does not match its evidence")
+        for field in (
+            "requested_model_id",
+            "actual_model_id",
+            "provider",
+            "provider_variant",
+            "route_kind",
+            "billing_mode",
+            "gateway_profile",
+        ):
+            if evidence.get(field) != model.get(field):
+                label = field.replace("_", " ")
+                raise ValueError(f"qualification {label} does not match the manifest")
 
 
 def validate_backups(manifest: dict[str, Any]) -> None:
@@ -187,7 +492,9 @@ def worktree_preflight(manifest: dict[str, Any]) -> dict[str, str]:
         raise ValueError("toolchain.worktree and an exact benchmark_sha are required")
     worktree = Path(raw).resolve()
     actual = subprocess.check_output(
-        ["git", "-C", str(worktree), "rev-parse", "HEAD"], text=True
+        ["git", "-C", str(worktree), "rev-parse", "HEAD"],
+        text=True,
+        env=isolated_environment(os.environ),
     ).strip()
     if actual != expected:
         raise ValueError(f"worktree SHA mismatch: expected {expected}, got {actual}")
@@ -203,6 +510,7 @@ def worktree_preflight(manifest: dict[str, Any]) -> dict[str, str]:
         capture_output=True,
         text=True,
         check=False,
+        env=isolated_environment(os.environ),
     )
     if status.returncode != 0 or status.stdout.strip():
         raise ValueError("benchmark worktree has tracked changes")
@@ -214,6 +522,7 @@ def artifacts(root: Path, cell: CellSpec) -> CellArtifacts:
         candidate=root / "candidates" / cell.task / cell.candidate_id,
         report=root / "reports" / f"{cell.task}-{cell.candidate_id}.json",
         log=root / "logs" / f"run-{cell.task_suffix}-{cell.candidate_id}.log",
+        sandbox=root / "sandboxes" / cell.candidate_id,
     )
 
 
@@ -226,6 +535,17 @@ def marker_lines(path: Path) -> list[str]:
 def cell_state(root: Path, cell: CellSpec) -> str:
     paths = artifacts(root, cell)
     lines = marker_lines(paths.log)
+    if cell.input_digest and (
+        paths.log.exists()
+        or paths.candidate.exists()
+        or paths.report.exists()
+        or paths.sandbox.exists()
+    ):
+        recorded = [
+            line.removeprefix("INPUT_DIGEST=") for line in lines if line.startswith("INPUT_DIGEST=")
+        ]
+        if recorded != [cell.input_digest]:
+            return "ambiguous"
     driver_lines = [line for line in lines if line.startswith("DRIVER_DONE ")]
     if driver_lines:
         marker = driver_lines[-1]
@@ -247,7 +567,12 @@ def cell_state(root: Path, cell: CellSpec) -> str:
         if not paths.candidate.is_dir() or paths.report.exists():
             return "ambiguous"
         return "generated"
-    if paths.log.exists() or paths.candidate.exists() or paths.report.exists():
+    if (
+        paths.log.exists()
+        or paths.candidate.exists()
+        or paths.report.exists()
+        or paths.sandbox.exists()
+    ):
         return "ambiguous"
     return "untouched"
 
@@ -306,6 +631,8 @@ def authorize_retry(
         shutil.move(str(paths.log), str(attempt_dir / paths.log.name))
     if paths.candidate.exists():
         shutil.move(str(paths.candidate), str(attempt_dir / "candidate"))
+    if paths.sandbox.exists():
+        shutil.move(str(paths.sandbox), str(attempt_dir / "sandbox"))
     ledger = incident / "incident.json"
     atomic_json(
         ledger,
@@ -330,7 +657,17 @@ def authorize_retry(
 
 
 def prioritized(root: Path, cells: Iterable[CellSpec]) -> list[CellSpec]:
+    cells = list(cells)
     states = {cell.key: cell_state(root, cell) for cell in cells}
+    pairs: dict[tuple[str, str, int], int] = {}
+    for cell in cells:
+        pairs.setdefault((cell.task, cell.model_slug, cell.sample), len(pairs) + 1)
+
+    def lane_rank(cell: CellSpec) -> int:
+        pair = pairs[(cell.task, cell.model_slug, cell.sample)]
+        preferred = "alone" if pair % 2 else "with-sanka"
+        return 0 if cell.config == preferred else 1
+
     return sorted(
         cells,
         key=lambda cell: (
@@ -338,8 +675,9 @@ def prioritized(root: Path, cells: Iterable[CellSpec]) -> list[CellSpec]:
             -cell.route_weight,
             cell.provider,
             cell.model_slug,
-            0 if cell.config == "alone" else 1,
             cell.task,
+            cell.sample,
+            lane_rank(cell),
         ),
     )
 
@@ -445,8 +783,18 @@ class RollingCoordinator:
         self.manifest_path = manifest_path.resolve()
         self.root = self.manifest_path.parent
         self.manifest = load_json(self.manifest_path)
+        validate_official_manifest(self.manifest, self.root)
         validate_backups(self.manifest)
         self.cells = build_cells(self.manifest)
+        if self.manifest.get("schema") == "sanka-bench/model-matrix-run-manifest/v2":
+            pinned = self.manifest["execution"]["concurrency"]
+            requested = {
+                "provider_cap": provider_cap,
+                "model_cap": model_cap,
+                "evaluation_cap": evaluation_cap,
+            }
+            if requested != pinned:
+                raise ValueError(f"CLI concurrency does not match pinned concurrency: {pinned}")
         self.provider_cap = provider_cap
         self.model_cap = model_cap
         self.evaluation_cap = evaluation_cap
@@ -482,13 +830,14 @@ class RollingCoordinator:
         command = render_command(template, self.manifest_path, cell, phase)
         worker_log = self.root / "waves" / f"{stage_id}-{cell.candidate_id}-{phase}.log"
         worker_log.parent.mkdir(parents=True, exist_ok=True)
-        environment = dict(os.environ)
+        environment = isolated_environment(os.environ)
         environment.update(
             {
                 "SANKA_BENCH_WAVE_ID": stage_id,
                 "SANKA_BENCH_WAVE_CONCURRENCY": str(self.stage_concurrency),
                 "SANKA_BENCH_TIMING_METHODOLOGY": "rolling-provider-queue",
                 "SANKA_BENCH_COORDINATOR_RUN_ID": str(self.manifest["authorization"]["run_id"]),
+                "SANKA_BENCH_INPUT_DIGEST": cell.input_digest,
             }
         )
         with worker_log.open("wb") as handle:
@@ -607,6 +956,16 @@ class RollingCoordinator:
         template = self.manifest["execution"].get("aggregate_command")
         if not template:
             return 0
+        secrets = secret_hits(self.root, credential_values(self.manifest))
+        integrity = artifact_issues(self.root, self.cells)
+        if secrets or integrity:
+            self.event(
+                "publication-gate-failed",
+                stage_id=stage_id,
+                secret_paths=secrets,
+                artifact_issues=integrity,
+            )
+            return 22
         if not isinstance(template, list) or not all(isinstance(item, str) for item in template):
             raise ValueError("execution.aggregate_command must be a string list")
         command = [sys.executable if item == "{python}" else item for item in template]
@@ -620,6 +979,7 @@ class RollingCoordinator:
                 stdout=handle,
                 stderr=subprocess.STDOUT,
                 check=False,
+                env=isolated_environment(os.environ),
             )
         return outcome.returncode
 
@@ -685,9 +1045,11 @@ class RollingCoordinator:
         result.max_evaluations = self.activity.max_evaluations
         result.max_generation_by_provider = dict(self.activity.max_generation_by_provider)
         result.max_generation_by_model = dict(self.activity.max_generation_by_model)
+        wave_path = self.root / "waves" / f"{stage_id}.json"
+        atomic_json(wave_path, result.as_dict())
         if self.aggregate(stage_id) != 0:
             result.evaluation_failures += 1
-        atomic_json(self.root / "waves" / f"{stage_id}.json", result.as_dict())
+            atomic_json(wave_path, result.as_dict())
         self.event("stage-end", **result.as_dict())
         return result
 
@@ -721,6 +1083,7 @@ def select_cells(root: Path, cells: list[CellSpec], keys: list[str]) -> list[Cel
 
 def plan(manifest_path: Path) -> int:
     manifest = load_json(manifest_path)
+    validate_official_manifest(manifest, manifest_path.parent)
     validate_backups(manifest)
     cells = build_cells(manifest)
     states = Counter(cell_state(manifest_path.parent, cell) for cell in cells)
@@ -765,6 +1128,7 @@ def main() -> int:
         if args.command == "plan":
             return plan(manifest_path)
         manifest = load_json(manifest_path)
+        validate_official_manifest(manifest, manifest_path.parent)
         validate_backups(manifest)
         ensure_authorized(manifest)
         worktree_preflight(manifest)

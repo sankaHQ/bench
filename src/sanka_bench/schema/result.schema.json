@@ -246,22 +246,7 @@
           "minimum": 2
         },
         "candidate_stats": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "turns": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "duration_seconds": {
-              "type": "number",
-              "minimum": 0
-            },
-            "cost_usd": {
-              "type": "number",
-              "minimum": 0
-            }
-          }
+          "$ref": "#/$defs/agentStats"
         }
       }
     },
@@ -273,6 +258,75 @@
     }
   },
   "$defs": {
+    "agentStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "turns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "setup_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "evaluation_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "end_to_end_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "requested_model_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actual_model_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "billing_mode": {
+          "enum": ["subscription", "api_key", "unknown"]
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_creation_input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_read_input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost_usd": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "reported_equivalent_cost_usd": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "cost_basis": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "fraction": {
       "type": "object",
       "additionalProperties": false,

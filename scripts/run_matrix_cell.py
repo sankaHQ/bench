@@ -26,6 +26,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -34,11 +35,23 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from sanka_bench.environment import isolated_environment
+
 ALLOWED_KEYS = {
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
     "OPENAI_API_KEY",
     "FIREWORKS_API_KEY",
     "DEEPINFRA_API_KEY",
     "TOGETHER_API_KEY",
+}
+COORDINATOR_ENV_KEYS = {
+    "SANKA_BENCH_COORDINATOR_RUN_ID",
+    "SANKA_BENCH_INPUT_DIGEST",
+    "SANKA_BENCH_TIMING_METHODOLOGY",
+    "SANKA_BENCH_WAVE_CONCURRENCY",
+    "SANKA_BENCH_WAVE_ID",
 }
 OFFICIAL_MARKETPLACE = "https://github.com/sankaHQ/extensions.git"
 DRF_EXTENSION_ID = "sanka/drf-to-fastapi"
@@ -94,6 +107,10 @@ class Cell:
     agent: str
     provider: str
     provider_variant: str
+    actual_model_id: str
+    route_kind: str
+    billing_mode: str
+    gateway_profile: str | None
     config: str
     sample: int
     samples: int
@@ -116,6 +133,8 @@ class Paths:
     candidate: Path
     report: Path
     log: Path
+    sandbox: Path
+    claude_config: Path
     sanka_home: Path
 
 
@@ -139,11 +158,22 @@ def resolve_cell(
         task_id=task_id,
         task_suffix=task_id.rsplit("-", 1)[-1],
         model_slug=model_slug,
-        model_id=str(model["model_id"]),
+        model_id=str(model.get("requested_model_id") or model.get("model_id") or ""),
         candidate_slug=str(model["candidate_slug"]),
-        agent=str(model["agent"]),
+        agent=str(model.get("harness") or model.get("agent") or ""),
         provider=str(model["provider"]),
         provider_variant=str(model.get("provider_variant") or "standard"),
+        actual_model_id=str(
+            model.get("actual_model_id")
+            or model.get("requested_model_id")
+            or model.get("model_id")
+            or ""
+        ),
+        route_kind=str(model.get("route_kind") or "legacy"),
+        billing_mode=str(model.get("billing_mode") or "unknown"),
+        gateway_profile=(
+            str(model["gateway_profile"]) if model.get("gateway_profile") is not None else None
+        ),
         config=config,
         sample=sample,
         samples=samples,
@@ -155,14 +185,38 @@ def resolve_paths(manifest_path: Path, manifest: dict[str, Any], cell: Cell) -> 
     worktree_raw = str(manifest["toolchain"]["worktree"])
     if not worktree_raw or worktree_raw.startswith("PENDING_"):
         raise ValueError("manifest worktree is not armed")
+    sandbox = root / "sandboxes" / cell.candidate_id
     return Paths(
         root=root,
         worktree=Path(worktree_raw).resolve(),
         candidate=root / "candidates" / cell.task_id / cell.candidate_id,
         report=root / "reports" / f"{cell.task_id}-{cell.candidate_id}.json",
         log=root / "logs" / f"run-{cell.task_suffix}-{cell.candidate_id}.log",
-        sanka_home=root / "sanka-home",
+        sandbox=sandbox,
+        claude_config=sandbox / "claude-config",
+        sanka_home=sandbox / "sanka-home",
     )
+
+
+def route_environment(base: dict[str, str], cell: Cell) -> dict[str, str]:
+    env = dict(base)
+    if cell.route_kind == "anthropic-native":
+        for name in ALLOWED_KEYS:
+            env.pop(name, None)
+        return env
+    if cell.route_kind == "gateway":
+        for name in ALLOWED_KEYS - {
+            "ANTHROPIC_BASE_URL",
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+        }:
+            env.pop(name, None)
+        auth = [name for name in ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY") if env.get(name)]
+        if not env.get("ANTHROPIC_BASE_URL"):
+            raise ValueError("gateway route requires a base URL")
+        if len(auth) != 1:
+            raise ValueError("gateway route requires exactly one credential")
+    return env
 
 
 def _armed_path(manifest: dict[str, Any], key: str) -> Path:
@@ -177,7 +231,9 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
     if not re.fullmatch(r"[0-9a-f]{40}", expected_sha):
         raise ValueError("manifest benchmark SHA is not armed")
     actual_sha = subprocess.check_output(
-        ["git", "-C", str(paths.worktree), "rev-parse", "HEAD"], text=True
+        ["git", "-C", str(paths.worktree), "rev-parse", "HEAD"],
+        text=True,
+        env=isolated_environment(os.environ),
     ).strip()
     if actual_sha != expected_sha:
         raise ValueError(f"worktree SHA mismatch: expected {expected_sha}, got {actual_sha}")
@@ -190,15 +246,19 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
         "python": python,
         "bench": bench,
         "agent_runner": agent_runner,
-        "env": _armed_path(manifest, "env_path"),
-        "claude": _armed_path(manifest, "claude_bin"),
-        "codex": _armed_path(manifest, "codex_bin"),
     }
+    needs_env = not (cell.route_kind == "anthropic-native" and cell.billing_mode == "subscription")
+    if needs_env:
+        tools["env"] = _armed_path(manifest, "env_path")
+    agent_tool = "claude" if cell.agent == "claude-code" else "codex"
+    tools[agent_tool] = _armed_path(manifest, f"{agent_tool}_bin")
     if cell.with_sanka:
         tools["sanka"] = _armed_path(manifest, "sanka_bin")
     required = [task / "source", task / "public-tests" / "scenarios.json", python, bench]
-    required.append(tools["claude"] if cell.agent == "claude-code" else tools["codex"])
-    required.extend([agent_runner, tools["env"]])
+    required.append(tools[agent_tool])
+    required.append(agent_runner)
+    if needs_env:
+        required.append(tools["env"])
     if cell.with_sanka:
         required.append(tools["sanka"])
     missing = [str(path) for path in required if not path.exists()]
@@ -210,13 +270,35 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
         raise ValueError(
             f"agent runner digest mismatch: expected {expected_digest}, got {actual_digest}"
         )
+    if manifest.get("schema") == "sanka-bench/model-matrix-run-manifest/v2":
+        expected_claude_digest = str(manifest["toolchain"].get("claude_bin_sha256") or "")
+        actual_claude_digest = "sha256:" + hashlib.sha256(tools["claude"].read_bytes()).hexdigest()
+        if actual_claude_digest != expected_claude_digest:
+            raise ValueError(
+                "Claude binary digest mismatch: "
+                f"expected {expected_claude_digest}, got {actual_claude_digest}"
+            )
+        version = subprocess.run(
+            [str(tools["claude"]), "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=isolated_environment(os.environ),
+        )
+        expected_version = str(manifest["toolchain"].get("claude_version") or "")
+        if version.returncode != 0 or version.stdout.strip() != expected_version:
+            raise ValueError(
+                f"Claude version mismatch: expected {expected_version!r}, "
+                f"got {version.stdout.strip()!r}"
+            )
     return tools
 
 
 def sanka_versions(sanka_bin: Path) -> tuple[str, str]:
     """(`sanka --version`, installed DRF extension version) for the pinned runtime env."""
+    env = isolated_environment(os.environ)
     version = subprocess.run(
-        [str(sanka_bin), "--version"], capture_output=True, text=True, check=False
+        [str(sanka_bin), "--version"], capture_output=True, text=True, check=False, env=env
     ).stdout.strip()
     python = sanka_bin.parent / "python"
     probe = subprocess.run(
@@ -228,6 +310,7 @@ def sanka_versions(sanka_bin: Path) -> tuple[str, str]:
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     return version, probe.stdout.strip() if probe.returncode == 0 else ""
 
@@ -251,7 +334,7 @@ def check_sanka_toolchain(manifest: dict[str, Any], sanka_bin: Path) -> dict[str
 def prepare_sanka_home(manifest: dict[str, Any], paths: Paths, sanka_bin: Path) -> dict[str, Any]:
     """Trusted marketplace snapshot for the run; recorded so every cell shares one."""
     paths.sanka_home.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ)
+    env = isolated_environment(os.environ)
     env["SANKA_HOME"] = str(paths.sanka_home)
     added = subprocess.run(
         [str(sanka_bin), "extension", "marketplace", "add", OFFICIAL_MARKETPLACE, "--json"],
@@ -310,6 +393,15 @@ def ensure_generation_authorized(manifest: dict[str, Any]) -> None:
         raise ValueError("generation must be owned by the authorized foreground coordinator")
 
 
+def required_input_digest(manifest: dict[str, Any]) -> str | None:
+    if manifest.get("schema") != "sanka-bench/model-matrix-run-manifest/v2":
+        return None
+    value = os.environ.get("SANKA_BENCH_INPUT_DIGEST", "")
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+        raise ValueError("official generation requires the coordinator input digest")
+    return value
+
+
 def retry_metadata(manifest: dict[str, Any], cell: Cell, root: Path) -> tuple[int, str | None]:
     retries = manifest["execution"].get("infrastructure_retries", {})
     metadata = retries.get(cell.candidate_id)
@@ -347,20 +439,36 @@ def generation_command(
         str(tools["claude"] if cell.agent == "claude-code" else tools["codex"]),
         "--out",
         str(paths.candidate),
+        "--sandbox",
+        str(paths.sandbox),
         "--model",
         cell.model_id,
+        "--actual-model-id",
+        cell.actual_model_id,
+        "--route-kind",
+        cell.route_kind,
+        "--billing-mode",
+        cell.billing_mode,
         "--max-turns",
         str(int(manifest["execution"]["max_turns"])),
+        "--wall-clock-seconds",
+        str(int(manifest["execution"]["wall_clock_seconds"])),
         "--provider-variant",
         cell.provider_variant,
+        "--provider",
+        cell.provider,
     ]
-    if cell.agent == "codex":
-        command.extend(["--provider", cell.provider])
+    if cell.gateway_profile is not None:
+        command.extend(["--gateway-profile", cell.gateway_profile])
     if attempt > 1:
         assert prior_failure is not None
         command.extend(["--attempt", str(attempt), "--prior-failure", prior_failure])
     if cell.with_sanka:
         command.extend(["--sanka-bin", str(tools["sanka"])])
+        if manifest.get("schema") == "sanka-bench/model-matrix-run-manifest/v2":
+            command.extend(
+                ["--sanka-skill-sha256", str(manifest["toolchain"]["sanka_skill_sha256"])]
+            )
     return command
 
 
@@ -387,22 +495,72 @@ def normalize_candidate_metadata(paths: Paths, cell: Cell) -> bool:
     return True
 
 
+def update_cell_telemetry(paths: Paths, **sections: object) -> bool:
+    path = paths.candidate / "telemetry.json"
+    if not path.is_file():
+        return False
+    payload = load_json(path)
+    for name, value in sections.items():
+        if isinstance(value, dict) and isinstance(payload.get(name), dict):
+            payload[name].update(value)
+        else:
+            payload[name] = value
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return True
+
+
+def update_report_timing(paths: Paths, evaluation_seconds: float) -> None:
+    report = load_json(paths.report)
+    telemetry = load_json(paths.candidate / "telemetry.json")
+    provenance = report.setdefault("provenance", {})
+    if not isinstance(provenance, dict):
+        raise TypeError("evaluation report provenance must be an object")
+    stats = provenance.setdefault("candidate_stats", {})
+    timing = telemetry.get("timing")
+    if not isinstance(stats, dict) or not isinstance(timing, dict):
+        raise TypeError("candidate timing evidence is incomplete")
+    setup = timing.get("setup_seconds")
+    generation = timing.get("generation_seconds")
+    if isinstance(setup, int | float):
+        stats["setup_seconds"] = round(float(setup), 6)
+    stats["evaluation_seconds"] = round(evaluation_seconds, 6)
+    if isinstance(generation, int | float):
+        stats["end_to_end_seconds"] = round(float(generation) + evaluation_seconds, 6)
+    temporary = paths.report.with_suffix(paths.report.suffix + ".tmp")
+    temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(paths.report)
+
+
 def run_generation(
     manifest: dict[str, Any], cell: Cell, paths: Paths, tools: dict[str, Path]
 ) -> int:
+    input_digest = required_input_digest(manifest)
     if paths.candidate.exists() or paths.report.exists() or paths.log.exists():
         raise ValueError(f"pass@1 artifact already exists for {cell.candidate_id}")
     for directory in (paths.candidate.parent, paths.report.parent, paths.log.parent):
         directory.mkdir(parents=True, exist_ok=True)
-    environment = dict(os.environ)
-    environment.update(read_allowlisted_env(tools["env"]))
-    required_key = {"openai": "OPENAI_API_KEY", "fireworks": "FIREWORKS_API_KEY"}.get(cell.provider)
+    environment = isolated_environment(os.environ, COORDINATOR_ENV_KEYS)
+    if "env" in tools:
+        environment.update(read_allowlisted_env(tools["env"]))
+    environment = route_environment(environment, cell)
+    required_key = (
+        {"openai": "OPENAI_API_KEY", "fireworks": "FIREWORKS_API_KEY"}.get(cell.provider)
+        if cell.agent == "codex"
+        else None
+    )
     if required_key and not environment.get(required_key):
         raise ValueError(f"required provider credential is unavailable: {required_key}")
     toolchain: dict[str, str] = {}
     if cell.with_sanka:
         if not (paths.root / "toolchain-check.json").is_file():
             raise ValueError("run the prepare phase before with-sanka cells")
+        prepared_sanka_home = paths.root / "sanka-home"
+        if not prepared_sanka_home.is_dir():
+            raise ValueError("prepared Sanka home is missing")
+        paths.sandbox.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(prepared_sanka_home, paths.sanka_home)
         environment["SANKA_HOME"] = str(paths.sanka_home)
         toolchain = check_sanka_toolchain(manifest, tools["sanka"])
     attempt, prior_failure = retry_metadata(manifest, cell, paths.root)
@@ -422,6 +580,8 @@ def run_generation(
         f"SANKA_EXTENSION={toolchain.get('extension_version', 'not offered')}",
         f"WAVE_ID={os.environ.get('SANKA_BENCH_WAVE_ID', 'rolling-unset')}",
     ]
+    if input_digest is not None:
+        header.insert(1, f"INPUT_DIGEST={input_digest}")
     paths.log.write_text("\n".join(header) + "\n", encoding="utf-8")
     started = time.monotonic()
     with paths.log.open("a", encoding="utf-8") as handle:
@@ -442,7 +602,33 @@ def run_generation(
             "METADATA_NORMALIZED provider_variant_from_candidate_yaml=removed "
             "disclosure_preserved=GENERATED.md overlay_unchanged=true",
         )
-    wall = round(time.monotonic() - started)
+    generation_seconds = time.monotonic() - started
+    wall = round(generation_seconds)
+    telemetry_path = paths.candidate / "telemetry.json"
+    setup_seconds = generation_seconds
+    if telemetry_path.is_file():
+        telemetry = load_json(telemetry_path)
+        timing = telemetry.get("timing")
+        if isinstance(timing, dict) and isinstance(timing.get("agent_wall_seconds"), int | float):
+            setup_seconds = max(0.0, generation_seconds - float(timing["agent_wall_seconds"]))
+    updated = update_cell_telemetry(
+        paths,
+        timing={
+            "generation_seconds": round(generation_seconds, 6),
+            "setup_seconds": round(setup_seconds, 6),
+        },
+        wave={
+            "id": os.environ.get("SANKA_BENCH_WAVE_ID", "rolling-unset"),
+            "admitted_concurrency": int(os.environ.get("SANKA_BENCH_WAVE_CONCURRENCY", "1")),
+            "methodology": os.environ.get(
+                "SANKA_BENCH_TIMING_METHODOLOGY", "rolling-provider-queue"
+            ),
+            "attempt": attempt,
+        },
+        failure_class=None if outcome.returncode == 0 else "generation-driver-error",
+    )
+    if manifest.get("schema") == "sanka-bench/model-matrix-run-manifest/v2" and not updated:
+        raise ValueError("official candidate runner did not write telemetry")
     append_line(paths.log, f"GENERATION_END_UTC={utc_now()}")
     append_line(paths.log, f"GENERATION_DONE run_exit={outcome.returncode} wall_seconds={wall}")
     if outcome.returncode != 0:
@@ -483,12 +669,37 @@ def run_evaluation(cell: Cell, paths: Paths, tools: dict[str, Path]) -> int:
                 str(paths.report),
             ],
             cwd=paths.worktree,
+            env=isolated_environment(os.environ),
             stdin=subprocess.DEVNULL,
             stdout=handle,
             stderr=subprocess.STDOUT,
             check=False,
         )
-    wall = round(time.monotonic() - started)
+    evaluation_seconds = time.monotonic() - started
+    wall = round(evaluation_seconds)
+    report_status: str | None = None
+    report_digest: str | None = None
+    if paths.report.is_file():
+        update_report_timing(paths, evaluation_seconds)
+        report_digest = "sha256:" + hashlib.sha256(paths.report.read_bytes()).hexdigest()
+        try:
+            report_status = str(load_json(paths.report).get("status") or "unknown")
+        except (OSError, TypeError, json.JSONDecodeError):
+            report_status = "invalid"
+    update_cell_telemetry(
+        paths,
+        timing={"evaluation_seconds": round(evaluation_seconds, 6)},
+        evaluation={
+            "exit_code": outcome.returncode,
+            "status": report_status,
+            "report_sha256": report_digest,
+        },
+        failure_class=(
+            None
+            if outcome.returncode == 0 and paths.report.is_file()
+            else "evaluation-driver-error"
+        ),
+    )
     append_line(paths.log, f"EVAL_END_UTC={utc_now()}")
     append_line(paths.log, f"EVAL_DONE eval_exit={outcome.returncode} wall_seconds={wall}")
     recorded = "recorded" if paths.report.is_file() else "unknown"
@@ -520,6 +731,8 @@ def main() -> int:
                 candidate=root,
                 report=root,
                 log=root,
+                sandbox=root,
+                claude_config=root / "claude-config",
                 sanka_home=root / "sanka-home",
             )
             record = prepare_sanka_home(manifest, paths, _armed_path(manifest, "sanka_bin"))
