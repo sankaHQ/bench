@@ -73,6 +73,10 @@ def qualify(
     provider_evidence: Path,
     output: Path,
 ) -> dict[str, Any]:
+    output = output.resolve()
+    transcript_path = output.with_suffix(".jsonl")
+    stderr_path = output.with_suffix(".stderr.log")
+    tool_output_path = output.with_suffix(".tool-output.txt")
     if route_kind == "anthropic-native":
         if billing_mode != "subscription" or gateway_profile is not None:
             raise ValueError("anthropic-native qualification requires subscription and no gateway")
@@ -144,31 +148,32 @@ def qualify(
             check=False,
         )
         transcript = outcome.stdout
+        transcript_path.parent.mkdir(parents=True, exist_ok=True)
+        transcript_path.write_text(transcript, encoding="utf-8")
+        stderr_path.write_text(outcome.stderr, encoding="utf-8")
         events = _events(transcript)
         result = next((event for event in reversed(events) if event.get("type") == "result"), None)
         tool_output = workspace / "qualification.txt"
         tool_use = (
             tool_output.is_file() and tool_output.read_text(encoding="utf-8") == QUALIFICATION_TEXT
         )
-        if not tool_use:
-            raise ValueError("Claude Code tool-use probe did not create the expected file")
-        if outcome.returncode != 0 or result is None or result.get("is_error") is True:
-            raise ValueError(
-                "Claude Code qualification did not produce a successful terminal event"
-            )
-        usage = result.get("modelUsage")
-        usage_accounting = isinstance(usage, dict) and bool(usage)
-        if not usage_accounting:
-            raise ValueError("Claude Code qualification did not report model usage")
+        usage = result.get("modelUsage") if isinstance(result, dict) else None
+        usage_accounting = isinstance(result, dict) and isinstance(usage, dict) and bool(usage)
+        if tool_output.is_file():
+            tool_output_path.write_bytes(tool_output.read_bytes())
 
-    output = output.resolve()
-    transcript_path = output.with_suffix(".jsonl")
-    transcript_path.parent.mkdir(parents=True, exist_ok=True)
-    transcript_path.write_text(transcript, encoding="utf-8")
+    failure: str | None = None
+    if not tool_use:
+        failure = "Claude Code tool-use probe did not create the expected file"
+    elif outcome.returncode != 0 or result is None or result.get("is_error") is True:
+        failure = "Claude Code qualification did not produce a successful terminal event"
+    elif not usage_accounting:
+        failure = "Claude Code qualification did not report model usage"
+
     record: dict[str, Any] = {
         "schema": "sanka-bench/claude-route-qualification/v1",
-        "status": "qualified",
-        "qualified_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "status": "failed" if failure else "qualified",
+        "attempted_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "requested_model_id": requested_model_id,
         "actual_model_id": actual_model_id,
         "provider": provider,
@@ -183,15 +188,27 @@ def qualify(
         "checks": {
             "tool_use": tool_use,
             "streaming": len(events) > 1,
-            "terminal_event": True,
+            "terminal_event": result is not None,
             "usage_accounting": usage_accounting,
+        },
+        "process": {
+            "returncode": outcome.returncode,
+            "stderr_sha256": sha256_path(stderr_path),
         },
         "evidence": {
             "prompt_sha256": sha256_bytes(QUALIFICATION_PROMPT.encode()),
             "provider_sha256": sha256_path(provider_evidence),
             "transcript_sha256": sha256_path(transcript_path),
+            "tool_output_sha256": (
+                sha256_path(tool_output_path) if tool_output_path.is_file() else None
+            ),
         },
     }
+    if failure:
+        record["failure"] = failure
+        _atomic_json(output, record)
+        raise ValueError(failure)
+    record["qualified_at"] = record["attempted_at"]
     _atomic_json(output, record)
     return record
 

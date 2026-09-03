@@ -85,6 +85,12 @@ event, usage accounting, and the actual backend identity. Hash the resulting
 qualification JSON into the manifest. A requested alias alone is not model
 identity evidence.
 
+Every completed provider call writes the qualification JSON, raw JSONL stream,
+and stderr log before these checks are enforced. Failed records keep their
+individual check results and process exit code for diagnosis, but cannot arm a
+scored manifest. When the tool creates `qualification.txt`, its exact bytes are
+also retained beside the record.
+
 ## Credentials
 
 Native subscription cells use the machine's Claude login and deliberately
