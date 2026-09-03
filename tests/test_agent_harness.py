@@ -96,6 +96,11 @@ def test_candidate_modes_preserve_official_arms_and_add_diagnostic_arm(
     assert mode("opus-with-sanka") == "with-sanka"
     assert mode("opus-with-sanka-readiness-aware") == "readiness-aware"
     assert mode("opus-experimental") is None
+    # sampled cells carry a -s<k> suffix (docs/measurement-design.md); the arm is unchanged
+    assert mode("drf-fastapi-001-claude-opus48-alone-s2") == "alone"
+    assert mode("drf-fastapi-001-claude-opus48-with-sanka-s10") == "with-sanka"
+    assert mode("drf-fastapi-001-claude-opus48-with-sanka-readiness-aware-s3") == "readiness-aware"
+    assert mode("drf-fastapi-001-claude-opus48-s1") is None
 
 
 def test_readiness_context_abstains_and_sends_only_readiness_and_verifier(
