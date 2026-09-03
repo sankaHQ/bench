@@ -434,6 +434,17 @@ def test_as_text_normalizes_timeout_output(harness: object) -> None:
     assert as_text("already text") == "already text"
 
 
+@pytest.mark.parametrize(
+    ("event_type", "expected"),
+    [("system", False), ("assistant", True), ("result", True), ("tool_use", True)],
+)
+def test_timeout_activity_requires_a_model_event(
+    harness: object, event_type: str, expected: bool
+) -> None:
+    stdout = json.dumps({"type": event_type, "subtype": "init"}) + "\n"
+    assert harness._has_model_activity(stdout) is expected  # type: ignore[attr-defined]
+
+
 def test_sanka_runtime_env_adds_fixture_packages_without_mutating_input(
     harness: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -659,6 +670,7 @@ def _fake_agent(
     touch: str | None,
     exit_code: int | None = None,
     preamble: list[dict] | None = None,
+    pre_sleep_events: list[dict] | None = None,
     sleep_seconds: int = 0,
 ) -> Path:
     """Emulate the Claude CLI: print stream events then the result, and exit 1
@@ -671,6 +683,9 @@ def _fake_agent(
     if result is not None:
         lines.append(json.dumps(result))
     prints = "".join(f"printf '%s\\n' '{line}'\n" for line in lines)
+    early_prints = "".join(
+        f"printf '%s\\n' '{json.dumps(event)}'\n" for event in (pre_sleep_events or [])
+    )
     touch_line = f"touch '{touch}'" if touch else ":"
     script.write_text(
         "#!/bin/sh\n"
@@ -685,6 +700,7 @@ def _fake_agent(
         f"printf '%s' \"$PATH\" > '{tmp_path / 'fake-agent-path.txt'}'\n"
         f"command -v sanka > '{tmp_path / 'fake-agent-sanka.txt'}' 2>/dev/null || true\n"
         f"{touch_line}\n"
+        f"{early_prints}"
         f"sleep {sleep_seconds}\n"
         f"{prints}"
         f"exit {exit_code}\n",
@@ -948,6 +964,7 @@ def test_silent_timeout_without_workspace_activity_is_an_infrastructure_failure(
         tmp_path,
         result=None,
         touch=None,
+        pre_sleep_events=[{"type": "system", "subtype": "init"}],
         sleep_seconds=2,
     )
     out = tmp_path / "candidate"

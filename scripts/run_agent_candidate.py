@@ -942,7 +942,7 @@ def main() -> int:
                 json.dumps(readiness_context, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
-        if timed_out and not outcome.stdout.strip() and not added and not modified:
+        if timed_out and not _has_model_activity(outcome.stdout) and not added and not modified:
             print(
                 "agent reported an error: wall-clock timeout with no model activity",
                 file=sys.stderr,
@@ -1174,6 +1174,29 @@ def _as_text(value: object) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return str(value)
+
+
+def _has_model_activity(stdout: str) -> bool:
+    activity_types = {
+        "assistant",
+        "user",
+        "result",
+        "tool",
+        "tool_use",
+        "tool_result",
+        "item.started",
+        "item.completed",
+        "turn.completed",
+        "turn.failed",
+    }
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict) and event.get("type") in activity_types:
+            return True
+    return False
 
 
 def _agent_error_is_terminal(stats: dict[str, object], *, timed_out: bool) -> bool:
