@@ -27,7 +27,13 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from sanka_bench.statistics import bootstrap_interval, weighted_score, wilson_interval
+from sanka_bench.statistics import (
+    bootstrap_interval,
+    paired_difference_interval,
+    paired_numeric_interval,
+    weighted_score,
+    wilson_interval,
+)
 
 _SAMPLE_SUFFIX = re.compile(r"-s(\d+)$")
 
@@ -47,6 +53,14 @@ _DIAGNOSTIC_FIELDS = {
     "database": "database_parity",
     "native": "native_compliance",
 }
+
+_TOKEN_FIELDS = (
+    "input_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+    "output_tokens",
+    "total_tokens",
+)
 
 _FAMILY_ORDER = (
     "noop",
@@ -86,6 +100,32 @@ def sample_index(candidate_id: str) -> int:
 
 def family_label(family: str) -> str:
     return _FAMILY_LABELS.get(family, family)
+
+
+def treatment_key(family: str) -> tuple[str, str] | None:
+    for suffix, lane in (("-with-sanka", "with-sanka"), ("-alone", "alone")):
+        if family.endswith(suffix):
+            return family.removesuffix(suffix), lane
+    return None
+
+
+def _numeric_delta(
+    paired_results: list[tuple[dict[str, Any], dict[str, Any]]], field: str
+) -> dict[str, float] | None:
+    control_values: list[float] = []
+    treatment_values: list[float] = []
+    for control_result, treatment_result in paired_results:
+        control_stats = control_result.get("provenance", {}).get("candidate_stats", {})
+        treatment_stats = treatment_result.get("provenance", {}).get("candidate_stats", {})
+        control_value = control_stats.get(field) if isinstance(control_stats, dict) else None
+        treatment_value = treatment_stats.get(field) if isinstance(treatment_stats, dict) else None
+        if not isinstance(control_value, int | float) or not isinstance(
+            treatment_value, int | float
+        ):
+            return None
+        control_values.append(float(control_value))
+        treatment_values.append(float(treatment_value))
+    return paired_numeric_interval(treatment_values, control_values).to_dict()
 
 
 def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -> dict[str, Any]:
@@ -142,8 +182,15 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
         covered: list[str] = []
         outcomes: dict[str, list[bool]] = {}
         cost_usd = 0.0
+        equivalent_cost_usd = 0.0
         duration_seconds = 0.0
-        has_stats = False
+        numeric_counts = {
+            "cost_usd": 0,
+            "reported_equivalent_cost_usd": 0,
+            "duration_seconds": 0,
+            **dict.fromkeys(_TOKEN_FIELDS, 0),
+        }
+        token_totals = dict.fromkeys(_TOKEN_FIELDS, 0.0)
         result_count = 0
         diagnostic = {key: [0, 0] for key in _DIAGNOSTIC_FIELDS}
         has_metrics = False
@@ -160,9 +207,25 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
                 task_outcomes.append(result.get("fully_migrated") is True)
                 stats = result.get("provenance", {}).get("candidate_stats")
                 if isinstance(stats, dict):
-                    has_stats = True
-                    cost_usd += float(stats.get("cost_usd") or 0)
-                    duration_seconds += float(stats.get("duration_seconds") or 0)
+                    for field in (
+                        "cost_usd",
+                        "reported_equivalent_cost_usd",
+                        "duration_seconds",
+                    ):
+                        value = stats.get(field)
+                        if isinstance(value, int | float):
+                            numeric_counts[field] += 1
+                            if field == "cost_usd":
+                                cost_usd += float(value)
+                            elif field == "reported_equivalent_cost_usd":
+                                equivalent_cost_usd += float(value)
+                            else:
+                                duration_seconds += float(value)
+                    for field in _TOKEN_FIELDS:
+                        value = stats.get(field)
+                        if isinstance(value, int | float):
+                            numeric_counts[field] += 1
+                            token_totals[field] += float(value)
                 metrics = result.get("metrics")
                 if isinstance(metrics, dict):
                     for key, field in _DIAGNOSTIC_FIELDS.items():
@@ -190,7 +253,17 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
             else None
         )
         per_sample = samples if samples else 1
-        row_cost = cost_usd / per_sample if has_stats else None
+
+        complete = {
+            field: result_count > 0 and count == result_count
+            for field, count in numeric_counts.items()
+        }
+        row_cost = cost_usd / per_sample if complete["cost_usd"] else None
+        row_duration = duration_seconds / per_sample if complete["duration_seconds"] else None
+        row_tokens = {
+            field: token_totals[field] / per_sample if complete[field] else None
+            for field in _TOKEN_FIELDS
+        }
         rows.append(
             {
                 "family": family,
@@ -205,9 +278,20 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
                 "score": {**score.to_dict(), "weighted": weighted},
                 "verified_routes": verified_routes,
                 "cost_usd": row_cost,
-                "duration_seconds": duration_seconds / per_sample if has_stats else None,
+                "reported_equivalent_cost_usd": (
+                    equivalent_cost_usd / per_sample
+                    if complete["reported_equivalent_cost_usd"]
+                    else None
+                ),
+                "duration_seconds": row_duration,
+                "tokens": row_tokens,
                 "cost_per_verified_route": (
                     row_cost / verified_routes if row_cost is not None and verified_routes else None
+                ),
+                "agent_seconds_per_verified_route": (
+                    row_duration / verified_routes
+                    if row_duration is not None and verified_routes
+                    else None
                 ),
                 "diagnostic": diagnostic if has_metrics else None,
             }
@@ -229,6 +313,70 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
                 ):
                     parity_matched += 1
 
+    treatments: dict[str, dict[str, str]] = {}
+    for family in families:
+        treatment_parts = treatment_key(family)
+        if treatment_parts is not None:
+            treatments.setdefault(treatment_parts[0], {})[treatment_parts[1]] = family
+    comparisons: list[dict[str, Any]] = []
+    for treatment, lanes in sorted(treatments.items()):
+        if set(lanes) != {"alone", "with-sanka"}:
+            continue
+        control_outcomes: list[list[bool]] = []
+        treatment_outcomes: list[list[bool]] = []
+        comparison_weights: list[int] = []
+        paired_results: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        for task in tasks:
+            control_entry = cells.get((task, lanes["alone"]))
+            treatment_entry = cells.get((task, lanes["with-sanka"]))
+            if control_entry is None or treatment_entry is None:
+                continue
+            control_samples = {
+                sample_index(sample["candidate_id"]): sample["local"] or sample["docker"]
+                for sample in control_entry["samples"]
+            }
+            treatment_samples = {
+                sample_index(sample["candidate_id"]): sample["local"] or sample["docker"]
+                for sample in treatment_entry["samples"]
+            }
+            shared = sorted(control_samples.keys() & treatment_samples.keys())
+            if not shared:
+                continue
+            controls: list[bool] = []
+            treated: list[bool] = []
+            for sample in shared:
+                control_result = control_samples[sample]
+                treatment_result = treatment_samples[sample]
+                if not isinstance(control_result, dict) or not isinstance(treatment_result, dict):
+                    continue
+                controls.append(control_result.get("fully_migrated") is True)
+                treated.append(treatment_result.get("fully_migrated") is True)
+                paired_results.append((control_result, treatment_result))
+            if controls:
+                control_outcomes.append(controls)
+                treatment_outcomes.append(treated)
+                comparison_weights.append(weights.get(task, 0) if weights else 1)
+        if not paired_results:
+            continue
+
+        token_deltas = {field: _numeric_delta(paired_results, field) for field in _TOKEN_FIELDS}
+        comparisons.append(
+            {
+                "treatment": treatment,
+                "pairs": len(paired_results),
+                "quality_delta": paired_difference_interval(
+                    treatment_outcomes, control_outcomes, comparison_weights
+                ).to_dict(),
+                "agent_seconds_delta": _numeric_delta(paired_results, "duration_seconds"),
+                "tokens_delta": token_deltas,
+                "total_tokens_delta": token_deltas["total_tokens"],
+                "cost_usd_delta": _numeric_delta(paired_results, "cost_usd"),
+                "reported_equivalent_cost_usd_delta": _numeric_delta(
+                    paired_results, "reported_equivalent_cost_usd"
+                ),
+            }
+        )
+
     return {
         "tasks": tasks,
         "rows": rows,
@@ -238,6 +386,7 @@ def collect(reports_dir: Path, route_weights: Mapping[str, int] | None = None) -
         "parity_checked": parity_checked,
         "parity_matched": parity_matched,
         "evaluator_versions": sorted(version for version in versions if version),
+        "comparisons": comparisons,
     }
 
 
@@ -289,13 +438,20 @@ def _tally_row(row: dict[str, Any], tasks: list[str]) -> str:
         cells.append(f'<span class="cell {klass}" title="{_esc(task)}: {_esc(detail)}"></span>')
     count = count_label(row)
     stats_note = ""
-    if row.get("cost_usd") is not None:
+    if row.get("duration_seconds") is not None:
         minutes = (row.get("duration_seconds") or 0) / 60
         per_route = row.get("cost_per_verified_route")
         route_note = f" · ${per_route:.3f}/verified route" if per_route is not None else ""
+        cost = row.get("cost_usd")
+        equivalent = row.get("reported_equivalent_cost_usd")
+        if cost is not None:
+            cost_note = f"${cost:.2f} · "
+        elif equivalent is not None:
+            cost_note = f"${equivalent:.2f} API-equivalent · "
+        else:
+            cost_note = ""
         stats_note = (
-            f'<span class="tally-stats">${row["cost_usd"]:.2f}'
-            f" · {minutes:.0f} min agent time{route_note}</span>"
+            f'<span class="tally-stats">{cost_note}{minutes:.0f} min agent time{route_note}</span>'
         )
     interval = interval_label(row)
     interval_note = f'<span class="tally-interval">{_esc(interval)}</span>' if interval else ""
@@ -395,9 +551,54 @@ def _diagnostic_table(data: dict[str, Any]) -> str:
     )
 
 
+def _comparison_table(data: dict[str, Any]) -> str:
+    comparisons = data.get("comparisons") or []
+    if not comparisons:
+        return ""
+
+    def delta(value: dict[str, float] | None, *, scale: float = 1, suffix: str = "") -> str:
+        if value is None:
+            return "unknown"
+        estimate = value["estimate"] * scale
+        low = value["low"] * scale
+        high = value["high"] * scale
+        return f"{estimate:+.1f}{suffix} [{low:+.1f}, {high:+.1f}]"
+
+    rows = []
+    for comparison in comparisons:
+        actual = delta(comparison["cost_usd_delta"], suffix=" USD")
+        if comparison["cost_usd_delta"] is None:
+            actual += " actual"
+        equivalent = delta(comparison["reported_equivalent_cost_usd_delta"], suffix=" USD")
+        rows.append(
+            "<tr>"
+            f'<th scope="row">{_esc(comparison["treatment"])}</th>'
+            f"<td>{_esc(comparison['pairs'])}</td>"
+            f"<td>{_esc(delta(comparison['quality_delta'], scale=100, suffix=' pp'))}</td>"
+            f"<td>{_esc(delta(comparison['agent_seconds_delta'], suffix=' s'))}</td>"
+            f"<td>{_esc(delta(comparison['total_tokens_delta'], suffix=' tokens'))}</td>"
+            f"<td>{_esc(actual)}</td>"
+            f"<td>{_esc(equivalent)}</td>"
+            "</tr>"
+        )
+    return (
+        '<h2>Paired Sanka effects <span class="tag">with-Sanka minus alone</span></h2>'
+        '<p class="note">Each delta compares the same model, task, and sample. '
+        "Negative time, token, or cost values mean the Sanka lane used less. "
+        "Readiness-aware rows are excluded. Quality remains the hard boundary.</p>"
+        '<div class="table-wrap"><table>'
+        '<thead><tr><th scope="col">Treatment</th><th scope="col">Pairs</th>'
+        '<th scope="col">Quality</th><th scope="col">Agent time</th>'
+        '<th scope="col">Total tokens</th><th scope="col">Actual cost</th>'
+        '<th scope="col">API-equivalent</th></tr></thead>'
+        f"<tbody>{''.join(rows)}</tbody></table></div>"
+    )
+
+
 def render_html(data: dict[str, Any]) -> str:
     tasks = data["tasks"]
     tally = "".join(_tally_row(row, tasks) for row in data["rows"])
+    comparisons = _comparison_table(data)
     diagnostics = _diagnostic_table(data)
     tables = "".join(_gate_table(task, data) for task in tasks)
     parity = (
@@ -407,7 +608,7 @@ def render_html(data: dict[str, Any]) -> str:
     )
     versions = ", ".join(data["evaluator_versions"]) or "unknown"
     agent_note = ""
-    if any(row.get("cost_usd") is not None for row in data["rows"]):
+    if any(row.get("duration_seconds") is not None for row in data["rows"]):
         samples = int(data.get("samples") or 1)
         attempts = (
             "single unattended attempts (pass@1)"
@@ -417,12 +618,10 @@ def render_html(data: dict[str, Any]) -> str:
         )
         agent_note = (
             f'<p class="note">Official agent rows are {attempts} with '
-            "the same model, turn budget, and contract; the ordinary with-Sanka prompt offers "
-            "the Sanka CLI with readiness-aware usage guidance. Readiness-aware rows are a "
-            "separately labelled "
-            "diagnostic arm. Dollar and time figures are the agent's own reported totals "
-            "across the covered tasks. The Sanka native converter and the controls run in "
-            "seconds at no model cost.</p>"
+            "the same model, turn budget, and contract. The with-Sanka lane installs the "
+            "project-local Sanka skill before Claude Code starts. Subscription cost remains "
+            "unknown; its separate API-equivalent estimate is not treated as money spent. "
+            "Readiness-aware rows are a separately labelled diagnostic arm.</p>"
         )
     bridge_note = ""
     if any(row["family"] == "compatibility-bridge" for row in data["rows"]):
@@ -555,6 +754,7 @@ never averaged into a compensating score.</p>
 &nbsp;&nbsp;<span class="cell cell-fail"></span> failed a hard gate
 &nbsp;&nbsp;one cell per task ({_esc(len(tasks))} task{"s" if len(tasks) != 1 else ""})</p>
 {agent_note}
+{comparisons}
 {bridge_note}
 {diagnostics}
 <h2>Hard gates by task</h2>

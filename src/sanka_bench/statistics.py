@@ -218,12 +218,45 @@ def paired_difference_interval(
     )
 
 
+def paired_numeric_interval(
+    treatment: Sequence[float],
+    control: Sequence[float],
+    *,
+    confidence: float = 0.95,
+    resamples: int = DEFAULT_RESAMPLES,
+    seed: int = DEFAULT_SEED,
+) -> Interval:
+    """Bootstrap the mean paired numeric difference (treatment - control)."""
+    if len(treatment) != len(control):
+        raise ValueError("treatment and control values must align")
+    if not 0 < confidence < 1:
+        raise ValueError(f"confidence must be in (0, 1): {confidence}")
+    differences = [left - right for left, right in zip(treatment, control, strict=True)]
+    estimate = sum(differences) / len(differences) if differences else 0.0
+    if not differences or resamples <= 0:
+        return Interval(estimate=estimate, low=estimate, high=estimate, confidence=confidence)
+    generator = random.Random(seed)
+    means = [
+        sum(generator.choice(differences) for _ in differences) / len(differences)
+        for _ in range(resamples)
+    ]
+    means.sort()
+    tail = (1 - confidence) / 2
+    return Interval(
+        estimate=estimate,
+        low=_percentile(means, tail),
+        high=_percentile(means, 1 - tail),
+        confidence=confidence,
+    )
+
+
 __all__ = [
     "DEFAULT_RESAMPLES",
     "DEFAULT_SEED",
     "Interval",
     "bootstrap_interval",
     "paired_difference_interval",
+    "paired_numeric_interval",
     "weighted_score",
     "wilson_interval",
 ]

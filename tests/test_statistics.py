@@ -8,6 +8,7 @@ from sanka_bench.statistics import (
     Interval,
     bootstrap_interval,
     paired_difference_interval,
+    paired_numeric_interval,
     weighted_score,
     wilson_interval,
 )
@@ -71,6 +72,14 @@ def test_paired_difference_cancels_task_difficulty() -> None:
     assert same == Interval(0.0, 0.0, 0.0)
     with pytest.raises(ValueError):
         paired_difference_interval(treatment, control[:-1], weights)
+
+
+def test_paired_numeric_interval_uses_aligned_differences() -> None:
+    interval = paired_numeric_interval([60.0, 120.0, 180.0], [120.0, 180.0, 240.0])
+    assert interval == Interval(-60.0, -60.0, -60.0)
+    assert paired_numeric_interval([], []) == Interval(0.0, 0.0, 0.0)
+    with pytest.raises(ValueError, match="align"):
+        paired_numeric_interval([1.0], [1.0, 2.0])
 
 
 def test_interval_serialises_for_reports() -> None:
