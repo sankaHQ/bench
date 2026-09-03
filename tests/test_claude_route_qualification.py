@@ -109,6 +109,7 @@ def test_qualification_rejects_missing_tool_output(
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://gateway.test")
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "token")
 
+    output = tmp_path / "qualification.json"
     with pytest.raises(ValueError, match="tool-use probe"):
         module.qualify(  # type: ignore[attr-defined]
             claude_bin=_fake_claude(tmp_path, creates_file=False),
@@ -119,8 +120,21 @@ def test_qualification_rejects_missing_tool_output(
             billing_mode="api_key",
             gateway_profile="example-anthropic-v1",
             provider_evidence=_provider_evidence(tmp_path),
-            output=tmp_path / "qualification.json",
+            output=output,
         )
+
+    record = json.loads(output.read_text(encoding="utf-8"))
+    assert record["status"] == "failed"
+    assert record["failure"] == "Claude Code tool-use probe did not create the expected file"
+    assert record["checks"] == {
+        "tool_use": False,
+        "streaming": True,
+        "terminal_event": True,
+        "usage_accounting": True,
+    }
+    assert record["process"]["returncode"] == 0
+    assert (tmp_path / "qualification.jsonl").is_file()
+    assert (tmp_path / "qualification.stderr.log").is_file()
 
 
 def test_qualification_rejects_mismatched_provider_evidence(tmp_path: Path) -> None:
