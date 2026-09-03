@@ -659,6 +659,7 @@ def _fake_agent(
     touch: str | None,
     exit_code: int | None = None,
     preamble: list[dict] | None = None,
+    sleep_seconds: int = 0,
 ) -> Path:
     """Emulate the Claude CLI: print stream events then the result, and exit 1
     whenever the result reports ``is_error`` (the real CLI does exactly that on
@@ -684,6 +685,7 @@ def _fake_agent(
         f"printf '%s' \"$PATH\" > '{tmp_path / 'fake-agent-path.txt'}'\n"
         f"command -v sanka > '{tmp_path / 'fake-agent-sanka.txt'}' 2>/dev/null || true\n"
         f"{touch_line}\n"
+        f"sleep {sleep_seconds}\n"
         f"{prints}"
         f"exit {exit_code}\n",
         encoding="utf-8",
@@ -936,6 +938,52 @@ def test_completed_empty_workspace_is_frozen_as_a_quality_failure(tmp_path: Path
     assert (out / "overlay").is_dir()
     assert list((out / "overlay").iterdir()) == []
     assert (out / "candidate.yaml").is_file()
+
+
+def test_silent_timeout_without_workspace_activity_is_an_infrastructure_failure(
+    tmp_path: Path,
+) -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    agent = _fake_agent(
+        tmp_path,
+        result=None,
+        touch=None,
+        sleep_seconds=2,
+    )
+    out = tmp_path / "candidate"
+
+    outcome = _run_adapter(
+        task,
+        agent,
+        out,
+        extra_args=["--wall-clock-seconds", "1"],
+    )
+
+    assert outcome.returncode == 1
+    assert "agent reported an error: wall-clock timeout" in outcome.stderr
+    assert not (out / "overlay").exists()
+
+
+def test_timeout_with_workspace_activity_is_frozen_for_scoring(tmp_path: Path) -> None:
+    task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    agent = _fake_agent(
+        tmp_path,
+        result=None,
+        touch="target_app.py",
+        sleep_seconds=2,
+    )
+    out = tmp_path / "candidate"
+
+    outcome = _run_adapter(
+        task,
+        agent,
+        out,
+        extra_args=["--wall-clock-seconds", "1"],
+    )
+
+    assert outcome.returncode == 0, outcome.stderr
+    assert (out / "overlay" / "target_app.py").is_file()
+    assert "wall-clock timeout (1s) exhausted" in (out / "GENERATED.md").read_text()
 
 
 def test_non_budget_agent_error_stays_unfrozen(tmp_path: Path) -> None:

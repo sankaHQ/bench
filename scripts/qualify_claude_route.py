@@ -90,6 +90,14 @@ def qualify(
         raise ValueError("provider evidence must name actual_model_id")
     if evidence.get("usage_accounting") is not True:
         raise ValueError("provider evidence must confirm usage accounting")
+    if route_kind == "gateway":
+        if not os.environ.get("ANTHROPIC_BASE_URL"):
+            raise ValueError("gateway qualification requires a base URL")
+        auth = [
+            name for name in ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY") if os.environ.get(name)
+        ]
+        if len(auth) != 1:
+            raise ValueError("gateway qualification requires exactly one credential")
 
     claude_bin = claude_bin.resolve()
     version = subprocess.run(

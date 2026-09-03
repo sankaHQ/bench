@@ -344,6 +344,23 @@ def test_official_manifest_enforces_pinned_concurrency(tmp_path: Path) -> None:
         RollingCoordinator(path, provider_cap=2, model_cap=1, evaluation_cap=1)
 
 
+def test_current_wave_is_persisted_before_report_aggregation(tmp_path: Path) -> None:
+    path = write_manifest(tmp_path)
+    coordinator = RollingCoordinator(path, provider_cap=1, model_cap=1, evaluation_cap=1)
+    observed = False
+
+    def aggregate(stage_id: str) -> int:
+        nonlocal observed
+        observed = (tmp_path / "waves" / f"{stage_id}.json").is_file()
+        return 0
+
+    coordinator.aggregate = aggregate  # type: ignore[method-assign]
+
+    asyncio.run(coordinator.run_stage("current", []))
+
+    assert observed
+
+
 def test_official_manifest_requires_positive_budgets(tmp_path: Path) -> None:
     value = official_manifest(tmp_path)
     value["execution"]["wall_clock_seconds"] = 0

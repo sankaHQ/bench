@@ -71,8 +71,12 @@ def _provider_evidence(root: Path, *, provider: str = "example") -> Path:
     return path
 
 
-def test_qualification_records_tool_stream_model_and_usage(tmp_path: Path) -> None:
+def test_qualification_records_tool_stream_model_and_usage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module = _load()
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://gateway.test")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "token")
 
     record = module.qualify(  # type: ignore[attr-defined]
         claude_bin=_fake_claude(tmp_path, creates_file=True),
@@ -98,8 +102,12 @@ def test_qualification_records_tool_stream_model_and_usage(tmp_path: Path) -> No
     assert (tmp_path / "qualification.jsonl").is_file()
 
 
-def test_qualification_rejects_missing_tool_output(tmp_path: Path) -> None:
+def test_qualification_rejects_missing_tool_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module = _load()
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://gateway.test")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "token")
 
     with pytest.raises(ValueError, match="tool-use probe"):
         module.qualify(  # type: ignore[attr-defined]
@@ -128,6 +136,47 @@ def test_qualification_rejects_mismatched_provider_evidence(tmp_path: Path) -> N
             billing_mode="api_key",
             gateway_profile="example-anthropic-v1",
             provider_evidence=_provider_evidence(tmp_path, provider="different"),
+            output=tmp_path / "qualification.json",
+        )
+
+
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        ({"ANTHROPIC_AUTH_TOKEN": "token"}, "base URL"),
+        ({"ANTHROPIC_BASE_URL": "https://gateway.test"}, "exactly one credential"),
+        (
+            {
+                "ANTHROPIC_BASE_URL": "https://gateway.test",
+                "ANTHROPIC_AUTH_TOKEN": "token",
+                "ANTHROPIC_API_KEY": "key",
+            },
+            "exactly one credential",
+        ),
+    ],
+)
+def test_gateway_qualification_requires_exact_route_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    values: dict[str, str],
+    message: str,
+) -> None:
+    module = _load()
+    for name in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+
+    with pytest.raises(ValueError, match=message):
+        module.qualify(  # type: ignore[attr-defined]
+            claude_bin=_fake_claude(tmp_path, creates_file=True),
+            requested_model_id="gateway-alias",
+            provider="example",
+            provider_variant="standard",
+            route_kind="gateway",
+            billing_mode="api_key",
+            gateway_profile="example-anthropic-v1",
+            provider_evidence=_provider_evidence(tmp_path),
             output=tmp_path / "qualification.json",
         )
 

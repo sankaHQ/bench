@@ -875,6 +875,24 @@ def main() -> int:
             (out_dir / "sanka-skill.json").write_text(
                 json.dumps(skill_record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
             )
+        pristine = {
+            path.relative_to(source).as_posix(): path.read_bytes()
+            for path in sorted(source.rglob("*"))
+            if path.is_file()
+        }
+        added: list[str] = []
+        modified: list[str] = []
+        for path in sorted(workspace.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(workspace)
+            if _excluded(relative):
+                continue
+            key = relative.as_posix()
+            if key not in pristine:
+                added.append(key)
+            elif path.read_bytes() != pristine[key]:
+                modified.append(key)
         telemetry: dict[str, object] = {
             "schema": "sanka-bench/agent-cell-telemetry/v1",
             "input_digest": os.environ.get("SANKA_BENCH_INPUT_DIGEST") or None,
@@ -924,6 +942,12 @@ def main() -> int:
                 json.dumps(readiness_context, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
+        if timed_out and not outcome.stdout.strip() and not added and not modified:
+            print(
+                "agent reported an error: wall-clock timeout with no model activity",
+                file=sys.stderr,
+            )
+            return 1
         if not timed_out and outcome.returncode != 0 and not stats:
             # Only a run with no parseable terminal result is an agent-run
             # failure. A parseable result is authoritative over the process exit
@@ -956,25 +980,6 @@ def main() -> int:
                 f"exceeding the requested {args.max_turns}-turn limit; the workspace was "
                 "frozen as-is and the overrun is disclosed"
             )
-
-        pristine = {
-            path.relative_to(source).as_posix(): path.read_bytes()
-            for path in sorted(source.rglob("*"))
-            if path.is_file()
-        }
-        added: list[str] = []
-        modified: list[str] = []
-        for path in sorted(workspace.rglob("*")):
-            if not path.is_file():
-                continue
-            relative = path.relative_to(workspace)
-            if _excluded(relative):
-                continue
-            key = relative.as_posix()
-            if key not in pristine:
-                added.append(key)
-            elif path.read_bytes() != pristine[key]:
-                modified.append(key)
 
         overlay = out_dir / "overlay"
         if overlay.exists():

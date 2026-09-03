@@ -1045,9 +1045,11 @@ class RollingCoordinator:
         result.max_evaluations = self.activity.max_evaluations
         result.max_generation_by_provider = dict(self.activity.max_generation_by_provider)
         result.max_generation_by_model = dict(self.activity.max_generation_by_model)
+        wave_path = self.root / "waves" / f"{stage_id}.json"
+        atomic_json(wave_path, result.as_dict())
         if self.aggregate(stage_id) != 0:
             result.evaluation_failures += 1
-        atomic_json(self.root / "waves" / f"{stage_id}.json", result.as_dict())
+            atomic_json(wave_path, result.as_dict())
         self.event("stage-end", **result.as_dict())
         return result
 

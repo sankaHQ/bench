@@ -61,9 +61,11 @@ scope matches, and the named worktree is clean at the exact SHA.
 
 ## Qualify each route first
 
-Qualification is a separate, non-scored provider call. Prepare a provider
-evidence JSON object containing `provider`, `provider_variant`,
-`actual_model_id`, and `usage_accounting: true`, then run:
+Qualification is a separate, non-scored provider call. For a gateway, export
+`ANTHROPIC_BASE_URL` and exactly one authentication value from the same
+untracked env file the scored cells will use. Prepare a provider evidence JSON
+object containing `provider`, `provider_variant`, `actual_model_id`, and
+`usage_accounting: true`, then run:
 
 ```bash
 uv run python scripts/qualify_claude_route.py \
