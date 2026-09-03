@@ -882,6 +882,12 @@ def _codex_command(args: argparse.Namespace, prompt: str, codex_home: Path) -> l
         "--dangerously-bypass-approvals-and-sandbox",
     ]
     command += ["--config", f'model_provider="{provider_id}"']
+    # Codex CLI 0.150 turns on its server-executed web-search tool by default.
+    # OpenAI-compatible providers (Fireworks) reject requests that mix that tool
+    # with client-executed function tools, and the migration task needs no web
+    # access anyway, so every Codex cell runs with web search disabled — one
+    # tool surface across providers, disclosed in GENERATED.md.
+    command += ["--config", 'web_search="disabled"']
     command.append(prompt)
     return command
 
@@ -1088,6 +1094,11 @@ def _write_disclosure(
         attempt_text += " (pass@1; no retries)"
     agent_label = "Claude Code" if args.agent == "claude-code" else "Codex CLI"
     provider = "anthropic" if args.agent == "claude-code" else args.provider
+    web_search_text = (
+        "Claude Code default tool set"
+        if args.agent == "claude-code"
+        else 'disabled (`web_search="disabled"`; one tool surface across providers)'
+    )
     version = agent_version or args.agent_bin
     readiness_value = "not run"
     readiness_section = ""
@@ -1112,6 +1123,7 @@ intervention between prompt and frozen overlay.
 | Agent | {agent_label} (`{version}`) |
 | Provider | {provider} |
 | Provider variant | {args.provider_variant} |
+| Web search | {web_search_text} |
 | Recovered transport notices | {stats.get("recovered_error_events", 0)} |
 | Cost basis | {stats.get("cost_basis", "agent-reported")} |
 | Model | `{args.model}` |
