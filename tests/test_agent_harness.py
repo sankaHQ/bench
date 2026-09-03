@@ -209,7 +209,24 @@ def test_readiness_preflight_mechanically_gates_scaffold(
                 "native_eligible_routes": 4 if readiness >= 0.5 else 29,
                 "needs_adaptation_routes": 1,
                 "plan_hash": "sha256:preflight",
-                "routes": [],
+                "routes": [
+                    {
+                        "automatic": False,
+                        "method": "GET",
+                        "path": "/api/x/",
+                        "operation": "list",
+                        "strategy": "needs-manual-adaptation",
+                        "adaptation_reasons": [],
+                        "parity_notes": [
+                            {
+                                "family": "routing",
+                                "code": "SANKA_DRF_PARITY_ALLOWED_METHODS",
+                                "message": "Allowed methods on this path: GET, HEAD, OPTIONS.",
+                                "source": None,
+                            }
+                        ],
+                    }
+                ],
             }
         ),
         encoding="utf-8",
@@ -235,6 +252,10 @@ def test_readiness_preflight_mechanically_gates_scaffold(
     ) -> SimpleNamespace:
         assert workspace == tmp_path
         assert env == {"BENCH": "1"}
+        if command[1] == "apply":
+            # sanka refuses to apply once the workspace fingerprint changed, so the
+            # parity-notes file must not exist yet when apply runs
+            assert not (tmp_path / "sanka-parity-notes.md").exists()
         commands.append(command)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
@@ -279,6 +300,8 @@ def test_readiness_preflight_mechanically_gates_scaffold(
     if expects_apply:
         assert "--plan-hash" in commands[-1]
         assert "sha256:preflight" in commands[-1]
+    # the notes file is written for the agent once the scaffold decision is settled
+    assert (tmp_path / "sanka-parity-notes.md").exists()
 
 
 def test_as_text_normalizes_timeout_output(harness: object) -> None:
