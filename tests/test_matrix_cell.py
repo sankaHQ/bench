@@ -87,6 +87,36 @@ def test_cell_identity_matches_the_coordinator(driver: object, runner: object) -
         driver.resolve_cell(_manifest(samples=1), "001", "sonnet5", "alone", 2)  # type: ignore[attr-defined]
 
 
+def test_v2_cell_carries_harness_and_route_treatment(driver: object) -> None:
+    value = _manifest(samples=1)
+    value["schema"] = "sanka-bench/model-matrix-run-manifest/v2"
+    value["execution"]["configurations"] = ["alone", "with-sanka"]  # type: ignore[index]
+    value["execution"]["expected_rows"] = 4  # type: ignore[index]
+    value["models"] = [
+        {
+            "slug": "gpt56",
+            "candidate_slug": "claude-code-gpt-5-6",
+            "harness": "claude-code",
+            "provider": "openai",
+            "provider_variant": "cliproxyapi",
+            "requested_model_id": "gpt-5.6",
+            "actual_model_id": "gpt-5.6-20260901",
+            "route_kind": "gateway",
+            "billing_mode": "api_key",
+            "gateway_profile": "cliproxyapi-anthropic-v1",
+        }
+    ]
+
+    cell = driver.resolve_cell(value, "001", "gpt56", "alone", 1)  # type: ignore[attr-defined]
+
+    assert cell.agent == "claude-code"
+    assert cell.model_id == "gpt-5.6"
+    assert cell.actual_model_id == "gpt-5.6-20260901"
+    assert cell.route_kind == "gateway"
+    assert cell.billing_mode == "api_key"
+    assert cell.gateway_profile == "cliproxyapi-anthropic-v1"
+
+
 def test_generation_command_offers_sanka_only_to_with_sanka_cells(
     driver: object, tmp_path: Path
 ) -> None:

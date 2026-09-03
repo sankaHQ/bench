@@ -94,6 +94,10 @@ class Cell:
     agent: str
     provider: str
     provider_variant: str
+    actual_model_id: str
+    route_kind: str
+    billing_mode: str
+    gateway_profile: str | None
     config: str
     sample: int
     samples: int
@@ -139,11 +143,22 @@ def resolve_cell(
         task_id=task_id,
         task_suffix=task_id.rsplit("-", 1)[-1],
         model_slug=model_slug,
-        model_id=str(model["model_id"]),
+        model_id=str(model.get("requested_model_id") or model.get("model_id") or ""),
         candidate_slug=str(model["candidate_slug"]),
-        agent=str(model["agent"]),
+        agent=str(model.get("harness") or model.get("agent") or ""),
         provider=str(model["provider"]),
         provider_variant=str(model.get("provider_variant") or "standard"),
+        actual_model_id=str(
+            model.get("actual_model_id")
+            or model.get("requested_model_id")
+            or model.get("model_id")
+            or ""
+        ),
+        route_kind=str(model.get("route_kind") or "legacy"),
+        billing_mode=str(model.get("billing_mode") or "unknown"),
+        gateway_profile=(
+            str(model["gateway_profile"]) if model.get("gateway_profile") is not None else None
+        ),
         config=config,
         sample=sample,
         samples=samples,
@@ -191,13 +206,13 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
         "bench": bench,
         "agent_runner": agent_runner,
         "env": _armed_path(manifest, "env_path"),
-        "claude": _armed_path(manifest, "claude_bin"),
-        "codex": _armed_path(manifest, "codex_bin"),
     }
+    agent_tool = "claude" if cell.agent == "claude-code" else "codex"
+    tools[agent_tool] = _armed_path(manifest, f"{agent_tool}_bin")
     if cell.with_sanka:
         tools["sanka"] = _armed_path(manifest, "sanka_bin")
     required = [task / "source", task / "public-tests" / "scenarios.json", python, bench]
-    required.append(tools["claude"] if cell.agent == "claude-code" else tools["codex"])
+    required.append(tools[agent_tool])
     required.extend([agent_runner, tools["env"]])
     if cell.with_sanka:
         required.append(tools["sanka"])

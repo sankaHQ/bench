@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -53,6 +54,12 @@ class CellSpec:
     candidate_slug: str
     provider: str
     provider_variant: str
+    harness: str
+    requested_model_id: str
+    actual_model_id: str
+    route_kind: str
+    billing_mode: str
+    gateway_profile: str | None
     config: str
     route_weight: int
     sample: int = 1
@@ -139,6 +146,23 @@ def build_cells(manifest: dict[str, Any]) -> list[CellSpec]:
                             candidate_slug=str(model["candidate_slug"]),
                             provider=str(model["provider"]),
                             provider_variant=variant,
+                            harness=str(model.get("harness") or model.get("agent") or ""),
+                            requested_model_id=str(
+                                model.get("requested_model_id") or model.get("model_id") or ""
+                            ),
+                            actual_model_id=str(
+                                model.get("actual_model_id")
+                                or model.get("requested_model_id")
+                                or model.get("model_id")
+                                or ""
+                            ),
+                            route_kind=str(model.get("route_kind") or "legacy"),
+                            billing_mode=str(model.get("billing_mode") or "unknown"),
+                            gateway_profile=(
+                                str(model["gateway_profile"])
+                                if model.get("gateway_profile") is not None
+                                else None
+                            ),
                             config=str(config),
                             route_weight=int(weights[task]),
                             sample=sample,
@@ -151,6 +175,65 @@ def build_cells(manifest: dict[str, Any]) -> list[CellSpec]:
     if len({cell.key for cell in cells}) != len(cells):
         raise ValueError("manifest expands to duplicate cell keys")
     return cells
+
+
+def qualification_digest(path: Path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
+    if manifest.get("schema") != "sanka-bench/model-matrix-run-manifest/v2":
+        return
+    if manifest["execution"].get("configurations") != ["alone", "with-sanka"]:
+        raise ValueError("official v2 configurations must be alone and with-sanka")
+    root = root.resolve()
+    for model in manifest["models"]:
+        if model.get("harness") != "claude-code":
+            raise ValueError("official v2 matrices require the Claude Code harness")
+        route_kind = model.get("route_kind")
+        billing_mode = model.get("billing_mode")
+        gateway_profile = model.get("gateway_profile")
+        if route_kind == "anthropic-native":
+            if billing_mode != "subscription" or gateway_profile is not None:
+                raise ValueError(
+                    "anthropic-native routes require subscription billing and no gateway profile"
+                )
+        elif route_kind == "gateway":
+            if billing_mode != "api_key" or not gateway_profile:
+                raise ValueError("gateway routes require api_key billing and a gateway profile")
+        else:
+            raise ValueError("route_kind must be anthropic-native or gateway")
+
+        path = (root / str(model.get("qualification") or "")).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError("qualification path escapes the run directory")
+        expected_digest = model.get("qualification_sha256")
+        if not path.is_file() or qualification_digest(path) != expected_digest:
+            raise ValueError("qualification digest does not match the manifest")
+        evidence = load_json(path)
+        if (
+            evidence.get("schema") != "sanka-bench/claude-route-qualification/v1"
+            or evidence.get("status") != "qualified"
+        ):
+            raise ValueError("qualification record is not qualified")
+        checks = evidence.get("checks")
+        required_checks = ("tool_use", "streaming", "terminal_event", "usage_accounting")
+        if not isinstance(checks, dict) or any(
+            checks.get(name) is not True for name in required_checks
+        ):
+            raise ValueError("qualification checks are incomplete")
+        for field in (
+            "requested_model_id",
+            "actual_model_id",
+            "provider",
+            "provider_variant",
+            "route_kind",
+            "billing_mode",
+            "gateway_profile",
+        ):
+            if evidence.get(field) != model.get(field):
+                label = field.replace("_", " ")
+                raise ValueError(f"qualification {label} does not match the manifest")
 
 
 def validate_backups(manifest: dict[str, Any]) -> None:
@@ -445,6 +528,7 @@ class RollingCoordinator:
         self.manifest_path = manifest_path.resolve()
         self.root = self.manifest_path.parent
         self.manifest = load_json(self.manifest_path)
+        validate_official_manifest(self.manifest, self.root)
         validate_backups(self.manifest)
         self.cells = build_cells(self.manifest)
         self.provider_cap = provider_cap
@@ -721,6 +805,7 @@ def select_cells(root: Path, cells: list[CellSpec], keys: list[str]) -> list[Cel
 
 def plan(manifest_path: Path) -> int:
     manifest = load_json(manifest_path)
+    validate_official_manifest(manifest, manifest_path.parent)
     validate_backups(manifest)
     cells = build_cells(manifest)
     states = Counter(cell_state(manifest_path.parent, cell) for cell in cells)
@@ -765,6 +850,7 @@ def main() -> int:
         if args.command == "plan":
             return plan(manifest_path)
         manifest = load_json(manifest_path)
+        validate_official_manifest(manifest, manifest_path.parent)
         validate_backups(manifest)
         ensure_authorized(manifest)
         worktree_preflight(manifest)

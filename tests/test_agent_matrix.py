@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import subprocess
 import sys
@@ -22,6 +23,7 @@ from run_agent_matrix import (  # noqa: E402
     prioritized,
     render_command,
     validate_backups,
+    validate_official_manifest,
     worktree_preflight,
 )
 
@@ -105,6 +107,50 @@ def manifest() -> dict[str, Any]:
     }
 
 
+def official_manifest(root: Path) -> dict[str, Any]:
+    qualification = {
+        "schema": "sanka-bench/claude-route-qualification/v1",
+        "status": "qualified",
+        "requested_model_id": "claude-sonnet-5",
+        "actual_model_id": "claude-sonnet-5-20260901",
+        "provider": "anthropic",
+        "provider_variant": "subscription-standard",
+        "route_kind": "anthropic-native",
+        "billing_mode": "subscription",
+        "gateway_profile": None,
+        "checks": {
+            "tool_use": True,
+            "streaming": True,
+            "terminal_event": True,
+            "usage_accounting": True,
+        },
+    }
+    path = root / "qualifications" / "sonnet.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(qualification, sort_keys=True) + "\n", encoding="utf-8")
+    value = manifest()
+    value["schema"] = "sanka-bench/model-matrix-run-manifest/v2"
+    value["execution"]["configurations"] = ["alone", "with-sanka"]
+    value["execution"]["expected_rows"] = 2
+    value["models"] = [
+        {
+            "slug": "sonnet",
+            "candidate_slug": "claude-code-sonnet",
+            "harness": "claude-code",
+            "provider": "anthropic",
+            "provider_variant": "subscription-standard",
+            "requested_model_id": "claude-sonnet-5",
+            "actual_model_id": "claude-sonnet-5-20260901",
+            "route_kind": "anthropic-native",
+            "billing_mode": "subscription",
+            "gateway_profile": None,
+            "qualification": "qualifications/sonnet.json",
+            "qualification_sha256": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+    ]
+    return value
+
+
 class FakeCoordinator(RollingCoordinator):
     def __init__(self, *args: Any, fail_key: str, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -158,6 +204,38 @@ def test_manifest_preserves_provider_variants_and_declared_backups() -> None:
     backup = value["models"][2]["backups"][0]
     assert backup["provider_variant"] == "on-demand-fast"
     assert backup["status"] == "unqualified"
+
+
+def test_official_manifest_requires_claude_code_and_matching_qualification(
+    tmp_path: Path,
+) -> None:
+    value = official_manifest(tmp_path)
+    validate_official_manifest(value, tmp_path)
+
+    value["models"][0]["harness"] = "codex"
+    with pytest.raises(ValueError, match="Claude Code"):
+        validate_official_manifest(value, tmp_path)
+
+
+def test_official_manifest_rejects_changed_qualification_evidence(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    qualification = tmp_path / value["models"][0]["qualification"]
+    qualification.write_text('{"status":"changed"}\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="qualification digest"):
+        validate_official_manifest(value, tmp_path)
+
+
+def test_official_manifest_rejects_route_and_identity_mismatch(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["models"][0]["actual_model_id"] = "different-model"
+    with pytest.raises(ValueError, match="actual model"):
+        validate_official_manifest(value, tmp_path)
+
+    value = official_manifest(tmp_path)
+    value["models"][0]["route_kind"] = "gateway"
+    with pytest.raises(ValueError, match=r"gateway.*api_key"):
+        validate_official_manifest(value, tmp_path)
 
 
 def test_qualified_backup_requires_evidence() -> None:
