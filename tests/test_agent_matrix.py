@@ -12,11 +12,14 @@ from typing import Any
 
 import pytest
 
+from sanka_bench.hashing import digest_tree
+
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 from run_agent_matrix import (  # noqa: E402
     RollingCoordinator,
+    artifact_issues,
     artifacts,
     authorize_retry,
     build_cells,
@@ -25,6 +28,7 @@ from run_agent_matrix import (  # noqa: E402
     ensure_authorized,
     prioritized,
     render_command,
+    secret_hits,
     validate_backups,
     validate_official_manifest,
     worktree_preflight,
@@ -592,3 +596,136 @@ def test_unmatched_agent_error_still_halts_admissions() -> None:
         assert result.generation_failures == 1
         assert result.retried_generations == 0
         assert not (root / "incidents").exists()
+
+
+def test_secret_scan_reports_path_without_value(tmp_path: Path) -> None:
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "run.log").write_text("leaked-secret-value", encoding="utf-8")
+
+    assert secret_hits(tmp_path, ["leaked-secret-value"]) == ["logs/run.log"]
+
+
+def test_secret_scan_ignores_short_placeholders(tmp_path: Path) -> None:
+    (tmp_path / "report.json").write_text("test", encoding="utf-8")
+
+    assert secret_hits(tmp_path, ["", "test"]) == []
+
+
+def test_artifact_audit_verifies_telemetry_transcript_candidate_and_report(
+    tmp_path: Path,
+) -> None:
+    value = official_manifest(tmp_path)
+    cell = build_cells(value)[0]
+    paths = artifacts(tmp_path, cell)
+    paths.candidate.mkdir(parents=True)
+    paths.sandbox.joinpath("raw").mkdir(parents=True)
+    paths.log.parent.mkdir(parents=True)
+    paths.report.parent.mkdir(parents=True)
+    transcript = b'{"type":"result","subtype":"success"}\n'
+    (paths.candidate / "agent-log.jsonl").write_bytes(transcript)
+    (paths.sandbox / "raw" / "agent-log.jsonl").write_bytes(transcript)
+    overlay = paths.candidate / "overlay"
+    overlay.mkdir()
+    (overlay / "app.py").write_text("app = object()\n", encoding="utf-8")
+    paths.report.write_text(
+        json.dumps(
+            {
+                "status": "failed",
+                "provenance": {"candidate_digest": "sha256:" + "0" * 64},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (paths.candidate / "telemetry.json").write_text(
+        json.dumps(
+            {
+                "schema": "sanka-bench/agent-cell-telemetry/v1",
+                "input_digest": cell.input_digest,
+                "digests": {
+                    "transcript_sha256": "sha256:" + hashlib.sha256(transcript).hexdigest(),
+                    "overlay_sha256": "sha256:" + "0" * 64,
+                },
+                "evaluation": {
+                    "status": "passed",
+                    "report_sha256": "sha256:"
+                    + hashlib.sha256(paths.report.read_bytes()).hexdigest(),
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    paths.log.write_text(
+        f"INPUT_DIGEST={cell.input_digest}\nDRIVER_DONE run_exit=0 eval_exit=0\n",
+        encoding="utf-8",
+    )
+
+    issues = artifact_issues(tmp_path, [cell])
+
+    assert any("overlay digest" in issue for issue in issues)
+    assert any("candidate digest" in issue for issue in issues)
+    assert any("evaluation status" in issue for issue in issues)
+    assert not any("transcript digest" in issue for issue in issues)
+    assert not any("report digest" in issue for issue in issues)
+
+    telemetry = json.loads((paths.candidate / "telemetry.json").read_text(encoding="utf-8"))
+    telemetry["digests"]["overlay_sha256"] = digest_tree(overlay)
+    telemetry["evaluation"]["status"] = "failed"
+    report = json.loads(paths.report.read_text(encoding="utf-8"))
+    report["provenance"]["candidate_digest"] = digest_tree(paths.candidate)
+    paths.report.write_text(json.dumps(report) + "\n", encoding="utf-8")
+    telemetry["evaluation"]["report_sha256"] = (
+        "sha256:" + hashlib.sha256(paths.report.read_bytes()).hexdigest()
+    )
+    (paths.candidate / "telemetry.json").write_text(json.dumps(telemetry) + "\n", encoding="utf-8")
+
+    assert artifact_issues(tmp_path, [cell]) == []
+
+
+def test_artifact_audit_requires_raw_evidence_for_failed_generation(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    cell = build_cells(value)[0]
+    paths = artifacts(tmp_path, cell)
+    paths.log.parent.mkdir(parents=True)
+    paths.log.write_text(
+        f"INPUT_DIGEST={cell.input_digest}\nDRIVER_DONE run_exit=1 eval_exit=skipped\n",
+        encoding="utf-8",
+    )
+
+    issues = artifact_issues(tmp_path, [cell])
+
+    assert any("missing telemetry" in issue for issue in issues)
+    assert any("missing transcript" in issue for issue in issues)
+    assert not any("candidate overlay" in issue for issue in issues)
+
+
+def test_artifact_audit_keeps_v1_results_readable(tmp_path: Path) -> None:
+    cell = build_cells(manifest())[0]
+    paths = artifacts(tmp_path, cell)
+    paths.candidate.mkdir(parents=True)
+    paths.report.parent.mkdir(parents=True)
+    paths.report.write_text('{"status":"failed"}\n', encoding="utf-8")
+    paths.log.parent.mkdir(parents=True)
+    paths.log.write_text("DRIVER_DONE run_exit=0 eval_exit=0\n", encoding="utf-8")
+
+    assert artifact_issues(tmp_path, [cell]) == []
+
+
+def test_aggregate_refuses_secret_or_incomplete_artifacts(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["execution"]["aggregate_command"] = [
+        "{python}",
+        "-c",
+        "from pathlib import Path; Path('published').write_text('bad')",
+    ]
+    path = write_manifest(tmp_path, value)
+    coordinator = RollingCoordinator(path, provider_cap=1, model_cap=1, evaluation_cap=1)
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "leak.log").write_text("sk-ant-this-is-a-secret", encoding="utf-8")
+
+    assert coordinator.aggregate("blocked") != 0
+    assert not (tmp_path / "published").exists()
+    events = (tmp_path / "scheduler-events.jsonl").read_text(encoding="utf-8")
+    assert "publication-gate-failed" in events
+    assert "sk-ant-this-is-a-secret" not in events

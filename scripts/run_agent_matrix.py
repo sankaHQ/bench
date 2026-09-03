@@ -20,12 +20,18 @@ import subprocess
 import sys
 import time
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from run_matrix_cell import ALLOWED_KEYS, read_allowlisted_env
+
+from sanka_bench.hashing import digest_tree
+
+_KNOWN_SECRET = re.compile(rb"(?:sk-(?:ant-|proj-)?|fw_)[A-Za-z0-9_-]{16,}")
 
 
 def utc_now() -> str:
@@ -44,6 +50,110 @@ def atomic_json(path: Path, value: dict[str, Any]) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     temporary.replace(path)
+
+
+def secret_hits(root: Path, secret_values: Sequence[str]) -> list[str]:
+    """Return artifact paths containing credentials without returning credential text."""
+    needles = {value.encode() for value in secret_values if len(value) >= 8}
+    hits: list[str] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        content = path.read_bytes()
+        if any(needle in content for needle in needles) or _KNOWN_SECRET.search(content):
+            hits.append(path.relative_to(root).as_posix())
+    return hits
+
+
+def artifact_issues(root: Path, cells: Sequence[CellSpec]) -> list[str]:
+    """Verify resumable cell evidence before publishing aggregate output."""
+    issues: list[str] = []
+    for cell in cells:
+        if not cell.input_digest:  # v1 predates normalized cell telemetry
+            continue
+        state = cell_state(root, cell)
+        label = cell.key
+        if state == "untouched":
+            continue
+        if state == "ambiguous":
+            issues.append(f"{label}: ambiguous cell artifacts")
+            continue
+        paths = artifacts(root, cell)
+        marker = next(
+            (line for line in reversed(marker_lines(paths.log)) if line.startswith("DRIVER_DONE ")),
+            "",
+        )
+        successful_generation = state == "generated" or "run_exit=0" in marker
+
+        telemetry_path = paths.candidate / "telemetry.json"
+        transcript_path = paths.candidate / "agent-log.jsonl"
+        raw_transcript_path = paths.sandbox / "raw" / "agent-log.jsonl"
+        overlay = paths.candidate / "overlay"
+        for name, path in (
+            ("telemetry", telemetry_path),
+            ("transcript", transcript_path),
+            ("raw transcript", raw_transcript_path),
+        ):
+            if not path.is_file():
+                issues.append(f"{label}: missing {name}")
+        if successful_generation and not overlay.is_dir():
+            issues.append(f"{label}: missing candidate overlay")
+        if issues and any(issue.startswith(f"{label}: missing") for issue in issues):
+            continue
+
+        try:
+            telemetry = load_json(telemetry_path)
+        except (OSError, TypeError, json.JSONDecodeError):
+            issues.append(f"{label}: invalid telemetry")
+            continue
+        if telemetry.get("schema") != "sanka-bench/agent-cell-telemetry/v1":
+            issues.append(f"{label}: telemetry schema mismatch")
+        if telemetry.get("input_digest") != cell.input_digest:
+            issues.append(f"{label}: telemetry input digest mismatch")
+        digests = telemetry.get("digests")
+        if not isinstance(digests, dict):
+            issues.append(f"{label}: missing telemetry digests")
+            continue
+        transcript_digest = "sha256:" + hashlib.sha256(transcript_path.read_bytes()).hexdigest()
+        if digests.get("transcript_sha256") != transcript_digest:
+            issues.append(f"{label}: transcript digest mismatch")
+        if raw_transcript_path.read_bytes() != transcript_path.read_bytes():
+            issues.append(f"{label}: raw transcript mismatch")
+        if successful_generation and digests.get("overlay_sha256") != digest_tree(overlay):
+            issues.append(f"{label}: overlay digest mismatch")
+
+        if state != "terminal" or not successful_generation:
+            continue
+        try:
+            report = load_json(paths.report)
+        except (OSError, TypeError, json.JSONDecodeError):
+            issues.append(f"{label}: invalid report")
+            continue
+        report_digest = "sha256:" + hashlib.sha256(paths.report.read_bytes()).hexdigest()
+        evaluation = telemetry.get("evaluation")
+        if not isinstance(evaluation, dict) or evaluation.get("report_sha256") != report_digest:
+            issues.append(f"{label}: report digest mismatch")
+        if not isinstance(evaluation, dict) or evaluation.get("status") != report.get("status"):
+            issues.append(f"{label}: evaluation status mismatch")
+        provenance = report.get("provenance")
+        if not isinstance(provenance, dict) or provenance.get("candidate_digest") != digest_tree(
+            paths.candidate
+        ):
+            issues.append(f"{label}: candidate digest mismatch")
+    return issues
+
+
+def credential_values(manifest: dict[str, Any]) -> list[str]:
+    names = {name for name in ALLOWED_KEYS if name.endswith(("_KEY", "_TOKEN"))}
+    values = [os.environ[name] for name in names if os.environ.get(name)]
+    raw_path = str(manifest.get("toolchain", {}).get("env_path") or "")
+    if raw_path and not raw_path.startswith("PENDING_"):
+        path = Path(raw_path).expanduser()
+        if path.is_file():
+            values.extend(
+                value for name, value in read_allowlisted_env(path).items() if name in names
+            )
+    return values
 
 
 @dataclass(frozen=True)
@@ -775,6 +885,16 @@ class RollingCoordinator:
         template = self.manifest["execution"].get("aggregate_command")
         if not template:
             return 0
+        secrets = secret_hits(self.root, credential_values(self.manifest))
+        integrity = artifact_issues(self.root, self.cells)
+        if secrets or integrity:
+            self.event(
+                "publication-gate-failed",
+                stage_id=stage_id,
+                secret_paths=secrets,
+                artifact_issues=integrity,
+            )
+            return 22
         if not isinstance(template, list) or not all(isinstance(item, str) for item in template):
             raise ValueError("execution.aggregate_command must be a string list")
         command = [sys.executable if item == "{python}" else item for item in template]

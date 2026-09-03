@@ -259,42 +259,38 @@ duration, and reported cost in the candidate's GENERATED.md):
 ```bash
 uv run python scripts/run_agent_candidate.py \
   --task tasks/drf-fastapi/drf-fastapi-001 \
-  --candidate-id claude-code-alone \
-  --out baselines/drf-fastapi-001/claude-code-alone \
-  --agent-bin ~/.claude/local/claude
-# with-Sanka arms additionally take --sanka-bin <path to sanka>
+  --candidate-id claude-code-<model>-alone \
+  --out baselines/drf-fastapi-001/claude-code-<model>-alone \
+  --agent claude-code \
+  --agent-bin <pinned-claude-binary> \
+  --model <exact-requested-model-id> \
+  --actual-model-id <verified-backend-model-id> \
+  --provider anthropic \
+  --provider-variant subscription-standard \
+  --route-kind anthropic-native \
+  --billing-mode subscription
 ```
 
-The same harness can drive Codex against OpenAI or a supported
-OpenAI-compatible provider. Codex runs use an isolated `CODEX_HOME`, the
-Responses API, the provider's environment-variable API key, measured wall
-time, and token-based cost only when explicit per-million prices are supplied:
-
-```bash
-uv run python scripts/run_agent_candidate.py \
-  --agent codex \
-  --agent-bin codex \
-  --provider openai \
-  --model gpt-5.3-codex \
-  --task tasks/drf-fastapi/drf-fastapi-001 \
-  --candidate-id codex-gpt-5-3-codex-with-sanka \
-  --sanka-bin ../sanka/.venv/bin/sanka \
-  --out baselines/drf-fastapi-001/codex-gpt-5-3-codex-with-sanka
-```
+Official model matrices use this same pinned Claude Code harness for every
+model treatment. Claude subscriptions use the native authenticated route;
+GPT and other models may use a declared Anthropic-protocol gateway only after
+that exact route passes qualification. The compatibility Codex runner is not
+an official matrix harness.
 
 The two official configurations share the same model, budget, and contract;
-the ordinary with-Sanka prompt is strictly additive — it offers the Sanka CLI
-with readiness-aware usage guidance and the `sanka verify --scenarios`
-differential verifier. A third, diagnostic candidate id ending in
-`-with-sanka-readiness-aware` adds a preflight threshold decision; the route
-gap inventory is frozen for the record, not sent as a checklist. The frozen
-overlay is graded by the same evaluator as every other candidate.
+the with-Sanka lane installs the pinned Sanka skill into the cell's project and
+adds only a short availability sentence to the core prompt. The agent decides
+whether to use it. A third candidate ending in `-with-sanka-readiness-aware`
+remains a separately labelled diagnostic arm and is excluded from the official
+paired effect. Every frozen overlay is graded by the same evaluator.
 
 For larger model matrices, use `scripts/run_agent_matrix.py` as the single
 foreground coordinator. It preserves generated candidates across resumes,
 drains their evaluations after a provider failure, records serving tiers with
-`provider_variant`, and never activates a declared backup automatically. The
-provider qualification and recovery contract is documented in
+`provider_variant`, validates telemetry and hashes, blocks aggregation if a
+credential appears in an artifact, and never activates a declared backup
+automatically. The manifest, qualification, environment, cost, and recovery
+contract is documented in
 [docs/measurement-runs.md](docs/measurement-runs.md).
 
 Render the collected reports into a static page and summary SVG — the hero
