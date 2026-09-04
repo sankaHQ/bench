@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from run_matrix_cell import ALLOWED_KEYS, read_allowlisted_env
+from run_matrix_cell import ALLOWED_KEYS, evaluation_environment, read_allowlisted_env
 
 from sanka_bench.environment import isolated_environment
 from sanka_bench.hashing import digest_tree
@@ -838,7 +838,11 @@ class RollingCoordinator:
         command = render_command(template, self.manifest_path, cell, phase)
         worker_log = self.root / "waves" / f"{stage_id}-{cell.candidate_id}-{phase}.log"
         worker_log.parent.mkdir(parents=True, exist_ok=True)
-        environment = isolated_environment(os.environ)
+        environment = (
+            evaluation_environment(self.manifest)
+            if phase == "evaluate"
+            else isolated_environment(os.environ)
+        )
         environment.update(
             {
                 "SANKA_BENCH_WAVE_ID": stage_id,
