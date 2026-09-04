@@ -125,6 +125,13 @@ consider the task done until every scenario matches exactly.
 
 PROMPT_SANKA = """
 The Sanka migration CLI at {sanka} is available.
+Pass `--extension-env PYTHONPATH` to Sanka lifecycle commands so its isolated
+extension process can import the benchmark fixture dependencies.
+"""
+
+PROMPT_SANKA_SKILL = """
+A project-local `sanka-cli` skill is installed in this workspace and is
+available to use.
 """
 
 VERIFIER_COMMAND = (
@@ -787,6 +794,8 @@ def main() -> int:
                 return 1
             sanka_versions = _sanka_tool_versions(sanka_bin, workspace=workspace, env=env)
             prompt += PROMPT_SANKA.format(sanka=sanka_bin)
+            if mode == "with-sanka":
+                prompt += PROMPT_SANKA_SKILL
         elif mode == "readiness-aware":
             assert args.sanka_bin is not None
             try:

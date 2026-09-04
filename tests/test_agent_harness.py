@@ -189,7 +189,7 @@ def test_claude_stats_do_not_turn_partial_usage_into_zero(harness: object) -> No
     assert stats["total_tokens"] is None
 
 
-def test_prompts_differ_only_by_the_sanka_paragraph(harness: object) -> None:
+def test_sanka_prompt_exposes_cli_with_extension_environment(harness: object) -> None:
     core = harness.PROMPT_CORE  # type: ignore[attr-defined]
     extra = harness.PROMPT_SANKA  # type: ignore[attr-defined]
     assert "Add new files only" in core
@@ -201,12 +201,23 @@ def test_prompts_differ_only_by_the_sanka_paragraph(harness: object) -> None:
     assert "representative sample" in core
     assert "FastAPI `APIRoute`" in core
     assert "raw Starlette `Route`" in core
-    # the +Sanka variant is strictly additive: the installed project skill owns
-    # usage guidance, so the benchmark prompt only discloses availability.
+    # Both Sanka arms receive the same runtime plumbing. Without this explicit
+    # passthrough, the CLI's isolated extension process cannot import the fixture.
     rendered = extra.format(sanka="/tools/sanka")
     assert "Sanka migration CLI" in rendered
     assert "/tools/sanka" in rendered
-    assert "skill" not in rendered.lower()
+    assert "--extension-env PYTHONPATH" in rendered
+    assert "scan" not in rendered
+    assert "plan" not in rendered
+    assert "apply" not in rendered
+
+
+def test_skill_prompt_discloses_project_local_skill_without_usage_guidance(
+    harness: object,
+) -> None:
+    rendered = harness.PROMPT_SANKA_SKILL  # type: ignore[attr-defined]
+    assert "project-local" in rendered
+    assert "sanka-cli" in rendered
     assert "scan" not in rendered
     assert "plan" not in rendered
     assert "apply" not in rendered
