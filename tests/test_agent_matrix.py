@@ -592,6 +592,34 @@ def test_cancelled_worker_is_terminated_before_control_returns() -> None:
         asyncio.run(cancel_worker())
 
 
+def test_evaluation_worker_keeps_the_selected_container_engine_on_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    engine_dir = tmp_path / "homebrew" / "bin"
+    engine_dir.mkdir(parents=True)
+    engine = engine_dir / "podman"
+    engine.write_text("#!/bin/sh\n", encoding="utf-8")
+    engine.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{engine_dir}:/usr/bin:/bin")
+    value = manifest()
+    value["execution"]["container_engine"] = "podman"
+    value["execution"]["cell_command"] = [
+        "{python}",
+        "-c",
+        (
+            "import os,sys; "
+            "sys.exit(0 if os.environ['PATH'].split(os.pathsep)[0] == sys.argv[1] else 1)"
+        ),
+        str(engine_dir),
+    ]
+    path = write_manifest(tmp_path, value)
+    coordinator = RollingCoordinator(path, provider_cap=1, model_cap=1, evaluation_cap=1)
+
+    returncode = asyncio.run(coordinator._process(coordinator.cells[0], "evaluate", "path"))
+
+    assert returncode == 0
+
+
 def test_samples_multiply_cells_and_suffix_their_identities() -> None:
     data = manifest()
     data["execution"]["samples"] = 3
