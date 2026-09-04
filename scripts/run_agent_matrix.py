@@ -253,6 +253,7 @@ def cell_input_digest(
         "sanka_prompt_sha256",
         "authorization_scope",
         "concurrency",
+        "container_engine",
     )
     toolchain_fields = (
         "claude_version",
@@ -359,8 +360,13 @@ def qualification_digest(path: Path) -> str:
 def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
     if manifest.get("schema") != "sanka-bench/model-matrix-run-manifest/v2":
         return
-    if manifest["execution"].get("configurations") != ["alone", "with-sanka"]:
-        raise ValueError("official v2 configurations must be alone and with-sanka")
+    if manifest["execution"].get("configurations") not in (
+        ["alone", "with-sanka"],
+        ["alone", "sanka-cli", "with-sanka"],
+    ):
+        raise ValueError(
+            "official v2 configurations must be alone/with-sanka or the three-arm ablation"
+        )
     if any(
         not isinstance(manifest["execution"].get(name), int)
         or isinstance(manifest["execution"].get(name), bool)
@@ -368,6 +374,8 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
         for name in ("max_turns", "wall_clock_seconds")
     ):
         raise ValueError("official v2 manifest requires positive execution budgets")
+    if manifest["execution"].get("container_engine", "docker") not in {"docker", "podman"}:
+        raise ValueError("official v2 manifest container engine must be docker or podman")
     concurrency = manifest["execution"].get("concurrency")
     if not isinstance(concurrency, dict) or any(
         not isinstance(concurrency.get(name), int)

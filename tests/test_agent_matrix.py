@@ -181,6 +181,28 @@ def official_manifest(root: Path) -> dict[str, Any]:
     return value
 
 
+def test_official_manifest_accepts_three_arm_ablation(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["execution"]["configurations"] = ["alone", "sanka-cli", "with-sanka"]
+    value["execution"]["expected_rows"] = 3
+    value["execution"]["container_engine"] = "podman"
+
+    validate_official_manifest(value, tmp_path)
+    assert [cell.config for cell in build_cells(value)] == [
+        "alone",
+        "sanka-cli",
+        "with-sanka",
+    ]
+
+
+def test_official_manifest_rejects_an_unknown_container_engine(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["execution"]["container_engine"] = "magic"
+
+    with pytest.raises(ValueError, match="container engine"):
+        validate_official_manifest(value, tmp_path)
+
+
 class FakeCoordinator(RollingCoordinator):
     def __init__(self, *args: Any, fail_key: str, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)

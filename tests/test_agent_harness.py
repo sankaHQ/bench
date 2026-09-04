@@ -204,8 +204,9 @@ def test_prompts_differ_only_by_the_sanka_paragraph(harness: object) -> None:
     # the +Sanka variant is strictly additive: the installed project skill owns
     # usage guidance, so the benchmark prompt only discloses availability.
     rendered = extra.format(sanka="/tools/sanka")
-    assert "project-local `sanka-cli` skill" in rendered
+    assert "Sanka migration CLI" in rendered
     assert "/tools/sanka" in rendered
+    assert "skill" not in rendered.lower()
     assert "scan" not in rendered
     assert "plan" not in rendered
     assert "apply" not in rendered
@@ -216,6 +217,7 @@ def test_candidate_modes_preserve_official_arms_and_add_diagnostic_arm(
 ) -> None:
     mode = harness._candidate_mode  # type: ignore[attr-defined]
     assert mode("opus-alone") == "alone"
+    assert mode("opus-sanka-cli") == "sanka-cli"
     assert mode("opus-with-sanka") == "with-sanka"
     assert mode("opus-with-sanka-readiness-aware") == "readiness-aware"
     assert mode("opus-experimental") is None

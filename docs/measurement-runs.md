@@ -1,7 +1,7 @@
 # Reliable Claude Code model-matrix runs
 
-Official measurements are paired pass@1 experiments: the same pinned Claude
-Code harness runs each model treatment once without Sanka and once with the
+Official measurements are pass@1 experiments: the same pinned Claude Code
+harness runs each model treatment alone, with the Sanka CLI only, and with the
 project-local Sanka skill. The evaluator stays tool-neutral. A run never swaps
 harnesses, models, providers, or routes to fill a failed cell.
 
@@ -11,11 +11,11 @@ manifest.
 
 ## Manifest v2
 
-Use `sanka-bench/model-matrix-run-manifest/v2` and exactly these official
-configurations:
+Use `sanka-bench/model-matrix-run-manifest/v2`. Two-arm records remain valid;
+new skill-ablation runs use exactly these configurations:
 
 ```json
-"configurations": ["alone", "with-sanka"]
+"configurations": ["alone", "sanka-cli", "with-sanka"]
 ```
 
 The same execution block pins the treatment budgets and scheduler policy:
@@ -24,7 +24,8 @@ The same execution block pins the treatment budgets and scheduler policy:
 {
   "max_turns": 60,
   "wall_clock_seconds": 3600,
-  "concurrency": {"provider_cap": 1, "model_cap": 1, "evaluation_cap": 1}
+  "concurrency": {"provider_cap": 1, "model_cap": 1, "evaluation_cap": 1},
+  "container_engine": "podman"
 }
 ```
 
@@ -127,10 +128,13 @@ sandboxes/<candidate-id>/
 ```
 
 The alone lane has no Sanka binary, state, skill, or Sanka-specific prompt. The
-with-Sanka lane copies the prepared pinned Sanka state and runs
+`sanka-cli` lane receives the pinned CLI and the same availability sentence as
+the with-Sanka lane, but no skill. The with-Sanka lane additionally runs
 `sanka skill install claude --scope project --project-dir <workspace>` before
-Claude Code starts. The installed path and `SKILL.md` digest are recorded. The
-agent receives only a short sentence saying that Sanka is available.
+Claude Code starts. The installed path and `SKILL.md` digest are recorded.
+
+Evaluation runs in the manifest-pinned Docker-compatible engine (`docker` or
+`podman`) with networking disabled and the frozen candidate mounted read-only.
 
 The current cell states are the cache; there is no second cache database:
 

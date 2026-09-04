@@ -30,6 +30,57 @@ def test_evaluator_image_reuses_the_content_addressed_image(
     assert calls == [["docker", "image", "inspect", "sanka-bench:0123456789abcdef"]]
 
 
+def test_evaluator_image_uses_the_selected_container_engine(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(docker, "digest_tree", lambda root: "sha256:0123456789abcdefrest")
+    monkeypatch.setattr(
+        docker,
+        "run_command",
+        lambda argv, **_kwargs: calls.append(argv) or _result(argv, 0),
+    )
+
+    assert docker._ensure_evaluator_image(tmp_path, engine="podman") == (
+        "sanka-bench:0123456789abcdef"
+    )
+    assert calls == [["podman", "image", "inspect", "sanka-bench:0123456789abcdef"]]
+
+
+def test_podman_evaluator_mounts_a_candidate_outside_the_repository(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "bench"
+    task = root / "tasks" / "task-1"
+    candidate = tmp_path / "run" / "candidate"
+    task.mkdir(parents=True)
+    candidate.mkdir(parents=True)
+    calls: list[list[str]] = []
+    monkeypatch.setattr(docker, "repository_root", lambda: root)
+    monkeypatch.setattr(docker, "digest_tree", lambda _root: "sha256:0123456789abcdefrest")
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        calls.append(argv)
+        if argv[1:3] == ["image", "inspect"]:
+            return _result(argv, 0)
+        output_mount = next(item for item in argv if "target=/output" in item)
+        output_dir = Path(output_mount.split(",")[1].removeprefix("source="))
+        (output_dir / "result.json").write_text('{"status":"passed"}\n', encoding="utf-8")
+        return _result(argv, 0)
+
+    monkeypatch.setattr(docker, "run_command", fake_run)
+
+    result = docker.evaluate_docker(task, candidate, output_path=None, engine="podman")
+
+    assert result == {"status": "passed"}
+    run = calls[-1]
+    assert run[0] == "podman"
+    assert f"type=bind,source={candidate},target=/candidate,readonly" in run
+    assert run[run.index("--candidate") + 1] == "/candidate"
+
+
 def test_evaluator_image_builds_once_when_the_tag_is_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

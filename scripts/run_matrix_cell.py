@@ -125,6 +125,10 @@ class Cell:
     def with_sanka(self) -> bool:
         return self.config.startswith("with-sanka")
 
+    @property
+    def uses_sanka(self) -> bool:
+        return self.config == "sanka-cli" or self.with_sanka
+
 
 @dataclass(frozen=True)
 class Paths:
@@ -252,14 +256,14 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
         tools["env"] = _armed_path(manifest, "env_path")
     agent_tool = "claude" if cell.agent == "claude-code" else "codex"
     tools[agent_tool] = _armed_path(manifest, f"{agent_tool}_bin")
-    if cell.with_sanka:
+    if cell.uses_sanka:
         tools["sanka"] = _armed_path(manifest, "sanka_bin")
     required = [task / "source", task / "public-tests" / "scenarios.json", python, bench]
     required.append(tools[agent_tool])
     required.append(agent_runner)
     if needs_env:
         required.append(tools["env"])
-    if cell.with_sanka:
+    if cell.uses_sanka:
         required.append(tools["sanka"])
     missing = [str(path) for path in required if not path.exists()]
     if missing:
@@ -463,9 +467,9 @@ def generation_command(
     if attempt > 1:
         assert prior_failure is not None
         command.extend(["--attempt", str(attempt), "--prior-failure", prior_failure])
-    if cell.with_sanka:
+    if cell.uses_sanka:
         command.extend(["--sanka-bin", str(tools["sanka"])])
-        if manifest.get("schema") == "sanka-bench/model-matrix-run-manifest/v2":
+        if cell.with_sanka and manifest.get("schema") == "sanka-bench/model-matrix-run-manifest/v2":
             command.extend(
                 ["--sanka-skill-sha256", str(manifest["toolchain"]["sanka_skill_sha256"])]
             )
@@ -493,6 +497,35 @@ def normalize_candidate_metadata(paths: Paths, cell: Cell) -> bool:
         raise ValueError("provider variant disclosure is missing from GENERATED.md")
     candidate_yaml.write_text(text.replace(expected_line, ""), encoding="utf-8")
     return True
+
+
+def evaluation_command(
+    manifest: dict[str, Any], cell: Cell, paths: Paths, tools: dict[str, Path]
+) -> list[str]:
+    return [
+        str(tools["bench"]),
+        "evaluate",
+        "--runner",
+        "docker",
+        "--container-engine",
+        str(manifest["execution"].get("container_engine") or "docker"),
+        "--task",
+        str(Path("tasks") / "drf-fastapi" / cell.task_id),
+        "--candidate",
+        str(paths.candidate),
+        "--output",
+        str(paths.report),
+    ]
+
+
+def evaluation_environment(manifest: dict[str, Any]) -> dict[str, str]:
+    environment = isolated_environment(os.environ)
+    engine = str(manifest["execution"].get("container_engine") or "docker")
+    executable = shutil.which(engine)
+    if executable is None:
+        raise ValueError(f"container engine is unavailable: {engine}")
+    environment["PATH"] = str(Path(executable).parent) + os.pathsep + environment["PATH"]
+    return environment
 
 
 def update_cell_telemetry(paths: Paths, **sections: object) -> bool:
@@ -553,9 +586,9 @@ def run_generation(
     if required_key and not environment.get(required_key):
         raise ValueError(f"required provider credential is unavailable: {required_key}")
     toolchain: dict[str, str] = {}
-    if cell.with_sanka:
+    if cell.uses_sanka:
         if not (paths.root / "toolchain-check.json").is_file():
-            raise ValueError("run the prepare phase before with-sanka cells")
+            raise ValueError("run the prepare phase before Sanka cells")
         prepared_sanka_home = paths.root / "sanka-home"
         if not prepared_sanka_home.is_dir():
             raise ValueError("prepared Sanka home is missing")
@@ -641,7 +674,9 @@ def run_generation(
     return 0
 
 
-def run_evaluation(cell: Cell, paths: Paths, tools: dict[str, Path]) -> int:
+def run_evaluation(
+    manifest: dict[str, Any], cell: Cell, paths: Paths, tools: dict[str, Path]
+) -> int:
     if not contains_marker(paths.log, "GENERATION_DONE run_exit=0 "):
         raise ValueError(f"successful generation marker missing for {cell.candidate_id}")
     if contains_marker(paths.log, "DRIVER_DONE "):
@@ -656,20 +691,9 @@ def run_evaluation(cell: Cell, paths: Paths, tools: dict[str, Path]) -> int:
     started = time.monotonic()
     with paths.log.open("a", encoding="utf-8") as handle:
         outcome = subprocess.run(
-            [
-                str(tools["bench"]),
-                "evaluate",
-                "--runner",
-                "local",
-                "--task",
-                str(Path("tasks") / "drf-fastapi" / cell.task_id),
-                "--candidate",
-                str(paths.candidate),
-                "--output",
-                str(paths.report),
-            ],
+            evaluation_command(manifest, cell, paths, tools),
             cwd=paths.worktree,
-            env=isolated_environment(os.environ),
+            env=evaluation_environment(manifest),
             stdin=subprocess.DEVNULL,
             stdout=handle,
             stderr=subprocess.STDOUT,
@@ -749,7 +773,7 @@ def main() -> int:
             if outcome != 0:
                 return outcome
         if args.phase in {"evaluate", "full"}:
-            return run_evaluation(cell, paths, tools)
+            return run_evaluation(manifest, cell, paths, tools)
         return 0
     except (OSError, TypeError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         print(f"cell driver error: {error}", file=sys.stderr)
