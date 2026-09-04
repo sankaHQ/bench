@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -318,6 +319,23 @@ def test_evaluation_command_uses_the_manifest_container_engine(
         "--container-engine",
     ]
     assert command[5] == "podman"
+
+
+def test_evaluation_environment_can_find_the_selected_container_engine(
+    driver: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    engine_dir = tmp_path / "homebrew" / "bin"
+    engine_dir.mkdir(parents=True)
+    engine = engine_dir / "podman"
+    engine.write_text("#!/bin/sh\n", encoding="utf-8")
+    engine.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{engine_dir}:/usr/bin:/bin")
+    manifest = _manifest(samples=1)
+    manifest["execution"]["container_engine"] = "podman"  # type: ignore[index]
+
+    environment = driver.evaluation_environment(manifest)  # type: ignore[attr-defined]
+
+    assert environment["PATH"] == f"{engine_dir}{os.pathsep}{os.defpath}"
 
 
 def test_generation_requires_the_authorized_coordinator(

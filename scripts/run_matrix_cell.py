@@ -518,6 +518,16 @@ def evaluation_command(
     ]
 
 
+def evaluation_environment(manifest: dict[str, Any]) -> dict[str, str]:
+    environment = isolated_environment(os.environ)
+    engine = str(manifest["execution"].get("container_engine") or "docker")
+    executable = shutil.which(engine)
+    if executable is None:
+        raise ValueError(f"container engine is unavailable: {engine}")
+    environment["PATH"] = str(Path(executable).parent) + os.pathsep + environment["PATH"]
+    return environment
+
+
 def update_cell_telemetry(paths: Paths, **sections: object) -> bool:
     path = paths.candidate / "telemetry.json"
     if not path.is_file():
@@ -683,7 +693,7 @@ def run_evaluation(
         outcome = subprocess.run(
             evaluation_command(manifest, cell, paths, tools),
             cwd=paths.worktree,
-            env=isolated_environment(os.environ),
+            env=evaluation_environment(manifest),
             stdin=subprocess.DEVNULL,
             stdout=handle,
             stderr=subprocess.STDOUT,

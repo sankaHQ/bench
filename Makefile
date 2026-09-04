@@ -1,5 +1,7 @@
 .PHONY: sync format lint typecheck test check baselines docker-baselines report
 
+CONTAINER_ENGINE ?= docker
+
 sync:
 	uv sync --frozen --extra fixture --group dev
 
@@ -44,7 +46,7 @@ baselines-$(1):
 
 docker-baselines-$(1):
 	@for name in $$(BASELINES_$(1)); do \
-		uv run sanka-bench evaluate --runner docker --task tasks/drf-fastapi/drf-fastapi-$(1) --candidate baselines/drf-fastapi-$(1)/$$$$name --output reports/drf-fastapi-$(1)-$$$$name-docker.json || exit 1; \
+		uv run sanka-bench evaluate --runner docker --container-engine $$(CONTAINER_ENGINE) --task tasks/drf-fastapi/drf-fastapi-$(1) --candidate baselines/drf-fastapi-$(1)/$$$$name --output reports/drf-fastapi-$(1)-$$$$name-docker.json || exit 1; \
 	done
 endef
 
