@@ -275,6 +275,51 @@ def test_generation_command_offers_sanka_only_to_with_sanka_cells(
     assert command[command.index("--provider") + 1] == "anthropic"
 
 
+def test_cli_only_arm_gets_sanka_without_the_skill_digest(driver: object, tmp_path: Path) -> None:
+    manifest = _manifest(samples=1)
+    manifest["schema"] = "sanka-bench/model-matrix-run-manifest/v2"
+    manifest["execution"]["configurations"] = ["alone", "sanka-cli", "with-sanka"]  # type: ignore[index]
+    manifest["models"] = [manifest["models"][0]]  # type: ignore[index]
+    manifest["toolchain"]["sanka_skill_sha256"] = "sha256:" + "a" * 64  # type: ignore[index]
+    tools = {
+        "python": tmp_path / "python",
+        "agent_runner": tmp_path / "run_agent_candidate.py",
+        "claude": tmp_path / "claude",
+        "sanka": tmp_path / "sanka",
+    }
+    cell = driver.resolve_cell(manifest, "001", "sonnet5", "sanka-cli", 1)  # type: ignore[attr-defined]
+    paths = driver.resolve_paths(tmp_path / "run-manifest.json", manifest, cell)  # type: ignore[attr-defined]
+
+    command = driver.generation_command(  # type: ignore[attr-defined]
+        manifest, cell, paths, tools, attempt=1, prior_failure=None
+    )
+
+    assert command[command.index("--sanka-bin") + 1] == str(tmp_path / "sanka")
+    assert "--sanka-skill-sha256" not in command
+
+
+def test_evaluation_command_uses_the_manifest_container_engine(
+    driver: object, tmp_path: Path
+) -> None:
+    manifest = _manifest(samples=1)
+    manifest["execution"]["container_engine"] = "podman"  # type: ignore[index]
+    cell = driver.resolve_cell(manifest, "001", "sonnet5", "alone", 1)  # type: ignore[attr-defined]
+    paths = driver.resolve_paths(tmp_path / "run-manifest.json", manifest, cell)  # type: ignore[attr-defined]
+
+    command = driver.evaluation_command(  # type: ignore[attr-defined]
+        manifest, cell, paths, {"bench": tmp_path / "sanka-bench"}
+    )
+
+    assert command[:5] == [
+        str(tmp_path / "sanka-bench"),
+        "evaluate",
+        "--runner",
+        "docker",
+        "--container-engine",
+    ]
+    assert command[5] == "podman"
+
+
 def test_generation_requires_the_authorized_coordinator(
     driver: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -25,11 +25,12 @@ def evaluate_docker(
     candidate_dir: Path,
     *,
     output_path: Path | None,
+    engine: str = "docker",
 ) -> dict[str, Any]:
     root = repository_root()
     task_relative = _relative_to_root(task_dir, root)
-    candidate_relative = _relative_to_root(candidate_dir, root)
-    image_tag = _ensure_evaluator_image(root)
+    candidate = candidate_dir.resolve()
+    image_tag = _ensure_evaluator_image(root, engine=engine)
 
     # Docker Desktop shares /Users by default, but not macOS's resolved
     # /var/folders temporary path. Keep the bind source inside the repository
@@ -39,7 +40,7 @@ def evaluate_docker(
         container_output = output_root / "result.json"
         run = run_command(
             [
-                "docker",
+                engine,
                 "run",
                 "--rm",
                 "--init",
@@ -62,6 +63,8 @@ def evaluate_docker(
                 "/tmp:rw,nosuid,nodev,size=512m",
                 "--mount",
                 f"type=bind,source={output_root},target=/output",
+                "--mount",
+                f"type=bind,source={candidate},target=/candidate,readonly",
                 image_tag,
                 "evaluate",
                 "--runner",
@@ -69,7 +72,7 @@ def evaluate_docker(
                 "--task",
                 f"/bench/{task_relative.as_posix()}",
                 "--candidate",
-                f"/bench/{candidate_relative.as_posix()}",
+                "/candidate",
                 "--output",
                 "/output/result.json",
             ],
@@ -92,10 +95,10 @@ def evaluate_docker(
         return result
 
 
-def _ensure_evaluator_image(root: Path) -> str:
+def _ensure_evaluator_image(root: Path, *, engine: str = "docker") -> str:
     image_tag = f"sanka-bench:{digest_tree(root).removeprefix('sha256:')[:16]}"
     inspect = run_command(
-        ["docker", "image", "inspect", image_tag],
+        [engine, "image", "inspect", image_tag],
         cwd=root,
         timeout=30,
     )
@@ -103,7 +106,7 @@ def _ensure_evaluator_image(root: Path) -> str:
         return image_tag
 
     build = run_command(
-        ["docker", "build", "--pull=false", "--tag", image_tag, "."],
+        [engine, "build", "--pull=false", "--tag", image_tag, "."],
         cwd=root,
         timeout=900,
     )

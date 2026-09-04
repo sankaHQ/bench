@@ -8,13 +8,13 @@ duration, and reported cost. The agent runs unattended — no human
 intervention — and the frozen overlay is then graded by the ordinary
 tool-neutral evaluator like any other candidate.
 
-Three configurations preserve the official two-arm benchmark and add one
-separate diagnostic arm:
+Four configurations preserve the official benchmark and one separate diagnostic arm:
 
 - ``--candidate-id claude-code-alone`` — the agent and the task, nothing else;
+- ``--candidate-id claude-code-sanka-cli`` (with ``--sanka-bin``) — the same
+  agent and prompt plus the Sanka CLI, without installing its coding-agent skill;
 - ``--candidate-id claude-code-with-sanka`` (with ``--sanka-bin``) — the same
-  agent, same budget, same contract, plus the Sanka CLI and readiness-aware
-  guidance for adopting or declining its generated candidate.
+  agent, same budget, same contract, and CLI, plus the project-local Sanka skill.
 - ``--candidate-id claude-code-with-sanka-readiness-aware`` — the harness runs
   scan/plan first, generates a scaffold only at or above the configured native
   readiness threshold, and otherwise sends the agent the readiness number and
@@ -34,7 +34,7 @@ Two agent families share the same contract, prompt, and freezing logic:
   tokens) — the disclosure names that basis explicitly.
 
 Candidate ids stay free-form (``<agent>-<model-slug>-alone`` /
-``...-with-sanka`` / ``...-with-sanka-readiness-aware``); the suffix selects
+``...-sanka-cli`` / ``...-with-sanka`` / ``...-with-sanka-readiness-aware``); the suffix selects
 the run configuration.
 
 Budget enforcement differs by agent and is disclosed, never papered over:
@@ -124,7 +124,7 @@ consider the task done until every scenario matches exactly.
 """
 
 PROMPT_SANKA = """
-The project-local `sanka-cli` skill and Sanka migration CLI at {sanka} are available.
+The Sanka migration CLI at {sanka} is available.
 """
 
 VERIFIER_COMMAND = (
@@ -192,6 +192,8 @@ def _candidate_mode(candidate_id: str) -> str | None:
         return "readiness-aware"
     if family.endswith("-with-sanka"):
         return "with-sanka"
+    if family.endswith("-sanka-cli"):
+        return "sanka-cli"
     if family.endswith("-alone"):
         return "alone"
     return None
@@ -681,7 +683,8 @@ def main() -> int:
     mode = _candidate_mode(args.candidate_id)
     if mode is None:
         print(
-            "candidate id must end in -alone, -with-sanka, or -with-sanka-readiness-aware "
+            "candidate id must end in -alone, -sanka-cli, -with-sanka, or "
+            "-with-sanka-readiness-aware "
             "(optionally followed by a -s<k> sample suffix)",
             file=sys.stderr,
         )
@@ -770,16 +773,17 @@ def main() -> int:
         skill_record: dict[str, str] | None = None
         sanka_versions: str | None = None
         prompt = PROMPT_CORE.format(python=sys.executable)
-        if mode == "with-sanka":
+        if mode in {"sanka-cli", "with-sanka"}:
             assert args.sanka_bin is not None
             sanka_bin = args.sanka_bin.resolve()
             try:
-                skill_record = install_sanka_skill(
-                    sanka_bin, workspace, env, args.sanka_skill_sha256
-                )
+                if mode == "with-sanka":
+                    skill_record = install_sanka_skill(
+                        sanka_bin, workspace, env, args.sanka_skill_sha256
+                    )
                 _enable_sanka_extension(sanka_bin, workspace=workspace, env=env)
             except (OSError, RuntimeError) as exc:
-                print(f"with-sanka extension setup failed: {exc}", file=sys.stderr)
+                print(f"{mode} setup failed: {exc}", file=sys.stderr)
                 return 1
             sanka_versions = _sanka_tool_versions(sanka_bin, workspace=workspace, env=env)
             prompt += PROMPT_SANKA.format(sanka=sanka_bin)

@@ -25,6 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--task", type=Path, required=True)
     evaluate.add_argument("--candidate", type=Path, required=True)
     evaluate.add_argument("--runner", choices=("docker", "local"), default="docker")
+    evaluate.add_argument("--container-engine", choices=("docker", "podman"), default="docker")
     evaluate.add_argument("--output", type=Path)
     evaluate.add_argument(
         "--require-pass",
@@ -122,7 +123,9 @@ def _report(args: argparse.Namespace) -> int:
 def _evaluate(args: argparse.Namespace) -> int:
     output = args.output.resolve() if args.output else None
     if args.runner == "docker":
-        result = evaluate_docker(args.task, args.candidate, output_path=output)
+        result = evaluate_docker(
+            args.task, args.candidate, output_path=output, engine=args.container_engine
+        )
     else:
         result = evaluate_local(args.task, args.candidate)
         _write_result(result, output)
