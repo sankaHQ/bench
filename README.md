@@ -314,3 +314,25 @@ See [docs/design.md](docs/design.md) for the implemented slice and next gates.
 
 Apache License 2.0. Third-party fixture repositories will retain their own
 licenses and provenance records when added.
+
+## Converter regression workflow
+
+The manual **Converter regression** workflow runs the public
+`sankaHQ/extensions` converter at an explicitly supplied full commit SHA against
+its reviewed benchmark revision. It uses this private repository's read-only
+GitHub token; no cross-repository secret or public fixture copy is needed.
+
+```bash
+gh workflow run converter-regression.yml --repo sankaHQ/bench --ref main \
+  -f extensions_sha=<full-40-character-extensions-commit-sha>
+```
+
+Run it before releasing a changed converter and link the successful workflow and
+private `converter-regression-<SHA>` artifact to the exact extensions head under
+review. This is a manual regression/release check, not automatic coverage on
+public extensions PRs. The runner and route expectations live in
+[`extensions/scripts`](https://github.com/sankaHQ/extensions/tree/main/scripts);
+the benchmark evaluator remains tool-neutral. See the
+[converter check instructions](https://github.com/sankaHQ/extensions/blob/main/docs/converter-regression.md)
+for local execution and the distinction between fully migrated, partial, and
+expected-refusal outcomes.
