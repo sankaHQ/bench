@@ -78,6 +78,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -808,6 +809,11 @@ def main() -> int:
         help="codex only: USD per million output tokens, for computed cost",
     )
     parser.add_argument("--max-turns", type=int, default=60)
+    parser.add_argument(
+        "--max-agent-cost-usd",
+        type=float,
+        help="Claude Code estimated-cost cap; not verified provider billing",
+    )
     parser.add_argument("--wall-clock-seconds", type=int, default=3600)
     parser.add_argument("--sanka-bin", type=Path, default=None)
     parser.add_argument("--sanka-skill-sha256")
@@ -868,6 +874,15 @@ def main() -> int:
         return 2
     if args.wall_clock_seconds <= 0 or args.max_turns <= 0:
         print("turn and wall-clock budgets must be positive", file=sys.stderr)
+        return 2
+    if args.max_agent_cost_usd is not None and (
+        args.agent != "claude-code"
+        or not math.isfinite(args.max_agent_cost_usd)
+        or args.max_agent_cost_usd <= 0
+    ):
+        print(
+            "--max-agent-cost-usd requires Claude Code and a finite positive value", file=sys.stderr
+        )
         return 2
     if args.agent_bin is None:
         args.agent_bin = "claude" if args.agent == "claude-code" else "codex"
@@ -1038,6 +1053,8 @@ def main() -> int:
                 "--verbose",
                 *agent_isolation.claude_arguments(with_skill=mode == "with-sanka"),
             ]
+        if args.max_agent_cost_usd is not None:
+            command.extend(["--max-budget-usd", str(args.max_agent_cost_usd)])
         readable = [Path(args.agent_bin), Path(sys.prefix), Path(sys.base_prefix)]
         writable = [workspace, claude_config, temp_dir]
         if args.agent == "codex":
@@ -1183,6 +1200,7 @@ def main() -> int:
                 )
             },
             "cost": {
+                "agent_estimate_limit_usd": args.max_agent_cost_usd,
                 "cost_usd": stats.get("cost_usd"),
                 "reported_equivalent_cost_usd": stats.get("reported_equivalent_cost_usd"),
                 "basis": stats.get("cost_basis"),
@@ -1255,6 +1273,11 @@ def main() -> int:
                 # whatever the agent produced within its budget.
                 terminal_reason = (
                     f"turn budget ({args.max_turns}) exhausted; the workspace was frozen as-is"
+                )
+            elif str(stats.get("subtype") or "") == "error_max_budget_usd":
+                terminal_reason = (
+                    f"agent estimated-cost budget ({args.max_agent_cost_usd} USD) exhausted; "
+                    "the workspace was frozen as-is"
                 )
             else:
                 print(f"agent reported an error: {stats.get('result') or stats}", file=sys.stderr)

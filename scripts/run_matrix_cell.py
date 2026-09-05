@@ -476,6 +476,8 @@ def generation_command(
             str(manifest["execution"].get("sanka_readiness_threshold", 0.5)),
         ]
     )
+    if manifest["execution"].get("max_agent_cost_usd") is not None:
+        command.extend(["--max-agent-cost-usd", str(manifest["execution"]["max_agent_cost_usd"])])
     if cell.gateway_profile is not None:
         command.extend(["--gateway-profile", cell.gateway_profile])
     if attempt > 1:

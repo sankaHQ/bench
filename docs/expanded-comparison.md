@@ -75,3 +75,14 @@ steps and end-to-end time. It is a hypothesis the benchmark tests, not a score t
 harness guarantees. Add future difficulty through real behavioral requirements
 and independently qualified edge cases, not through inspecting a model's hidden
 answers or exposing the evaluator to an extension.
+
+## Bounded paid pilot
+
+An optional `execution.max_agent_cost_usd` is forwarded to Claude Code's
+`--max-budget-usd`, pinned in each cell input digest and recorded in telemetry.
+Its value uses the client's estimated price table; it is not a provider billing
+limit. Exhaustion freezes the first candidate for scoring like a turn limit.
+A run owner must separately reserve and track spending using the exact provider's
+price card or billing evidence, account for in-flight work, and stop admission
+when the remaining approved budget cannot cover another attempt. Never report
+Claude-equivalent dollars as actual third-party spend.

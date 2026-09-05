@@ -943,3 +943,10 @@ def test_official_comparison_keeps_migration_lanes_separate(tmp_path: Path) -> N
     value["suite"]["tasks"].append("drf-flask-001")
     with pytest.raises(ValueError, match="one supported migration lane"):
         validate_official_manifest(value, tmp_path)
+
+
+def test_estimated_cost_limit_is_part_of_cell_identity(tmp_path: Path) -> None:
+    spec = official_manifest(tmp_path)
+    before = build_cells(spec)[0].input_digest
+    spec["execution"]["max_agent_cost_usd"] = 5.0
+    assert build_cells(spec)[0].input_digest != before
