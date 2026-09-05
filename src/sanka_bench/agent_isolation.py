@@ -121,7 +121,8 @@ def run(
     with subprocess.Popen(
         invocation,
         cwd=workspace,
-        env=env,
+        # zsh here-documents use TMPPREFIX, independently of TMPDIR.
+        env={**env, "TMPPREFIX": str(workspace / ".zsh")},
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
