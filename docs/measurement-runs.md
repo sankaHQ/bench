@@ -243,3 +243,67 @@ only reviewed summaries.
 6. Resume untouched cells on the same treatment, or create a new labelled
    treatment and authorization.
 7. Rebuild aggregates only after the credential and artifact gates pass.
+
+## Generated-artifact comparison contract
+
+New three-arm runs should set these fields in the existing pinned manifest:
+
+```json
+{
+  "configurations": ["alone", "sanka-cli", "with-sanka"],
+  "sanka_workflow": "artifacts-first-v1",
+  "sanka_readiness_threshold": 0.5
+}
+```
+
+These are `execution` fields. The workflow and threshold participate in every
+cell input digest; changing either requires a new run directory and authorization
+scope. Keep model route, source, evaluator, budget, samples and concurrency equal
+across configurations. Missing workflow means historical `availability-v1`.
+
+Both Sanka arms run the existing pinned CLI scan/plan/apply workflow before model
+invocation. Apply is readiness-gated; below threshold the agent receives plan
+context and implements the native target. Above threshold the harness installs
+new generated files, preserving original source files when names overlap. The
+agent reuses and repairs that scaffold. Only `with-sanka` installs the skill.
+Scaffold existence alone cannot turn a silent provider timeout into a scored run.
+Setup failures remain infrastructure failures, with disclosed retries; there are
+no quality retries or selection of the best candidate. Final-cell totals exclude
+earlier incident overhead, so any infrastructure retry makes efficiency goals
+unknown until that overhead is accounted for.
+
+`telemetry.json` records generated file hashes, how many remain unchanged, files
+changed during the agent phase, unique observed response IDs, and tool-use IDs.
+These are work proxies, not estimates of semantic code contribution. Responses
+are not provider request counts: internal requests/retries remain unknown.
+
+`matrix.json` and `REPORT.md` compare all scheduled task/sample pairs per model.
+They report task pass@1, route-weighted pass@1, paired regressions, generation
+(including preparation), end-to-end time (including evaluation), token classes,
+turns, observed responses/tool calls, infrastructure retries and cost basis.
+Serial-equivalent successful tasks/hour is successes divided by total cell
+end-to-end time. It is not measured concurrent throughput; use the recorded stage
+makespan and concurrency when studying actual scheduler capacity. Failed scored
+tasks remain in timing/token totals; missing or invalid evidence prevents a
+complete comparison. Multi-sample pass@1 is the empirical single-attempt pass rate.
+
+Accuracy at least equal to baseline is the primary requirement. The report also
+requires no paired task regression before declaring all goals met. Fewer tokens,
+lower comparable inference cost, faster generation/end-to-end time and higher
+serial throughput must each be demonstrated. Unknown cost cannot pass the cost
+goal; Claude-equivalent dollars are never substituted for Fireworks billing.
+The cost comparison is inference-only and excludes unmetered local compute.
+One task or sample is calibration evidence, not a statistically established
+suite-wide benefit. Preserve and disclose counterexamples instead of changing
+the evaluator or dropping unsuccessful cells.
+
+Rebuild reports without model calls:
+
+```bash
+python scripts/run_agent_matrix.py --manifest RUN/run-manifest.json report
+```
+
+The same report runs at stage completion for artifacts-first manifests. Hash and
+credential checks run before publication. Historical availability scores remain
+separate; a fresh, explicitly authorized run is required to measure the new
+workflow's effect.

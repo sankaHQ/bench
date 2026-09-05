@@ -8,7 +8,11 @@ duration, and reported cost. The agent runs unattended — no human
 intervention — and the frozen overlay is then graded by the ordinary
 tool-neutral evaluator like any other candidate.
 
-Four configurations preserve the official benchmark and one separate diagnostic arm:
+Use --sanka-workflow artifacts-first-v1 to prepare and install generated artifacts
+before either official Sanka arm starts. The default availability-v1 preserves
+historical runs; every treatment still uses the same evaluator.
+
+Three official configurations and one separate diagnostic arm:
 
 - ``--candidate-id claude-code-alone`` — the agent and the task, nothing else;
 - ``--candidate-id claude-code-sanka-cli`` (with ``--sanka-bin``) — the same
@@ -301,6 +305,14 @@ def _readiness_prompt(context: dict[str, object], sanka: Path) -> str:
             "adapt the routes the plan marks as needing manual work "
             "(`.sanka/plan-fastapi.json` lists each with its reasons)."
         )
+        if context.get("installed_files"):
+            decision = (
+                "The harness already installed the new generated scaffold files in the "
+                "repository root. Reuse and repair them; do not regenerate the migration. "
+                "Original source files were preserved. Check the source behavior and public "
+                "scenarios, complete any missing native behavior, then run the verifier below. "
+                "A generated scaffold is a starting point, not evidence of correctness."
+            )
     else:
         decision = (
             "The harness intentionally did not generate a scaffold because readiness "
@@ -525,12 +537,17 @@ def _sanka_artifact(stdout: str, name: str, workspace: Path) -> Path:
     listed = payload.get("artifacts") if isinstance(payload, dict) else None
     for raw in listed or []:
         if isinstance(raw, str) and Path(raw).name == name:
-            return Path(raw)
+            candidate = (workspace / raw).resolve()
+            if not candidate.is_relative_to(workspace.resolve()):
+                raise RuntimeError(f"Sanka artifact escapes workspace: {name}")
+            return candidate
     for candidate in (
         workspace / ".sanka" / "extensions" / "sanka" / "drf-to-fastapi" / name,
         workspace / ".sanka" / name,
     ):
         if candidate.is_file():
+            if not candidate.resolve().is_relative_to(workspace.resolve()):
+                raise RuntimeError(f"Sanka artifact escapes workspace: {name}")
             return candidate
     raise RuntimeError(f"Sanka did not produce {name}; artifacts listed: {listed!r}")
 
@@ -639,6 +656,75 @@ def _prepare_readiness_context(
     return context
 
 
+def _observed_work(stdout: str) -> dict[str, int | None]:
+    """Count unique response/tool IDs; streaming chunks are not extra model calls."""
+    responses: set[str] = set()
+    calls: set[str] = set()
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict) or event.get("type") != "assistant":
+            continue
+        message = event.get("message")
+        if not isinstance(message, dict):
+            continue
+        if isinstance(message.get("id"), str):
+            responses.add(message["id"])
+        content = message.get("content")
+        for block in content if isinstance(content, list) else []:
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "tool_use"
+                and isinstance(block.get("id"), str)
+            ):
+                calls.add(block["id"])
+    return {
+        "observed_model_responses": len(responses) if responses else None,
+        "tool_calls": len(calls) if responses else None,
+        "provider_api_requests": None,
+        "provider_retries": None,
+    }
+
+
+def _workspace_files(workspace: Path) -> dict[str, str]:
+    return {
+        path.relative_to(workspace).as_posix(): _sha256_bytes(path.read_bytes())
+        for path in sorted(workspace.rglob("*"))
+        if path.is_file() and not _excluded(path.relative_to(workspace))
+    }
+
+
+def _promote_scaffold(workspace: Path) -> dict[str, str]:
+    """Install only new generated files, preserving the immutable source contract."""
+    overlay = workspace / "bench-candidate" / "overlay"
+    if (
+        not overlay.is_dir()
+        or overlay.is_symlink()
+        or not overlay.resolve().is_relative_to(workspace.resolve())
+    ):
+        raise RuntimeError("Sanka did not produce a scaffold overlay")
+    files = {}
+    for path in sorted(overlay.rglob("*")):
+        relative = path.relative_to(overlay)
+        destination = workspace / relative
+        if path.is_symlink() or not path.resolve().is_relative_to(overlay.resolve()):
+            raise RuntimeError(f"Unsafe generated artifact: {relative}")
+        if not path.is_file() or _excluded(relative):
+            continue
+        if not destination.resolve().is_relative_to(workspace.resolve()):
+            raise RuntimeError(f"Unsafe scaffold destination: {relative}")
+        if destination.exists():
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, destination)
+        files[relative.as_posix()] = _sha256_bytes(path.read_bytes())
+    if not files:
+        raise RuntimeError("Sanka scaffold contains no usable new files")
+    return files
+
+
 def _sha256_bytes(value: bytes) -> str:
     return "sha256:" + hashlib.sha256(value).hexdigest()
 
@@ -696,10 +782,15 @@ def main() -> int:
     parser.add_argument("--sanka-bin", type=Path, default=None)
     parser.add_argument("--sanka-skill-sha256")
     parser.add_argument(
+        "--sanka-workflow",
+        choices=("availability-v1", "artifacts-first-v1"),
+        default="availability-v1",
+    )
+    parser.add_argument(
         "--sanka-readiness-threshold",
         type=float,
         default=0.5,
-        help="diagnostic readiness-aware arm: minimum native readiness for a scaffold",
+        help="minimum native readiness for artifacts-first and diagnostic scaffolds",
     )
     parser.add_argument("--attempt", type=int, default=1)
     parser.add_argument(
@@ -841,6 +932,7 @@ def main() -> int:
         readiness_context: dict[str, object] | None = None
         skill_record: dict[str, str] | None = None
         sanka_versions: str | None = None
+        generated_files: dict[str, str] = {}
         prompt = task_prompt(task_dir, args.max_turns, args.wall_clock_seconds)
         if mode in {"sanka-cli", "with-sanka"}:
             assert args.sanka_bin is not None
@@ -850,12 +942,23 @@ def main() -> int:
                     skill_record = install_sanka_skill(
                         sanka_bin, workspace, env, args.sanka_skill_sha256
                     )
-                _enable_sanka_extension(sanka_bin, workspace=workspace, env=env)
-            except (OSError, RuntimeError) as exc:
+                if args.sanka_workflow == "artifacts-first-v1":
+                    readiness_context = _prepare_readiness_context(
+                        workspace, sanka_bin, env, args.sanka_readiness_threshold
+                    )
+                    if readiness_context["decision"] == "emit-scaffold":
+                        generated_files = _promote_scaffold(workspace)
+                        readiness_context["installed_files"] = generated_files
+                else:
+                    _enable_sanka_extension(sanka_bin, workspace=workspace, env=env)
+            except (OSError, RuntimeError, ValueError) as exc:
                 print(f"{mode} setup failed: {exc}", file=sys.stderr)
                 return 1
             sanka_versions = _sanka_tool_versions(sanka_bin, workspace=workspace, env=env)
-            prompt += PROMPT_SANKA.format(sanka=sanka_bin)
+            if readiness_context is not None:
+                prompt += _readiness_prompt(readiness_context, sanka_bin)
+            else:
+                prompt += PROMPT_SANKA.format(sanka=sanka_bin)
             if mode == "with-sanka":
                 prompt += PROMPT_SANKA_SKILL
         elif mode == "readiness-aware":
@@ -909,8 +1012,9 @@ def main() -> int:
         terminal_reason: str | None = None
         timed_out = False
         agent_started_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        before_agent = _workspace_files(workspace)
         started = time.monotonic()
-        first_target_seconds: float | None = None
+        first_target_seconds: float | None = 0.0 if "target_app.py" in before_agent else None
 
         def observe_target() -> None:
             nonlocal first_target_seconds
@@ -988,6 +1092,12 @@ def main() -> int:
                 added.append(key)
             elif path.read_bytes() != pristine[key]:
                 modified.append(key)
+        after_agent = _workspace_files(workspace)
+        changed_by_agent = {
+            key
+            for key in before_agent.keys() | after_agent.keys()
+            if before_agent.get(key) != after_agent.get(key)
+        }
         telemetry: dict[str, object] = {
             "schema": "sanka-bench/agent-cell-telemetry/v1",
             "input_digest": os.environ.get("SANKA_BENCH_INPUT_DIGEST") or None,
@@ -1001,6 +1111,21 @@ def main() -> int:
             "gateway_profile": args.gateway_profile,
             "started_at": agent_started_at,
             "ended_at": agent_ended_at,
+            "work": _observed_work(outcome.stdout),
+            "treatment": {
+                "sanka_workflow": "readiness-aware"
+                if mode == "readiness-aware"
+                else args.sanka_workflow
+                if mode != "alone"
+                else None,
+                "readiness_threshold": args.sanka_readiness_threshold if mode != "alone" else None,
+                "generated_files": generated_files,
+                "generated_files_retained_unchanged": sum(
+                    after_agent.get(key) == digest for key, digest in generated_files.items()
+                ),
+                "agent_changed_files": len(changed_by_agent),
+                "target_present_before_agent": "target_app.py" in before_agent,
+            },
             "timing": {
                 "lane_setup_seconds": round(started - lane_started, 6),
                 "agent_wall_seconds": round(measured_ms / 1000, 6),
@@ -1068,7 +1193,7 @@ def main() -> int:
                 json.dumps(readiness_context, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
-        if timed_out and not _has_model_activity(outcome.stdout) and not added and not modified:
+        if timed_out and not _has_model_activity(outcome.stdout) and not changed_by_agent:
             print(
                 "agent reported an error: wall-clock timeout with no model activity",
                 file=sys.stderr,

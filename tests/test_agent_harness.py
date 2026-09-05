@@ -1215,3 +1215,108 @@ def test_sanka_artifact_prefers_the_cli_listing_then_the_extension_directory(
     assert locate("not json", "plan-fastapi.json", tmp_path) == legacy
     with pytest.raises(RuntimeError):
         locate("", "missing.json", tmp_path)
+
+
+def test_scaffold_preserves_source_and_rejects_symlinks(harness, tmp_path):
+    overlay = tmp_path / "bench-candidate" / "overlay"
+    overlay.mkdir(parents=True)
+    (tmp_path / "settings.py").write_text("original")
+    (overlay / "settings.py").write_text("generated")
+    (overlay / "target_app.py").write_text("native")
+    files = harness._promote_scaffold(tmp_path)
+    assert set(files) == {"target_app.py"}
+    assert (tmp_path / "settings.py").read_text() == "original"
+    assert (tmp_path / "target_app.py").read_text() == "native"
+    (overlay / "escape").symlink_to(tmp_path.parent)
+    with pytest.raises(RuntimeError, match="Unsafe"):
+        harness._promote_scaffold(tmp_path)
+    with pytest.raises(RuntimeError, match="escapes workspace"):
+        harness._sanka_artifact('{"artifacts":["../scan.json"]}', "scan.json", tmp_path)
+
+
+@pytest.mark.parametrize("mode", ["sanka-cli", "with-sanka"])
+@pytest.mark.parametrize("silent_timeout", [False, True])
+def test_artifacts_first_reuses_scaffold_without_hiding_silent_timeout(
+    harness, tmp_path, monkeypatch, mode, silent_timeout
+):
+    agent = _fake_agent(tmp_path, result={"num_turns": 1}, touch=False)
+    task = SCRIPTS.parent / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    out = tmp_path / "candidate"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_agent_candidate",
+            "--task",
+            str(task),
+            "--candidate-id",
+            f"fake-{mode}",
+            "--out",
+            str(out),
+            "--sandbox",
+            str(tmp_path / "sandbox"),
+            "--agent-bin",
+            str(agent),
+            "--sanka-bin",
+            str(agent),
+            "--sanka-workflow",
+            "artifacts-first-v1",
+        ],
+    )
+
+    def prepare(workspace, *_args):
+        overlay = workspace / "bench-candidate" / "overlay"
+        overlay.mkdir(parents=True)
+        (overlay / "target_app.py").write_text("generated")
+        return {
+            "decision": "emit-scaffold",
+            "readiness": 1,
+            "threshold": 0.5,
+            "native_routes": 1,
+            "native_eligible_routes": 1,
+            "plan_hash": "test",
+        }
+
+    monkeypatch.setattr(harness, "_prepare_readiness_context", prepare)
+    monkeypatch.setattr(harness, "install_sanka_skill", lambda *_args: {"sha256": "test"})
+    monkeypatch.setattr(harness, "_sanka_tool_versions", lambda *_args, **_kw: "test")
+
+    def run(command, *, workspace, **_kwargs):
+        assert (workspace / "target_app.py").read_text() == "generated"
+        assert "already installed" in command[2]
+        if silent_timeout:
+            raise subprocess.TimeoutExpired(command, 1, output="")
+        stdout = (
+            json.dumps(
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "skills": ["sanka-cli"] if mode == "with-sanka" else [],
+                }
+            )
+            + "\n"
+        )
+        stdout += json.dumps({"type": "result", "num_turns": 1, "subtype": "success"})
+        return subprocess.CompletedProcess(command, 0, stdout, "")
+
+    monkeypatch.setattr(harness.agent_isolation, "run", run)
+    assert harness.main() == (1 if silent_timeout else 0)
+    telemetry = json.loads((out / "telemetry.json").read_text())
+    assert telemetry["treatment"]["agent_changed_files"] == 0
+    assert telemetry["treatment"]["generated_files_retained_unchanged"] == 1
+    assert (out / "overlay" / "target_app.py").exists() is not silent_timeout
+
+
+def test_observed_work_deduplicates_streamed_events(harness):
+    event = json.dumps(
+        {
+            "type": "assistant",
+            "message": {"id": "response1", "content": [{"type": "tool_use", "id": "tool1"}]},
+        }
+    )
+    assert harness._observed_work(event + "\n" + event) == {
+        "observed_model_responses": 1,
+        "tool_calls": 1,
+        "provider_api_requests": None,
+        "provider_retries": None,
+    }

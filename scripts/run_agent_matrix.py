@@ -251,6 +251,8 @@ def cell_input_digest(
         "wall_clock_seconds",
         "prompt_sha256",
         "sanka_prompt_sha256",
+        "sanka_workflow",
+        "sanka_readiness_threshold",
         "authorization_scope",
         "concurrency",
         "container_engine",
@@ -376,6 +378,16 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
         raise ValueError("official v2 manifest requires positive execution budgets")
     if manifest["execution"].get("container_engine", "docker") not in {"docker", "podman"}:
         raise ValueError("official v2 manifest container engine must be docker or podman")
+    workflow = manifest["execution"].get("sanka_workflow", "availability-v1")
+    threshold = manifest["execution"].get("sanka_readiness_threshold", 0.5)
+    if workflow not in {"availability-v1", "artifacts-first-v1"}:
+        raise ValueError("unknown Sanka workflow")
+    if (
+        isinstance(threshold, bool)
+        or not isinstance(threshold, int | float)
+        or not 0 <= threshold <= 1
+    ):
+        raise ValueError("Sanka readiness threshold must be between 0 and 1")
     concurrency = manifest["execution"].get("concurrency")
     if not isinstance(concurrency, dict) or any(
         not isinstance(concurrency.get(name), int)
@@ -966,6 +978,14 @@ class RollingCoordinator:
 
     def aggregate(self, stage_id: str) -> int:
         template = self.manifest["execution"].get("aggregate_command")
+        if self.manifest["execution"].get("sanka_workflow") == "artifacts-first-v1":
+            from matrix_report import write_report
+
+            try:
+                write_report(self.manifest, self.root)
+            except ValueError as exc:
+                self.event("publication-gate-failed", stage_id=stage_id, error=str(exc))
+                return 22
         if not template:
             return 0
         secrets = secret_hits(self.root, credential_values(self.manifest))
@@ -1128,6 +1148,7 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, required=True)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("plan")
+    subparsers.add_parser("report")
     run = subparsers.add_parser("run")
     run.add_argument("--stage-id", required=True)
     run.add_argument("--provider-cap", type=int, required=True)
@@ -1142,6 +1163,12 @@ def main() -> int:
         manifest = load_json(manifest_path)
         validate_official_manifest(manifest, manifest_path.parent)
         validate_backups(manifest)
+        if args.command == "report":
+            from matrix_report import write_report
+
+            with coordinator_lock(manifest_path.parent, manifest):
+                write_report(manifest, manifest_path.parent)
+            return 0
         ensure_authorized(manifest)
         worktree_preflight(manifest)
         coordinator = RollingCoordinator(
