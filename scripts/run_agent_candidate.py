@@ -85,8 +85,10 @@ from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sanka_bench import agent_isolation
 from sanka_bench.environment import isolated_environment
 from sanka_bench.hashing import digest_tree
+from sanka_bench.schema import load_and_validate
 
 PROMPT_CORE = """Migrate this Django REST Framework application to FastAPI, natively.
 
@@ -103,12 +105,10 @@ Deliverable contract (an automated evaluator enforces all of it):
    `public-tests/scenarios.json`: status codes, JSON bodies including exact
    error strings, and the resulting database rows. The evaluator seeds the
    database itself, replays each scenario against both applications from
-   identical snapshots, repeats runs, and rejects nondeterminism. The public
-   scenarios are a representative sample, not the grading set: the evaluator
-   replays a hidden superset that adds edge cases and captures declared
-   response headers (redirects included), so match the source application's
-   exact semantics — headers, error wording, edge-case validation — rather
-   than tuning for the public list alone.
+   identical snapshots, repeats runs, and rejects nondeterminism.
+   {grading_scope}
+   Match the source application's semantics, including headers, error wording,
+   and validation. The source is the specification.
 5. The database path comes from the BENCH_DB_PATH environment variable through
    the existing settings module; reuse that mechanism unchanged.
 6. Every evaluated request must be served by a FastAPI `APIRoute` whose endpoint
@@ -121,6 +121,18 @@ is available at: {python}
 Use it to run the original app and your app side by side (django test client
 vs fastapi TestClient) and verify every scenario before you finish. Do not
 consider the task done until every scenario matches exactly.
+
+Execution budget: {max_turns} tool-use turns and {wall_seconds} seconds.
+Create a bootable target_app.py and serving settings early, within roughly
+the first sixth of your turn budget. Spend the middle two thirds implementing
+and comparing behavior, then reserve the remainder for verification and repairs.
+Improve a running candidate; do not postpone implementation until you have
+investigated every possible edge case. Leave the best runnable candidate at
+the budget limit. Keep scratch work in the workspace or $TMPDIR.
+Local file generation inside this disposable workspace is authorized. No
+external destination writes, production changes, or package installations are
+part of this task. Only the copied source, public tests and supplied tools are
+available; evaluator files and other runs are outside the agent's sandbox.
 """
 
 PROMPT_SANKA = """
@@ -136,7 +148,8 @@ available to use.
 
 VERIFIER_COMMAND = (
     "{sanka} verify . --to fastapi --scenarios public-tests/scenarios.json "
-    "--candidate . --entrypoint target_app.py --db-env BENCH_DB_PATH --edge-probes --json"
+    "--candidate . --entrypoint target_app.py --db-env BENCH_DB_PATH --edge-probes "
+    "--extension-env PYTHONPATH --json"
 )
 
 PROMPT_VERIFIER = """
@@ -190,6 +203,20 @@ EXCLUDED_NAMES = {".DS_Store", "AGENT_TASK.md", "CLAUDE.md", PARITY_NOTES_FILE}
 
 
 _SAMPLE_SUFFIX = re.compile(r"-s\d+$")
+
+
+def task_prompt(task_dir: Path, max_turns: int, wall_seconds: int) -> str:
+    task = load_and_validate(task_dir / "task.yaml", "task")
+    graded = (task_dir / task["evaluation"]["scenarios"]).resolve()
+    public = (task_dir / "public-tests" / "scenarios.json").resolve()
+    scope = (
+        "The public scenarios are a representative sample; grading uses a hidden superset."
+        if graded != public
+        else "This task grades the supplied public scenarios."
+    )
+    return PROMPT_CORE.format(
+        python=sys.executable, grading_scope=scope, max_turns=max_turns, wall_seconds=wall_seconds
+    )
 
 
 def _candidate_mode(candidate_id: str) -> str | None:
@@ -268,8 +295,9 @@ def _readiness_prompt(context: dict[str, object], sanka: Path) -> str:
     """
     if context["decision"] == "emit-scaffold":
         decision = (
-            "The harness generated `bench-candidate/overlay/`. Copy the complete "
-            "overlay to the repository root, including non-Python artifacts, then "
+            "The harness generated `bench-candidate/overlay/`. Copy its new files "
+            "to the repository root, including non-Python artifacts. Keep existing "
+            "source files unchanged when names overlap. Then "
             "adapt the routes the plan marks as needing manual work "
             "(`.sanka/plan-fastapi.json` lists each with its reasons)."
         )
@@ -556,10 +584,22 @@ def _prepare_readiness_context(
 ) -> dict[str, object]:
     _enable_sanka_extension(sanka_bin, workspace=workspace, env=env)
     scanned = _run_sanka_command(
-        [str(sanka_bin), "scan", ".", "--json"], workspace=workspace, env=env
+        [str(sanka_bin), "scan", ".", "--extension-env", "PYTHONPATH", "--json"],
+        workspace=workspace,
+        env=env,
     )
     planned = _run_sanka_command(
-        [str(sanka_bin), "plan", ".", "--to", "fastapi", *PLAN_INPUTS, "--json"],
+        [
+            str(sanka_bin),
+            "plan",
+            ".",
+            "--to",
+            "fastapi",
+            *PLAN_INPUTS,
+            "--extension-env",
+            "PYTHONPATH",
+            "--json",
+        ],
         workspace=workspace,
         env=env,
     )
@@ -586,6 +626,9 @@ def _prepare_readiness_context(
                 str(context["core_plan_hash"]),
                 "--bench-candidate",
                 "./bench-candidate",
+                "--extension-env",
+                "PYTHONPATH",
+                "--json",
             ],
             workspace=workspace,
             env=env,
@@ -702,11 +745,21 @@ def main() -> int:
     if not 0 <= args.sanka_readiness_threshold <= 1:
         print("--sanka-readiness-threshold must be between 0 and 1", file=sys.stderr)
         return 2
-    if args.wall_clock_seconds <= 0:
-        print("--wall-clock-seconds must be positive", file=sys.stderr)
+    if args.wall_clock_seconds <= 0 or args.max_turns <= 0:
+        print("turn and wall-clock budgets must be positive", file=sys.stderr)
         return 2
     if args.agent_bin is None:
         args.agent_bin = "claude" if args.agent == "claude-code" else "codex"
+    args.agent_bin = str(Path(shutil.which(args.agent_bin) or args.agent_bin).resolve())
+    task = load_and_validate(task_dir / "task.yaml", "task")
+    required_python = str(task["source"]["python"])
+    actual_python = f"{sys.version_info.major}.{sys.version_info.minor}"
+    if required_python != actual_python:
+        print(
+            f"task requires Python {required_python}; agent runtime is {actual_python}",
+            file=sys.stderr,
+        )
+        return 2
 
     agent_version = subprocess.run(
         [args.agent_bin, "--version"],
@@ -737,8 +790,10 @@ def main() -> int:
         shutil.copy2(scenarios, public_tests / "scenarios.json")
         claude_config = sandbox / "claude-config"
         raw_dir = sandbox / "raw"
+        temp_dir = sandbox / "tmp"
         claude_config.mkdir()
         raw_dir.mkdir()
+        temp_dir.mkdir()
 
         env = isolated_environment(
             os.environ,
@@ -761,8 +816,15 @@ def main() -> int:
         ):
             env.pop(name, None)
         env["CLAUDE_CONFIG_DIR"] = str(claude_config)
+        env["CLAUDE_CODE_TMPDIR"] = str(temp_dir)
+        env["TMPDIR"] = str(temp_dir)
+        env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
         if mode == "alone":
             env.pop("SANKA_HOME", None)
+        else:
+            env.setdefault("SANKA_HOME", str(sandbox / "sanka-home"))
+            Path(env["SANKA_HOME"]).mkdir(parents=True, exist_ok=True)
         if args.agent == "claude-code":
             stripped = [
                 "DEEPINFRA_API_KEY",
@@ -779,7 +841,7 @@ def main() -> int:
         readiness_context: dict[str, object] | None = None
         skill_record: dict[str, str] | None = None
         sanka_versions: str | None = None
-        prompt = PROMPT_CORE.format(python=sys.executable)
+        prompt = task_prompt(task_dir, args.max_turns, args.wall_clock_seconds)
         if mode in {"sanka-cli", "with-sanka"}:
             assert args.sanka_bin is not None
             sanka_bin = args.sanka_bin.resolve()
@@ -831,23 +893,43 @@ def main() -> int:
                 "--output-format",
                 "stream-json",
                 "--verbose",
-                "--dangerously-skip-permissions",
+                *agent_isolation.claude_arguments(with_skill=mode == "with-sanka"),
             ]
+        readable = [Path(args.agent_bin), Path(sys.prefix), Path(sys.base_prefix)]
+        writable = [workspace, claude_config, temp_dir]
+        if args.agent == "codex":
+            writable.append(codex_home)
+        if mode != "alone":
+            sanka_python = args.sanka_bin.resolve().parent / "python"
+            readable.extend(
+                [args.sanka_bin.resolve().parent.parent, sanka_python.resolve().parent.parent]
+            )
+            if env.get("SANKA_HOME"):
+                writable.append(Path(env["SANKA_HOME"]))
         terminal_reason: str | None = None
         timed_out = False
         agent_started_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         started = time.monotonic()
+        first_target_seconds: float | None = None
+
+        def observe_target() -> None:
+            nonlocal first_target_seconds
+            if first_target_seconds is None and (workspace / "target_app.py").is_file():
+                first_target_seconds = round(time.monotonic() - started, 3)
+
         try:
-            outcome = subprocess.run(
+            outcome = agent_isolation.run(
                 command,
-                cwd=workspace,
+                workspace=workspace,
+                readable=readable,
+                writable=writable,
                 env=env,
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                text=True,
                 timeout=args.wall_clock_seconds,
-                check=False,
+                observe=observe_target,
             )
+        except (OSError, RuntimeError) as exc:
+            print(f"agent isolation failed: {exc}", file=sys.stderr)
+            return 1
         except subprocess.TimeoutExpired as exc:
             # The transcript so far is evidence, not garbage: keep it, and
             # freeze whatever the agent managed to produce before the kill.
@@ -922,6 +1004,7 @@ def main() -> int:
             "timing": {
                 "lane_setup_seconds": round(started - lane_started, 6),
                 "agent_wall_seconds": round(measured_ms / 1000, 6),
+                "first_target_file_seconds": first_target_seconds,
             },
             "usage": {
                 key: stats.get(key)
@@ -950,6 +1033,36 @@ def main() -> int:
             },
         }
         _write_json_atomic(out_dir / "telemetry.json", telemetry)
+        if args.agent == "claude-code":
+            events = []
+            for line in raw:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(event, dict) and event.get("subtype") == "init":
+                    events.append(event)
+            expected_skills = {"sanka-cli"} if mode == "with-sanka" else set()
+            inventories = [event.get("skills") for event in events]
+            telemetry["isolation"] = {
+                "backend": "seatbelt" if sys.platform == "darwin" else "bubblewrap",
+                "skill_inventories": inventories,
+                "tool_inventories": [event.get("tools") for event in events],
+                "readable": [str(path) for path in readable],
+                "writable": [str(path) for path in writable],
+            }
+            _write_json_atomic(out_dir / "telemetry.json", telemetry)
+            if stats and (
+                not inventories
+                or any(
+                    not isinstance(skills, list)
+                    or not all(isinstance(skill, str) for skill in skills)
+                    or set(skills) != expected_skills
+                    for skills in inventories
+                )
+            ):
+                print("agent isolation failed: unexpected skill inventory", file=sys.stderr)
+                return 1
         if readiness_context is not None:
             (out_dir / "sanka-readiness.json").write_text(
                 json.dumps(readiness_context, ensure_ascii=False, indent=2, sort_keys=True) + "\n",

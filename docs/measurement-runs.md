@@ -9,6 +9,35 @@ Implementing or testing this runner does not authorize a paid model call. A
 scored run additionally requires the exact authorization recorded in its
 manifest.
 
+## Agent isolation and runtime
+
+Run `make sync` to use the task's Python 3.12 runtime. The adapter rejects a
+different Python minor version before calling the model. Agent processes and
+their children use macOS `sandbox-exec` or Linux `bubblewrap` (install the
+`bubblewrap` OS package). Missing isolation fails closed. Only the copied
+workspace, isolated configuration and temporary directories, and the Sanka
+arm's run-specific home are writable. System tools and selected runtimes are
+readable; evaluator files and other runs are excluded. Network access remains
+available for provider requests.
+
+Claude receives Bash, Read, Write and Edit tools, with hooks, memory
+and external MCP configuration disabled. The model-only and CLI-only arms
+disable skills; the skill arm adds Skill with only the project-installed `sanka-cli`
+skill. The adapter saves startup inventories and rejects unexpected skills.
+To verify startup with a real pinned binary without a paid provider call:
+
+```bash
+BENCH_TEST_CLAUDE_BIN=/absolute/path/to/claude \
+  uv run python -m pytest tests/test_agent_isolation.py
+```
+
+Every arm receives the same implementation milestones and actual grading
+scope. `telemetry.json` records `timing.first_target_file_seconds`, sampled
+approximately every 250 ms; this measures file creation, not successful boot.
+Sanka diagnostic lifecycle commands forward the fixture dependency path to
+their extension process. These changes require a new pinned manifest and run
+directory; preserve previous candidates and results.
+
 ## Manifest v2
 
 Use `sanka-bench/model-matrix-run-manifest/v2`. Two-arm records remain valid;

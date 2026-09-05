@@ -190,6 +190,12 @@ make baselines
 make docker-baselines
 ```
 
+For complete development validation, run `make check`. It runs the full test
+suite with two workers by default; use `make check TEST_WORKERS=1` when memory
+is constrained. `make test-unit` provides quick harness feedback, and
+`make test-evaluator-008` evaluates and asserts all four baselines for one task.
+CI runs every task's evaluator tests once, plus all Docker baselines.
+
 ## Repository boundary
 
 - This repository owns evaluator schemas, public fixtures, isolation, baseline

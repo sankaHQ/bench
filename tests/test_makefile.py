@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import shlex
 import subprocess
 from pathlib import Path
+
+import pytest
 
 
 def _dry_run(repository_root: Path, target: str) -> str:
     completed = subprocess.run(
-        ["make", "--dry-run", target],
+        ["make", "--dry-run", "TEST_WORKERS=2", target],
         cwd=repository_root,
         check=True,
         capture_output=True,
@@ -35,3 +38,34 @@ def test_docker_baseline_target_keeps_the_complete_task_inventory(
     assert "native-reference" in output
     assert "sanka-native" in output
     assert "claude-code" not in output  # agent candidates are run artifacts, not baselines
+
+
+def test_full_suite_partitions_each_test_file_exactly_once(repository_root: Path) -> None:
+    commands = _dry_run(repository_root, "test")
+    covered: list[Path] = []
+    for line in commands.splitlines():
+        if "python -m pytest" not in line:
+            continue
+        arguments = shlex.split(line)
+        if "--ignore-glob=tests/test_evaluator*.py" in arguments:
+            covered.extend(
+                path
+                for path in (repository_root / "tests").rglob("test_*.py")
+                if not path.name.startswith("test_evaluator")
+            )
+        else:
+            covered.extend(repository_root / arg for arg in arguments if arg.endswith(".py"))
+    assert sorted(covered) == sorted((repository_root / "tests").rglob("test_*.py"))
+    assert "-j2" in commands
+
+
+@pytest.mark.parametrize("workers", ["", "auto", "0", "8"])
+def test_full_suite_rejects_unbounded_workers(repository_root: Path, workers: str) -> None:
+    result = subprocess.run(
+        ["make", "--dry-run", f"TEST_WORKERS={workers}", "test"],
+        cwd=repository_root,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "TEST_WORKERS must be" in result.stderr

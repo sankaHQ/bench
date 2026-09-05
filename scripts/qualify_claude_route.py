@@ -12,11 +12,13 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from sanka_bench import agent_isolation
 from sanka_bench.environment import isolated_environment
 
 QUALIFICATION_TEXT = "sanka-bench-claude-route-qualified\n"
@@ -125,7 +127,10 @@ def qualify(
         )
         environment = isolated_environment(os.environ, route_keys)
         environment["CLAUDE_CONFIG_DIR"] = str(claude_config)
-        outcome = subprocess.run(
+        environment["CLAUDE_CODE_TMPDIR"] = str(workspace)
+        environment["TMPDIR"] = str(workspace)
+        environment["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+        outcome = agent_isolation.run(
             [
                 str(claude_bin),
                 "-p",
@@ -137,15 +142,13 @@ def qualify(
                 "--output-format",
                 "stream-json",
                 "--verbose",
-                "--dangerously-skip-permissions",
+                *agent_isolation.claude_arguments(with_skill=False),
             ],
-            cwd=workspace,
+            workspace=workspace,
+            readable=[claude_bin, Path(sys.prefix), Path(sys.base_prefix)],
+            writable=[workspace],
             env=environment,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
             timeout=120,
-            check=False,
         )
         transcript = outcome.stdout
         transcript_path.parent.mkdir(parents=True, exist_ok=True)
@@ -237,7 +240,14 @@ def main() -> int:
             provider_evidence=args.provider_evidence,
             output=args.output,
         )
-    except (OSError, ValueError, KeyError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        json.JSONDecodeError,
+        subprocess.TimeoutExpired,
+    ) as exc:
         print(f"qualification failed: {exc}")
         return 2
     print(json.dumps(record, indent=2, sort_keys=True))

@@ -1,9 +1,16 @@
-.PHONY: sync format lint typecheck test check baselines docker-baselines report
+.PHONY: sync format lint typecheck test test-unit test-suite check baselines docker-baselines report
 
 CONTAINER_ENGINE ?= docker
+TEST_WORKERS ?= 2
+ifeq ($(strip $(TEST_WORKERS)),)
+$(error TEST_WORKERS must be 1, 2, 3, or 4)
+endif
+ifneq ($(filter $(TEST_WORKERS),1 2 3 4),$(TEST_WORKERS))
+$(error TEST_WORKERS must be 1, 2, 3, or 4)
+endif
 
 sync:
-	uv sync --frozen --extra fixture --group dev
+	uv sync --frozen --python 3.12 --extra fixture --group dev
 
 format:
 	uv run ruff format .
@@ -17,7 +24,10 @@ typecheck:
 	uv run mypy
 
 test:
-	uv run python -m pytest
+	$(MAKE) -j$(TEST_WORKERS) test-suite
+
+test-unit:
+	uv run python -m pytest --ignore-glob='tests/test_evaluator*.py' --durations=10 --junitxml=reports/tests-unit.xml
 
 check: lint typecheck test
 	uv run sanka-bench validate
@@ -37,7 +47,10 @@ BASELINES_010 = noop compatibility-bridge native-reference sanka-native
 BASELINES_011 = noop compatibility-bridge native-reference sanka-native
 
 define BASELINE_RULES
-.PHONY: baselines-$(1) docker-baselines-$(1)
+.PHONY: baselines-$(1) docker-baselines-$(1) test-evaluator-$(1)
+
+test-evaluator-$(1):
+	uv run python -m pytest tests/test_evaluator$(if $(filter 001,$(1)),,_$(1)).py --durations=5 --junitxml=reports/tests-evaluator-$(1).xml
 
 baselines-$(1):
 	@for name in $$(BASELINES_$(1)); do \
@@ -51,6 +64,8 @@ docker-baselines-$(1):
 endef
 
 $(foreach task,$(BASELINE_TASKS),$(eval $(call BASELINE_RULES,$(task))))
+
+test-suite: test-unit $(addprefix test-evaluator-,$(BASELINE_TASKS))
 
 baselines: $(addprefix baselines-,$(BASELINE_TASKS))
 
