@@ -115,7 +115,9 @@ def evaluate_local(task_dir: Path, candidate_dir: Path) -> dict[str, Any]:
             source_runs.append(oracle_results)
             candidate_runs.append(target_results)
 
-    scenario_reports = _scenario_reports(scenarios, source_runs, candidate_runs)
+    scenario_reports = _scenario_reports(
+        scenarios, source_runs, candidate_runs, task["target"]["framework"]
+    )
     source_scenarios_valid = all(
         result is not None for source_run in source_runs for result in source_run
     )
@@ -219,6 +221,7 @@ def _serving_policy(task: dict[str, Any]) -> str:
     target = cast(dict[str, Any], task["target"])
     return json.dumps(
         {
+            "framework": target["framework"],
             "entrypoint": target["entrypoint"],
             "forbidden_imports": target["serving"]["forbidden_imports"],
         },
@@ -322,25 +325,33 @@ def _served_by_catch_all(
     return status != 404
 
 
-def _native_verdict(payload: dict[str, Any] | None) -> tuple[bool, str]:
+def _native_verdict(payload: dict[str, Any] | None, framework: str = "fastapi") -> tuple[bool, str]:
     if payload is None:
         return False, "candidate produced no serving evidence"
     native = payload.get("native")
     if not isinstance(native, dict):
         return False, "candidate driver returned no native serving evidence"
     problems: list[str] = []
-    if not native.get("app_is_fastapi"):
-        problems.append("entrypoint `app` is not a FastAPI application")
-    route_class = native.get("route_class")
-    is_apiroute = native.get("route_is_apiroute")
-    if not isinstance(is_apiroute, bool):
-        # Evidence recorded by guards before evaluator 0.0.3 carries only the
-        # class name; keep the exact-class reading for those reports.
-        is_apiroute = route_class == _NATIVE_ROUTE_CLASS
-    if not is_apiroute:
-        problems.append(
-            f"scenario served by {route_class}" if route_class else "no FastAPI route matched"
-        )
+    if framework == "flask":
+        if not native.get("app_is_flask"):
+            problems.append("entrypoint `app` is not a Flask application")
+        if not native.get("route_is_flask_rule") or not native.get("flask_dispatch_observed"):
+            problems.append("no native Flask route dispatch observed")
+    elif framework == "fastapi":
+        if not native.get("app_is_fastapi"):
+            problems.append("entrypoint `app` is not a FastAPI application")
+        route_class = native.get("route_class")
+        is_apiroute = native.get("route_is_apiroute")
+        if not isinstance(is_apiroute, bool):
+            # Evidence recorded by guards before evaluator 0.0.3 carries only the
+            # class name; keep the exact-class reading for those reports.
+            is_apiroute = route_class == _NATIVE_ROUTE_CLASS
+        if not is_apiroute:
+            problems.append(
+                f"scenario served by {route_class}" if route_class else "no FastAPI route matched"
+            )
+    else:
+        problems.append(f"unsupported target framework: {framework}")
     if not native.get("endpoint_in_workspace"):
         problems.append("endpoint code resolves outside the candidate workspace")
     forbidden = native.get("forbidden_imports") or []
@@ -401,6 +412,7 @@ def _scenario_reports(
     scenarios: Sequence[dict[str, Any]],
     source_runs: Sequence[Sequence[dict[str, Any] | None]],
     candidate_runs: Sequence[Sequence[dict[str, Any] | None]],
+    framework: str = "fastapi",
 ) -> list[dict[str, Any]]:
     reports: list[dict[str, Any]] = []
     for scenario_index, scenario in enumerate(scenarios):
@@ -419,7 +431,7 @@ def _scenario_reports(
             _view(source, "side_effects") == _view(candidate, "side_effects")
             for source, candidate in zip(sources, candidates, strict=True)
         )
-        verdicts = [_native_verdict(candidate) for candidate in candidates]
+        verdicts = [_native_verdict(candidate, framework) for candidate in candidates]
         native_compliant = all(compliant for compliant, _ in verdicts)
         native_detail = next(
             (detail for compliant, detail in verdicts if not compliant),

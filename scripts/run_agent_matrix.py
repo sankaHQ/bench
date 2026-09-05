@@ -362,6 +362,11 @@ def qualification_digest(path: Path) -> str:
 def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
     if manifest.get("schema") != "sanka-bench/model-matrix-run-manifest/v2":
         return
+    lanes = {str(task).rsplit("-", 1)[0] for task in manifest["suite"]["tasks"]}
+    if len(lanes) != 1 or not lanes <= {"drf-fastapi", "drf-flask"}:
+        raise ValueError(
+            "official v2 comparisons require one supported migration lane per manifest"
+        )
     if manifest["execution"].get("configurations") not in (
         ["alone", "with-sanka"],
         ["alone", "sanka-cli", "with-sanka"],

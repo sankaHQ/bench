@@ -13,10 +13,20 @@
     "commands",
     "evaluation"
   ],
+  "allOf": [
+    {
+      "if": { "properties": { "lane": { "const": "drf-fastapi" } } },
+      "then": { "properties": { "target": { "properties": { "framework": { "const": "fastapi" } } } } }
+    },
+    {
+      "if": { "properties": { "lane": { "const": "drf-flask" } } },
+      "then": { "properties": { "target": { "properties": { "framework": { "const": "flask" } } } } }
+    }
+  ],
   "properties": {
     "schema_version": { "const": "sanka-bench/task/v0.2" },
     "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]+$" },
-    "lane": { "const": "drf-fastapi" },
+    "lane": { "enum": ["drf-fastapi", "drf-flask"] },
     "source": {
       "type": "object",
       "additionalProperties": false,
@@ -50,7 +60,7 @@
         "static_patterns"
       ],
       "properties": {
-        "framework": { "const": "fastapi" },
+        "framework": { "enum": ["fastapi", "flask"] },
         "orm": { "const": "django" },
         "entrypoint": { "type": "string", "minLength": 1 },
         "serving": {

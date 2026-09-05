@@ -1320,3 +1320,17 @@ def test_observed_work_deduplicates_streamed_events(harness):
         "provider_api_requests": None,
         "provider_retries": None,
     }
+
+
+def test_flask_prompt_and_readiness_do_not_advertise_fastapi_replay(harness, repository_root):
+    prompt = harness.task_prompt(repository_root / "tasks/drf-flask/drf-flask-004", 60, 3600)
+    assert "Flask" in prompt and "Flask URL rule" in prompt
+    assert "FastAPI" not in prompt and "APIRoute" not in prompt
+    context = harness._readiness_context(
+        {"native_routes": 0, "native_eligible_routes": 4, "readiness": 0, "plan_hash": "reviewed"},
+        0.5,
+    )
+    context["target_framework"] = "flask"
+    rendered = harness._readiness_prompt(context, Path("/tools/sanka"))
+    assert "does not yet provide differential replay" in rendered
+    assert "--to fastapi" not in rendered

@@ -218,7 +218,12 @@ def task_prompt(task_dir: Path, max_turns: int, wall_seconds: int) -> str:
         if graded != public
         else "This task grades the supplied public scenarios."
     )
-    return PROMPT_CORE.format(
+    core = PROMPT_CORE
+    if task["target"]["framework"] == "flask":
+        core = core.replace("FastAPI", "Flask").replace("fastapi", "flask")
+        core = core.replace("Flask `APIRoute`", "Flask URL rule")
+        core = core.replace("vs flask TestClient", "vs Flask test_client")
+    return core.format(
         python=sys.executable, grading_scope=scope, max_turns=max_turns, wall_seconds=wall_seconds
     )
 
@@ -254,6 +259,12 @@ def _readiness_context(
         reasons = [
             reason for reason in item.get("adaptation_reasons") or [] if isinstance(reason, dict)
         ]
+        if not reasons:
+            reasons = [
+                {"message": reason}
+                for reason in item.get("reasons") or []
+                if isinstance(reason, str)
+            ]
         routes.append(
             {
                 "method": str(item.get("method") or ""),
@@ -319,6 +330,12 @@ def _readiness_prompt(context: dict[str, object], sanka: Path) -> str:
             "is below the threshold. Do not run `sanka apply`; implement the native "
             "FastAPI target from the source."
         )
+    framework = str(context.get("target_framework", "fastapi"))
+    if framework == "flask":
+        decision = decision.replace("FastAPI", "Flask").replace("plan-fastapi", "plan-flask")
+        decision = decision.replace(
+            "run the verifier below", "compare source and candidate in local tests"
+        )
     return PROMPT_SANKA_READINESS.format(
         readiness_percent=float(context["readiness"]) * 100,
         native_routes=context["native_routes"],
@@ -327,7 +344,12 @@ def _readiness_prompt(context: dict[str, object], sanka: Path) -> str:
         plan_hash=context["plan_hash"],
         decision=decision,
         notes=_notes_prompt(context),
-        verifier=_verifier_prompt(sanka),
+        verifier=_verifier_prompt(sanka)
+        if framework == "fastapi"
+        else (
+            "The Flask extension does not yet provide differential replay. Use source and "
+            "Flask test clients with identical fixtures and the public scenarios.\n"
+        ),
     )
 
 
@@ -431,7 +453,9 @@ PLAN_INPUTS = (
 )
 
 
-def _enable_sanka_extension(sanka_bin: Path, *, workspace: Path, env: dict[str, str]) -> None:
+def _enable_sanka_extension(
+    sanka_bin: Path, *, workspace: Path, env: dict[str, str], framework: str = "fastapi"
+) -> None:
     """Make the DRF extension usable in the workspace: marketplace snapshot + project lock.
 
     sanka-cli resolves extensions through a trusted marketplace snapshot in SANKA_HOME
@@ -446,7 +470,7 @@ def _enable_sanka_extension(sanka_bin: Path, *, workspace: Path, env: dict[str, 
         tolerate=("SANKA_MARKETPLACE_EXISTS",),
     )
     _run_sanka_command(
-        [str(sanka_bin), "extension", "add", DRF_EXTENSION_ID, "--json"],
+        [str(sanka_bin), "extension", "add", f"sanka/drf-to-{framework}", "--json"],
         workspace=workspace,
         env=env,
     )
@@ -523,7 +547,7 @@ def _cli_data(stdout: str) -> dict[str, object]:
     return data if isinstance(data, dict) else {}
 
 
-def _sanka_artifact(stdout: str, name: str, workspace: Path) -> Path:
+def _sanka_artifact(stdout: str, name: str, workspace: Path, framework: str = "fastapi") -> Path:
     """Locate a lifecycle artifact from the CLI's JSON output, else the legacy `.sanka/` spot.
 
     sanka-cli 0.2.0 keeps each extension's artifacts under
@@ -542,7 +566,7 @@ def _sanka_artifact(stdout: str, name: str, workspace: Path) -> Path:
                 raise RuntimeError(f"Sanka artifact escapes workspace: {name}")
             return candidate
     for candidate in (
-        workspace / ".sanka" / "extensions" / "sanka" / "drf-to-fastapi" / name,
+        workspace / ".sanka" / "extensions" / "sanka" / f"drf-to-{framework}" / name,
         workspace / ".sanka" / name,
     ):
         if candidate.is_file():
@@ -572,8 +596,11 @@ def _sanka_tool_versions(sanka_bin: Path, *, workspace: Path, env: dict[str, str
     except (json.JSONDecodeError, AttributeError):
         records = []
     for record in records:
-        if isinstance(record, dict) and record.get("id") == DRF_EXTENSION_ID:
-            extension = f"; {DRF_EXTENSION_ID} {record.get('version')} {record.get('status')}"
+        if isinstance(record, dict) and record.get("id") in {
+            DRF_EXTENSION_ID,
+            "sanka/drf-to-flask",
+        }:
+            extension += f"; {record.get('id')} {record.get('version')} {record.get('status')}"
     return f"{version or sanka_bin}{extension}"
 
 
@@ -598,8 +625,9 @@ def _prepare_readiness_context(
     sanka_bin: Path,
     env: dict[str, str],
     threshold: float,
+    framework: str = "fastapi",
 ) -> dict[str, object]:
-    _enable_sanka_extension(sanka_bin, workspace=workspace, env=env)
+    _enable_sanka_extension(sanka_bin, workspace=workspace, env=env, framework=framework)
     scanned = _run_sanka_command(
         [str(sanka_bin), "scan", ".", "--extension-env", "PYTHONPATH", "--json"],
         workspace=workspace,
@@ -611,8 +639,9 @@ def _prepare_readiness_context(
             "plan",
             ".",
             "--to",
-            "fastapi",
-            *PLAN_INPUTS,
+            framework,
+            *PLAN_INPUTS[:-1],
+            f".sanka/output/{framework}",
             "--extension-env",
             "PYTHONPATH",
             "--json",
@@ -620,15 +649,16 @@ def _prepare_readiness_context(
         workspace=workspace,
         env=env,
     )
-    plan_path = _sanka_artifact(planned.stdout, "plan-fastapi.json", workspace)
+    plan_path = _sanka_artifact(planned.stdout, f"plan-{framework}.json", workspace, framework)
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     if not isinstance(plan, dict):
         raise RuntimeError(f"Sanka plan is not an object: {plan_path}")
-    scan_path = _sanka_artifact(scanned.stdout, "scan.json", workspace)
+    scan_path = _sanka_artifact(scanned.stdout, "scan.json", workspace, framework)
     scan = json.loads(scan_path.read_text(encoding="utf-8"))
     if not isinstance(scan, dict):
         raise RuntimeError(f"Sanka scan is not an object: {scan_path}")
     context = _readiness_context(plan, threshold, scan)
+    context["target_framework"] = framework
     # sanka-cli reviews the core plan (which wraps the extension plan); apply wants the
     # core hash from the CLI response. Older engines had a single hash: fall back to it.
     context["core_plan_hash"] = _cli_data(planned.stdout).get("plan_hash") or context["plan_hash"]
@@ -944,13 +974,22 @@ def main() -> int:
                     )
                 if args.sanka_workflow == "artifacts-first-v1":
                     readiness_context = _prepare_readiness_context(
-                        workspace, sanka_bin, env, args.sanka_readiness_threshold
+                        workspace,
+                        sanka_bin,
+                        env,
+                        args.sanka_readiness_threshold,
+                        task["target"]["framework"],
                     )
                     if readiness_context["decision"] == "emit-scaffold":
                         generated_files = _promote_scaffold(workspace)
                         readiness_context["installed_files"] = generated_files
                 else:
-                    _enable_sanka_extension(sanka_bin, workspace=workspace, env=env)
+                    _enable_sanka_extension(
+                        sanka_bin,
+                        workspace=workspace,
+                        env=env,
+                        framework=task["target"]["framework"],
+                    )
             except (OSError, RuntimeError, ValueError) as exc:
                 print(f"{mode} setup failed: {exc}", file=sys.stderr)
                 return 1
@@ -969,6 +1008,7 @@ def main() -> int:
                     args.sanka_bin.resolve(),
                     env,
                     args.sanka_readiness_threshold,
+                    task["target"]["framework"],
                 )
             except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
                 print(f"readiness-aware Sanka preflight failed: {exc}", file=sys.stderr)

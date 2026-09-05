@@ -1,0 +1,732 @@
+[
+  {
+    "id": "list-north",
+    "method": "GET",
+    "path": "/api/wallets/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    }
+  },
+  {
+    "id": "valid-transfer",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "10.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "idempotent-replay",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "10.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ],
+    "setup": [
+      {
+        "id": "valid-transfer",
+        "method": "POST",
+        "path": "/api/transfers/",
+        "headers": {
+          "Authorization": "ApiKey north-key"
+        },
+        "body": {
+          "source": 1,
+          "destination": 2,
+          "amount": "10.25",
+          "idempotency_key": "first"
+        },
+        "capture_headers": [
+          "X-Idempotent-Replay",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "conflicting-idempotency-key",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "11.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ],
+    "setup": [
+      {
+        "id": "valid-transfer",
+        "method": "POST",
+        "path": "/api/transfers/",
+        "headers": {
+          "Authorization": "ApiKey north-key"
+        },
+        "body": {
+          "source": 1,
+          "destination": 2,
+          "amount": "10.25",
+          "idempotency_key": "first"
+        },
+        "capture_headers": [
+          "X-Idempotent-Replay",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "cross-tenant-destination",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 3,
+      "amount": "10.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "missing-auth",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {},
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "10.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "invalid-auth",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey wrong"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "10.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "same-wallet",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 1,
+      "amount": "10.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "insufficient-funds",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "100.01",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "exact-balance",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "100.00",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "sub-cent-rejected",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "0.001",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "zero-rejected",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "0",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "negative-rejected",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "-1.00",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "nan-rejected",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "NaN",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "too-many-digits",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "12345678.90",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "nullable-amount-rejected",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": null,
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "missing-fields",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {},
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "blank-key",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "10.25",
+      "idempotency_key": "  "
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "trimmed-key-replay",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "10.25",
+      "idempotency_key": " first "
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ],
+    "setup": [
+      {
+        "id": "valid-transfer",
+        "method": "POST",
+        "path": "/api/transfers/",
+        "headers": {
+          "Authorization": "ApiKey north-key"
+        },
+        "body": {
+          "source": 1,
+          "destination": 2,
+          "amount": "10.25",
+          "idempotency_key": "first"
+        },
+        "capture_headers": [
+          "X-Idempotent-Replay",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "same-key-other-tenant",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey south-key"
+    },
+    "body": {
+      "source": 3,
+      "destination": 4,
+      "amount": "10.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ],
+    "setup": [
+      {
+        "id": "valid-transfer",
+        "method": "POST",
+        "path": "/api/transfers/",
+        "headers": {
+          "Authorization": "ApiKey north-key"
+        },
+        "body": {
+          "source": 1,
+          "destination": 2,
+          "amount": "10.25",
+          "idempotency_key": "first"
+        },
+        "capture_headers": [
+          "X-Idempotent-Replay",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreign-source-masked",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 3,
+      "destination": 2,
+      "amount": "10.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "unknown-destination",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 999,
+      "amount": "10.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "replay-after-balance-exhausted",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "100.00",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ],
+    "setup": [
+      {
+        "id": "drain",
+        "method": "POST",
+        "path": "/api/transfers/",
+        "headers": {
+          "Authorization": "ApiKey north-key"
+        },
+        "body": {
+          "source": 1,
+          "destination": 2,
+          "amount": "100.00",
+          "idempotency_key": "first"
+        },
+        "capture_headers": [
+          "X-Idempotent-Replay",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "second-transfer-insufficient",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "90.00",
+      "idempotency_key": "second"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ],
+    "setup": [
+      {
+        "id": "valid-transfer",
+        "method": "POST",
+        "path": "/api/transfers/",
+        "headers": {
+          "Authorization": "ApiKey north-key"
+        },
+        "body": {
+          "source": 1,
+          "destination": 2,
+          "amount": "10.25",
+          "idempotency_key": "first"
+        },
+        "capture_headers": [
+          "X-Idempotent-Replay",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "return-transfer",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 2,
+      "destination": 1,
+      "amount": "10.25",
+      "idempotency_key": "reverse"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ],
+    "setup": [
+      {
+        "id": "valid-transfer",
+        "method": "POST",
+        "path": "/api/transfers/",
+        "headers": {
+          "Authorization": "ApiKey north-key"
+        },
+        "body": {
+          "source": 1,
+          "destination": 2,
+          "amount": "10.25",
+          "idempotency_key": "first"
+        },
+        "capture_headers": [
+          "X-Idempotent-Replay",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "balances-after-replay",
+    "method": "GET",
+    "path": "/api/wallets/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "setup": [
+      {
+        "id": "valid-transfer",
+        "method": "POST",
+        "path": "/api/transfers/",
+        "headers": {
+          "Authorization": "ApiKey north-key"
+        },
+        "body": {
+          "source": 1,
+          "destination": 2,
+          "amount": "10.25",
+          "idempotency_key": "first"
+        },
+        "capture_headers": [
+          "X-Idempotent-Replay",
+          "WWW-Authenticate"
+        ]
+      },
+      {
+        "id": "valid-transfer",
+        "method": "POST",
+        "path": "/api/transfers/",
+        "headers": {
+          "Authorization": "ApiKey north-key"
+        },
+        "body": {
+          "source": 1,
+          "destination": 2,
+          "amount": "10.25",
+          "idempotency_key": "first"
+        },
+        "capture_headers": [
+          "X-Idempotent-Replay",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "south-does-not-see-north",
+    "method": "GET",
+    "path": "/api/wallets/",
+    "headers": {
+      "Authorization": "ApiKey south-key"
+    },
+    "setup": [
+      {
+        "id": "valid-transfer",
+        "method": "POST",
+        "path": "/api/transfers/",
+        "headers": {
+          "Authorization": "ApiKey north-key"
+        },
+        "body": {
+          "source": 1,
+          "destination": 2,
+          "amount": "10.25",
+          "idempotency_key": "first"
+        },
+        "capture_headers": [
+          "X-Idempotent-Replay",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "integer-strings",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": "1",
+      "destination": "2",
+      "amount": "10.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "noninteger-source",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": "1.5",
+      "destination": 2,
+      "amount": "10.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "key-too-long",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": 1,
+      "destination": 2,
+      "amount": "10.25",
+      "idempotency_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "auth-before-payload-validation",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {},
+    "body": {},
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "null-source",
+    "method": "POST",
+    "path": "/api/transfers/",
+    "headers": {
+      "Authorization": "ApiKey north-key"
+    },
+    "body": {
+      "source": null,
+      "destination": 2,
+      "amount": "10.25",
+      "idempotency_key": "first"
+    },
+    "capture_headers": [
+      "X-Idempotent-Replay",
+      "WWW-Authenticate"
+    ]
+  }
+]

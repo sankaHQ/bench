@@ -42,6 +42,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--entrypoint", required=True)
     parser.add_argument("--scenario", required=True)
     parser.add_argument("--forbidden-imports", required=True)
+    parser.add_argument("--framework", choices=("fastapi", "flask"), default="fastapi")
     return parser
 
 
@@ -260,6 +261,87 @@ def _multipart_body(spec: dict[str, Any]) -> tuple[bytes, str]:
     return b"\r\n".join(chunks), boundary
 
 
+def _serve_flask(
+    args: argparse.Namespace,
+    workspace: Path,
+    scenario: dict[str, Any],
+    forbidden: list[str],
+    evidence: dict[str, set[str]],
+) -> int:
+    import os
+    from types import SimpleNamespace
+
+    from flask import Flask, request
+    from werkzeug.routing import Rule
+
+    native: dict[str, Any] = {
+        "flask_dispatch_observed": False,
+        "route_class": None,
+        "route_is_flask_rule": False,
+        "route_path": None,
+        "endpoint_in_workspace": False,
+    }
+    dispatch = Flask.dispatch_request
+
+    def recorded_dispatch(app: Any) -> Any:
+        rule = request.url_rule
+        endpoint = app.view_functions.get(rule.endpoint) if rule else None
+        native.update(
+            {
+                "flask_dispatch_observed": True,
+                "route_class": _class_name(rule),
+                "route_is_flask_rule": isinstance(rule, Rule),
+                "route_path": rule.rule if rule else None,
+                "endpoint_in_workspace": endpoint is not None
+                and _endpoint_in_workspace(SimpleNamespace(endpoint=endpoint), workspace),
+            }
+        )
+        return dispatch(app)
+
+    # Install before candidate import; a custom dispatcher bypassing Flask produces no evidence.
+    Flask.dispatch_request = recorded_dispatch  # type: ignore[method-assign, assignment]
+    module = importlib.import_module(Path(args.entrypoint).stem)
+    app = getattr(module, "app", None)
+    native["app_is_flask"] = isinstance(app, Flask)
+    if not isinstance(app, Flask):
+        print("candidate entrypoint does not expose a Flask app", file=sys.stderr)
+        return 3
+    headers = {str(k): str(v) for k, v in dict(scenario.get("headers") or {}).items()}
+    options: dict[str, Any] = {
+        "method": scenario["method"],
+        "headers": headers,
+        "follow_redirects": False,
+        "base_url": "http://testserver",
+    }
+    multipart = scenario.get("multipart")
+    if isinstance(multipart, dict):
+        content, boundary = _multipart_body(multipart)
+        headers.setdefault("content-type", f"multipart/form-data; boundary={boundary}")
+        options["data"] = content
+    elif "body" in scenario:
+        options["json"] = scenario["body"]
+    response = app.test_client().open(scenario["path"], **options)
+    _sweep_loaded_modules(forbidden, evidence["forbidden_imports"])
+    native.update(
+        {
+            "forbidden_imports": sorted(evidence["forbidden_imports"]),
+            "process_events": sorted(evidence["process_events"]),
+            "socket_events": sorted(evidence["socket_events"]),
+            "settings_module": os.environ.get("DJANGO_SETTINGS_MODULE"),
+        }
+    )
+    adapted = SimpleNamespace(
+        content=response.get_data(), json=lambda: json.loads(response.get_data())
+    )
+    served: dict[str, Any] = {"status": response.status_code, "body": _body(adapted, scenario)}
+    if capture := scenario.get("capture_headers"):
+        served["headers"] = {
+            str(name).lower(): response.headers.get(str(name), "") for name in capture
+        }
+    print(json.dumps({"response": served, "native": native}, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
 def main() -> int:
     args = _parser().parse_args()
     workspace = args.workspace.resolve()
@@ -272,6 +354,9 @@ def main() -> int:
     # Arm the un-removable recorder before anything non-stdlib is imported.
     evidence = _arm_recorder(forbidden)
     sys.path.insert(0, str(workspace))
+
+    if args.framework == "flask":
+        return _serve_flask(args, workspace, scenario, forbidden, evidence)
 
     import fastapi
     from fastapi.testclient import TestClient

@@ -513,3 +513,18 @@ def test_evaluation_timing_is_copied_into_the_result(driver: object, tmp_path: P
         "evaluation_seconds": 3.0,
         "end_to_end_seconds": 15.0,
     }
+
+
+def test_flask_lane_selects_its_own_extension_distribution(driver, monkeypatch):
+    manifest = _manifest(samples=1)
+    manifest["suite"]["tasks"] = ["drf-flask-004"]
+    manifest["toolchain"].update(sanka_cli="sanka-cli test", extension_version="0.1.0a1")
+    observed = []
+
+    def versions(binary, distribution):
+        observed.append(distribution)
+        return "sanka-cli test", "0.1.0a1"
+
+    monkeypatch.setattr(driver, "sanka_versions", versions)
+    driver.check_sanka_toolchain(manifest, Path("/tools/sanka"))
+    assert observed == ["sanka-extension-drf-to-flask"]

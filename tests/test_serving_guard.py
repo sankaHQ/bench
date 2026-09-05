@@ -11,6 +11,7 @@ def _run_guard(
     workspace: Path,
     *,
     entrypoint: str = "svc.py",
+    framework: str = "fastapi",
     scenario: dict[str, Any] | None = None,
     forbidden: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
@@ -19,6 +20,8 @@ def _run_guard(
             sys.executable,
             "-m",
             "sanka_bench.serving_guard",
+            "--framework",
+            framework,
             "--workspace",
             str(workspace),
             "--entrypoint",
@@ -332,3 +335,38 @@ def test_missing_app_attribute_fails(tmp_path: Path) -> None:
     outcome = _run_guard(tmp_path)
     assert outcome.returncode == 3
     assert "does not expose `app`" in outcome.stderr
+
+
+def test_flask_requires_actual_dispatch_and_correct_framework(tmp_path: Path) -> None:
+    from sanka_bench.evaluator import _native_verdict
+
+    (tmp_path / "svc.py").write_text(
+        "from flask import Flask, request\n"
+        "app = Flask(__name__)\n"
+        "@app.get('/ping/')\n"
+        "def ping():\n"
+        "    return {'ok': True}\n"
+    )
+    payload = _payload(_run_guard(tmp_path, framework="flask"))
+    assert payload["response"] == {"status": 200, "body": {"ok": True}}
+    assert _native_verdict(payload, "flask") == (True, "ok")
+    assert not _native_verdict(payload, "fastapi")[0]
+    with (tmp_path / "svc.py").open("a") as handle:
+        handle.write("app.dispatch_request = lambda: {'ok': True}\n")
+    bypass = _payload(_run_guard(tmp_path, framework="flask"))
+    assert bypass["response"] == payload["response"]
+    assert not _native_verdict(bypass, "flask")[0]
+
+
+def test_flask_lazy_import_remains_a_native_failure(tmp_path: Path) -> None:
+    from sanka_bench.evaluator import _native_verdict
+
+    (tmp_path / "svc.py").write_text(
+        "from flask import Flask\napp = Flask(__name__)\n"
+        "@app.get('/ping/')\ndef ping():\n"
+        "    import wave\n    return 'plain text'\n"
+    )
+    payload = _payload(_run_guard(tmp_path, framework="flask", forbidden=["wave"]))
+    assert payload["response"] == {"status": 200, "body": "plain text"}
+    assert payload["native"]["forbidden_imports"] == ["wave"]
+    assert not _native_verdict(payload, "flask")[0]

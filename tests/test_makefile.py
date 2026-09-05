@@ -40,9 +40,12 @@ def test_docker_baseline_target_keeps_the_complete_task_inventory(
     assert "claude-code" not in output  # agent candidates are run artifacts, not baselines
 
 
-def test_full_suite_partitions_each_test_file_exactly_once(repository_root: Path) -> None:
+def test_full_suite_partitions_test_files_and_flask_parameters_exactly_once(
+    repository_root: Path,
+) -> None:
     commands = _dry_run(repository_root, "test")
     covered: list[Path] = []
+    flask_parameters: list[str] = []
     for line in commands.splitlines():
         if "python -m pytest" not in line:
             continue
@@ -53,9 +56,16 @@ def test_full_suite_partitions_each_test_file_exactly_once(repository_root: Path
                 for path in (repository_root / "tests").rglob("test_*.py")
                 if not path.name.startswith("test_evaluator")
             )
+        elif "tests/test_evaluator_flask.py" in arguments:
+            if not flask_parameters:
+                covered.append(repository_root / "tests/test_evaluator_flask.py")
+            flask_parameters.append(arguments[arguments.index("-k") + 1])
         else:
             covered.extend(repository_root / arg for arg in arguments if arg.endswith(".py"))
     assert sorted(covered) == sorted((repository_root / "tests").rglob("test_*.py"))
+    assert sorted(flask_parameters) == sorted(
+        path.parent.name for path in (repository_root / "tasks/drf-flask").glob("*/task.yaml")
+    )
     assert "-j2" in commands
 
 

@@ -1,0 +1,344 @@
+[
+  {
+    "id": "list-default-page-one",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total"
+  },
+  {
+    "id": "list-default-page-two",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total&page=2"
+  },
+  {
+    "id": "summary-seeded",
+    "method": "GET",
+    "path": "/api/summary/"
+  },
+  {
+    "id": "create-posted-west-recomputes-page",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/transactions/",
+        "body": {
+          "account": "ACCT-W",
+          "reference": "TX-W-PUBLIC",
+          "state": "posted",
+          "amount": "25.00",
+          "note": "Public create"
+        }
+      }
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total"
+  },
+  {
+    "id": "patch-pending-recomputes-page",
+    "setup": [
+      {
+        "method": "PATCH",
+        "path": "/api/transactions/2/",
+        "body": {"state": "posted", "amount": "3.75"}
+      }
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total"
+  },
+  {
+    "id": "delete-posted-recomputes-summary",
+    "setup": [
+      {"method": "DELETE", "path": "/api/transactions/1/"}
+    ],
+    "method": "GET",
+    "path": "/api/summary/"
+  },
+  {
+    "id": "invalid-computed-ordering",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=unknown"
+  },
+  {
+    "id": "list-implicit-default-query",
+    "method": "GET",
+    "path": "/api/accounts/"
+  },
+  {
+    "id": "order-posted-total-ascending-page-one",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=posted_total"
+  },
+  {
+    "id": "order-posted-total-ascending-page-two",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=posted_total&page=2"
+  },
+  {
+    "id": "order-transaction-count-descending",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-transaction_count"
+  },
+  {
+    "id": "order-pending-count-descending",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-pending_count"
+  },
+  {
+    "id": "order-name-ascending",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=name"
+  },
+  {
+    "id": "order-name-descending",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-name"
+  },
+  {
+    "id": "order-code-descending",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-code"
+  },
+  {
+    "id": "create-posted-west-recomputes-summary",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/transactions/",
+        "body": {
+          "account": "ACCT-W",
+          "reference": "TX-W-POSTED",
+          "state": "posted",
+          "amount": "4.20",
+          "note": "New"
+        }
+      }
+    ],
+    "method": "GET",
+    "path": "/api/summary/"
+  },
+  {
+    "id": "create-pending-west-recomputes-method-fields",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/transactions/",
+        "body": {
+          "account": "ACCT-W",
+          "reference": "TX-W-PENDING",
+          "state": "pending",
+          "amount": "8.00",
+          "note": "Waiting"
+        }
+      }
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=code&page=2"
+  },
+  {
+    "id": "zero-posted-is-settled-not-empty",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/transactions/",
+        "body": {
+          "account": "ACCT-W",
+          "reference": "TX-W-ZERO",
+          "state": "posted",
+          "amount": "0.00",
+          "note": "Zero"
+        }
+      }
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=code&page=2"
+  },
+  {
+    "id": "large-decimal-create-recomputes-summary",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/transactions/",
+        "body": {
+          "account": "ACCT-B",
+          "reference": "TX-B-LARGE",
+          "state": "posted",
+          "amount": "123456.78",
+          "note": "Large"
+        }
+      }
+    ],
+    "method": "GET",
+    "path": "/api/summary/"
+  },
+  {
+    "id": "negative-create-recomputes-summary",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/transactions/",
+        "body": {
+          "account": "ACCT-A",
+          "reference": "TX-A-REFUND",
+          "state": "posted",
+          "amount": "-5.25",
+          "note": "Refund"
+        }
+      }
+    ],
+    "method": "GET",
+    "path": "/api/summary/"
+  },
+  {
+    "id": "two-creates-use-latest-related-row",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/transactions/",
+        "body": {
+          "account": "ACCT-W",
+          "reference": "TX-W-FIRST",
+          "state": "pending",
+          "amount": "1.00",
+          "note": "First"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/transactions/",
+        "body": {
+          "account": "ACCT-W",
+          "reference": "TX-W-LATEST",
+          "state": "posted",
+          "amount": "2.00",
+          "note": "Latest"
+        }
+      }
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=code&page=2"
+  },
+  {
+    "id": "patch-pending-to-posted-recomputes-summary",
+    "setup": [
+      {
+        "method": "PATCH",
+        "path": "/api/transactions/2/",
+        "body": {"state": "posted", "amount": "3.75"}
+      }
+    ],
+    "method": "GET",
+    "path": "/api/summary/"
+  },
+  {
+    "id": "patch-posted-to-pending-recomputes-method-fields",
+    "setup": [
+      {
+        "method": "PATCH",
+        "path": "/api/transactions/1/",
+        "body": {"state": "pending"}
+      }
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total"
+  },
+  {
+    "id": "patch-posted-amount-reorders-page",
+    "setup": [
+      {
+        "method": "PATCH",
+        "path": "/api/transactions/1/",
+        "body": {"amount": "12.30"}
+      }
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total"
+  },
+  {
+    "id": "patch-moves-transaction-across-pages",
+    "setup": [
+      {
+        "method": "PATCH",
+        "path": "/api/transactions/2/",
+        "body": {"account": "ACCT-W"}
+      },
+      {
+        "method": "GET",
+        "path": "/api/accounts/?ordering=code"
+      }
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=code&page=2"
+  },
+  {
+    "id": "delete-pending-settles-account",
+    "setup": [
+      {"method": "DELETE", "path": "/api/transactions/2/"}
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total"
+  },
+  {
+    "id": "delete-posted-leaves-pending-method-fields",
+    "setup": [
+      {"method": "DELETE", "path": "/api/transactions/1/"}
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total"
+  },
+  {
+    "id": "delete-only-transaction-makes-account-empty",
+    "setup": [
+      {"method": "DELETE", "path": "/api/transactions/3/"}
+    ],
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total"
+  },
+  {
+    "id": "create-then-delete-restores-summary",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/transactions/",
+        "body": {
+          "account": "ACCT-W",
+          "reference": "TX-W-EPHEMERAL",
+          "state": "posted",
+          "amount": "9.99",
+          "note": "Ephemeral"
+        }
+      },
+      {"method": "DELETE", "path": "/api/transactions/5/"}
+    ],
+    "method": "GET",
+    "path": "/api/summary/"
+  },
+  {
+    "id": "duplicate-create-leaves-aggregates-unchanged",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/transactions/",
+        "body": {
+          "account": "ACCT-W",
+          "reference": "TX-A-POSTED",
+          "state": "posted",
+          "amount": "99.99",
+          "note": "Must fail"
+        }
+      }
+    ],
+    "method": "GET",
+    "path": "/api/summary/"
+  },
+  {
+    "id": "fully-empty-summary",
+    "fixture": "empty",
+    "method": "GET",
+    "path": "/api/summary/"
+  },
+  {
+    "id": "fully-empty-account-page",
+    "fixture": "empty",
+    "method": "GET",
+    "path": "/api/accounts/?ordering=-posted_total"
+  }
+]
