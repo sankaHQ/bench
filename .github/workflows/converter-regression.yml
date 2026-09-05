@@ -1,0 +1,79 @@
+name: Converter regression
+
+# Private fixtures stay in this repository and its private run artifacts.
+# Run this check for the exact extensions commit before a converter release.
+on:
+  workflow_dispatch:
+    inputs:
+      extensions_sha:
+        description: Full reviewed commit SHA from sankaHQ/extensions
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  converter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Require trusted workflow and exact converter revision
+        env:
+          EXTENSIONS_SHA: ${{ inputs.extensions_sha }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$EXTENSIONS_SHA" =~ ^[0-9a-f]{40}$ ]]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: sankaHQ/extensions
+          ref: ${{ inputs.extensions_sha }}
+          path: extensions
+          persist-credentials: false
+      - name: Verify converter checkout and read reviewed evaluator pin
+        id: benchmark
+        env:
+          EXTENSIONS_SHA: ${{ inputs.extensions_sha }}
+        run: |
+          test "$(git -C extensions rev-parse HEAD)" = "$EXTENSIONS_SHA"
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          manifest = json.loads(Path("extensions/scripts/converter_bench.json").read_text())
+          revision = manifest["benchmark_revision"]
+          if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+              raise SystemExit("benchmark_revision must be a full commit SHA")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"revision={revision}\n")
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: sankaHQ/bench
+          ref: ${{ steps.benchmark.outputs.revision }}
+          path: bench
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.11.21"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install frozen extension and benchmark environments
+        run: |
+          uv sync --project extensions --frozen --python 3.12 --all-packages
+          uv sync --project bench --frozen --python 3.12 --extra fixture --group dev
+      - name: Generate and independently evaluate every reviewed fixture
+        run: |
+          test -z "$(git -C extensions status --porcelain)"
+          uv run --project extensions --frozen python extensions/scripts/run_converter_bench.py \
+            --bench-dir "$GITHUB_WORKSPACE/bench" \
+            --output "$RUNNER_TEMP/converter-regression.json"
+      - name: Retain exact-revision regression evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: converter-regression-${{ inputs.extensions_sha }}
+          path: ${{ runner.temp }}/converter-regression.json
+          if-no-files-found: error
+          retention-days: 14
