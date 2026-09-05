@@ -16,9 +16,10 @@ source-code similarity to one preferred implementation.
 ## Status
 
 Version 1 has eleven `drf-fastapi` tasks (170 verifiable method-routes).
-The additional `drf-flask` lane adds four migration tasks, three using existing DRF
-source families and one new wallet-transfer application. There are fifteen source/target tasks across twelve source
-applications; compare and report each lane separately.
+The additional `drf-flask` lane has six migration tasks: three reuse existing DRF
+source families; wallets, conditional documents and capacity reservations add three
+independent applications. There are seventeen source/target tasks across fourteen
+source applications; compare and report each lane separately.
 Published numbers come only from runs whose frozen candidates, evaluator
 reports, and full agent logs exist, measured as
 [docs/measurement-design.md](docs/measurement-design.md) specifies; nothing is
@@ -370,13 +371,20 @@ an explicit negative control, even when all responses match.
 - `drf-flask-001`: optimistic locking, state transitions and atomic event records.
 - `drf-flask-002`: multipart uploads, stored bytes, download headers and media types.
 - `drf-flask-003`: decimal aggregates, stable pagination and computed fields.
-- `drf-flask-004`: new tenant-scoped wallet transfers, idempotency and atomic audit records.
+- `drf-flask-004`: tenant-scoped wallet transfers, idempotency and atomic audit records.
+- `drf-flask-005`: conditional document reads/writes, ETags and atomic revision history.
+- `drf-flask-006`: timezone/DST validation, interval capacity and idempotent cancellations.
 
 The first three reuse DRF sources from FastAPI tasks 010, 009 and 011 respectively, so they
 measure destination diversity without pretending to be independent source apps.
-Run `make test-evaluator-flask-001` (and 002/003/004) for qualified positive/negative
+Run `make test-evaluator-flask-001` (and 002/003/004/005/006) for qualified positive/negative
 controls. `make check`, `make baselines`, `make docker-baselines` and CI include
 the new lane, using bounded task shards.
+
+The six Flask tasks contain 192 graded scenarios. Tasks 005 and 006 add 64 graded
+scenarios and 24 public examples, authored after the artifacts-first-v2 treatment
+and its fifteen-task paid run were frozen. They are reserved for a later comparison;
+adding them does not change the current run's denominator.
 
 See [the expanded comparison protocol](docs/expanded-comparison.md) before a paid
 run. A 100% result on a single calibration task is not full-suite saturation.

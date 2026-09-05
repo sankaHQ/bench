@@ -1,0 +1,605 @@
+[
+  {
+    "id": "list-alpha",
+    "method": "GET",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "list-beta",
+    "method": "GET",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-b"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "missing-auth",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {},
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T13:00",
+      "timezone": "UTC",
+      "seats": 2
+    }
+  },
+  {
+    "id": "valid-booking",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T13:00",
+      "timezone": "UTC",
+      "seats": 2
+    }
+  },
+  {
+    "id": "spanning-adjacent",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T10:00",
+      "end": "2026-10-01T12:00",
+      "timezone": "UTC",
+      "seats": 1
+    }
+  },
+  {
+    "id": "over-capacity",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T10:30",
+      "end": "2026-10-01T11:30",
+      "timezone": "UTC",
+      "seats": 2
+    }
+  },
+  {
+    "id": "adjacent-at-capacity",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T13:00",
+      "timezone": "UTC",
+      "seats": 3
+    }
+  },
+  {
+    "id": "zero-seats",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T13:00",
+      "timezone": "UTC",
+      "seats": 0
+    }
+  },
+  {
+    "id": "max-seats",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T13:00",
+      "timezone": "UTC",
+      "seats": 21
+    }
+  },
+  {
+    "id": "string-seats",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T13:00",
+      "timezone": "UTC",
+      "seats": "2.0"
+    }
+  },
+  {
+    "id": "fraction-seats",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T13:00",
+      "timezone": "UTC",
+      "seats": 1.2
+    }
+  },
+  {
+    "id": "boolean-seats",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T13:00",
+      "timezone": "UTC",
+      "seats": true
+    }
+  },
+  {
+    "id": "missing-fields",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "null-timezone",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T13:00",
+      "timezone": null,
+      "seats": 2
+    }
+  },
+  {
+    "id": "unknown-timezone",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T13:00",
+      "timezone": "Unknown/Zone",
+      "seats": 2
+    }
+  },
+  {
+    "id": "invalid-start",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "not-a-date",
+      "end": "2026-10-01T13:00",
+      "timezone": "UTC",
+      "seats": 2
+    }
+  },
+  {
+    "id": "offset-in-local-time",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00Z",
+      "end": "2026-10-01T13:00",
+      "timezone": "UTC",
+      "seats": 2
+    }
+  },
+  {
+    "id": "reversed-interval",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T11:00",
+      "timezone": "UTC",
+      "seats": 2
+    }
+  },
+  {
+    "id": "zero-length",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T12:00",
+      "timezone": "UTC",
+      "seats": 2
+    }
+  },
+  {
+    "id": "spring-gap",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-03-08T02:30",
+      "end": "2026-03-08T03:30",
+      "timezone": "America/New_York",
+      "seats": 2
+    }
+  },
+  {
+    "id": "ambiguous-fall",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-11-01T01:15",
+      "end": "2026-11-01T01:45",
+      "timezone": "America/New_York",
+      "seats": 2
+    }
+  },
+  {
+    "id": "fall-fold-zero",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-11-01T01:15",
+      "end": "2026-11-01T01:45",
+      "timezone": "America/New_York",
+      "seats": 2,
+      "fold": 0
+    }
+  },
+  {
+    "id": "fall-fold-one",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-11-01T01:15",
+      "end": "2026-11-01T01:45",
+      "timezone": "America/New_York",
+      "seats": 2,
+      "fold": 1
+    },
+    "setup": [
+      {
+        "id": "fall-fold-zero",
+        "method": "POST",
+        "path": "/api/bookings/",
+        "headers": {
+          "Authorization": "ApiKey team-a"
+        },
+        "capture_headers": [
+          "Allow",
+          "WWW-Authenticate"
+        ],
+        "body": {
+          "resource": 1,
+          "start": "2026-11-01T01:15",
+          "end": "2026-11-01T01:45",
+          "timezone": "America/New_York",
+          "seats": 2,
+          "fold": 0
+        }
+      }
+    ]
+  },
+  {
+    "id": "invalid-fold",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-11-01T01:15",
+      "end": "2026-11-01T01:45",
+      "timezone": "America/New_York",
+      "seats": 2,
+      "fold": 2
+    }
+  },
+  {
+    "id": "foreign-resource",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 2,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T13:00",
+      "timezone": "UTC",
+      "seats": 2
+    }
+  },
+  {
+    "id": "missing-resource",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 99,
+      "start": "2026-10-01T12:00",
+      "end": "2026-10-01T13:00",
+      "timezone": "UTC",
+      "seats": 2
+    }
+  },
+  {
+    "id": "cancel-own",
+    "method": "POST",
+    "path": "/api/bookings/1/cancel/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "foreign-cancel",
+    "method": "POST",
+    "path": "/api/bookings/3/cancel/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "missing-cancel",
+    "method": "POST",
+    "path": "/api/bookings/99/cancel/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "repeat-cancel",
+    "method": "POST",
+    "path": "/api/bookings/1/cancel/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "setup": [
+      {
+        "id": "cancel-own",
+        "method": "POST",
+        "path": "/api/bookings/1/cancel/",
+        "headers": {
+          "Authorization": "ApiKey team-a"
+        },
+        "capture_headers": [
+          "Allow",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "capacity-after-cancel",
+    "method": "POST",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "resource": 1,
+      "start": "2026-10-01T10:00",
+      "end": "2026-10-01T11:00",
+      "timezone": "UTC",
+      "seats": 3
+    },
+    "setup": [
+      {
+        "id": "cancel-own",
+        "method": "POST",
+        "path": "/api/bookings/1/cancel/",
+        "headers": {
+          "Authorization": "ApiKey team-a"
+        },
+        "capture_headers": [
+          "Allow",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "options",
+    "method": "OPTIONS",
+    "path": "/api/bookings/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  }
+]

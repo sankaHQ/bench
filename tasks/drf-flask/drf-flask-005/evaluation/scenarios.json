@@ -1,0 +1,566 @@
+[
+  {
+    "id": "get-alpha",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "get-beta",
+    "method": "GET",
+    "path": "/api/documents/2/",
+    "headers": {
+      "Authorization": "ApiKey team-b"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "foreign-document",
+    "method": "GET",
+    "path": "/api/documents/2/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "missing-document",
+    "method": "GET",
+    "path": "/api/documents/99/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "deleted-document",
+    "method": "GET",
+    "path": "/api/documents/3/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "missing-auth",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {},
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "invalid-auth",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey wrong"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "matching-etag",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-None-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "weak-read-etag",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-None-Match": "W/\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "etag-list",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-None-Match": "\"other\", W/\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "etag-wildcard",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-None-Match": "*"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "stale-read-etag",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-None-Match": "\"doc-1-r0\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "head-body",
+    "method": "HEAD",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "update",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "Changed"
+    }
+  },
+  {
+    "id": "missing-precondition",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "Changed"
+    }
+  },
+  {
+    "id": "stale-write",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r0\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "Changed"
+    }
+  },
+  {
+    "id": "weak-write",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "W/\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "Changed"
+    }
+  },
+  {
+    "id": "wildcard-write",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "*"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "body": "New body."
+    }
+  },
+  {
+    "id": "list-write",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"other\", \"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "New"
+    }
+  },
+  {
+    "id": "blank-title",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "  "
+    }
+  },
+  {
+    "id": "null-title",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": null
+    }
+  },
+  {
+    "id": "numeric-title",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": 42
+    }
+  },
+  {
+    "id": "boolean-title",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": true
+    }
+  },
+  {
+    "id": "unknown-fields",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "unknown": 1
+    }
+  },
+  {
+    "id": "title-over-limit",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+  },
+  {
+    "id": "list-payload",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": []
+  },
+  {
+    "id": "delete",
+    "method": "DELETE",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "weak-delete",
+    "method": "DELETE",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "W/\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "stale-after-update",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "Again"
+    },
+    "setup": [
+      {
+        "id": "update",
+        "method": "PATCH",
+        "path": "/api/documents/1/",
+        "headers": {
+          "Authorization": "ApiKey team-a",
+          "If-Match": "\"doc-1-r1\""
+        },
+        "capture_headers": [
+          "ETag",
+          "Cache-Control",
+          "Allow",
+          "WWW-Authenticate"
+        ],
+        "body": {
+          "title": "Changed"
+        }
+      }
+    ]
+  },
+  {
+    "id": "read-after-delete",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "setup": [
+      {
+        "id": "delete",
+        "method": "DELETE",
+        "path": "/api/documents/1/",
+        "headers": {
+          "Authorization": "ApiKey team-a",
+          "If-Match": "\"doc-1-r1\""
+        },
+        "capture_headers": [
+          "ETag",
+          "Cache-Control",
+          "Allow",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "conditional-after-update",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-None-Match": "\"doc-1-r2\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "setup": [
+      {
+        "id": "update",
+        "method": "PATCH",
+        "path": "/api/documents/1/",
+        "headers": {
+          "Authorization": "ApiKey team-a",
+          "If-Match": "\"doc-1-r1\""
+        },
+        "capture_headers": [
+          "ETag",
+          "Cache-Control",
+          "Allow",
+          "WWW-Authenticate"
+        ],
+        "body": {
+          "title": "Changed"
+        }
+      }
+    ]
+  },
+  {
+    "id": "options",
+    "method": "OPTIONS",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  }
+]

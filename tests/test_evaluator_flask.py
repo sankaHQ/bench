@@ -7,9 +7,7 @@ from sanka_bench.hashing import digest_tree
 from sanka_bench.schema import load_and_validate
 
 
-@pytest.mark.parametrize(
-    "task_id", ["drf-flask-001", "drf-flask-002", "drf-flask-003", "drf-flask-004"]
-)
+@pytest.mark.parametrize("task_id", [f"drf-flask-{number:03d}" for number in range(1, 7)])
 def test_flask_controls(repository_root: Path, task_id: str) -> None:
     task_dir = repository_root / "tasks" / "drf-flask" / task_id
     task = load_and_validate(task_dir / "task.yaml", "task")

@@ -1,0 +1,8 @@
+schema_version: sanka-bench/candidate/v0.1
+id: compatibility-bridge
+kind: overlay
+overlay: overlay
+provenance:
+  producer: benchmark-author
+  revision: drf-flask-005-compatibility-bridge-v1
+  command: hand-written evaluator control

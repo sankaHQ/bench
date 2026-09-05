@@ -1,0 +1,44 @@
+schema_version: sanka-bench/task/v0.2
+id: drf-flask-006
+lane: drf-flask
+
+source:
+  path: source
+  framework: django-rest-framework
+  python: "3.12"
+  provenance:
+    kind: synthetic
+    license: Apache-2.0
+    digest: sha256:2c623644095be7abf9e7ed32aeaa6f919493c4d3be12aae287eaec005e7b80cd
+
+target:
+  framework: flask
+  orm: django
+  entrypoint: target_app.py
+  serving:
+    forbidden_imports:
+      - rest_framework
+      - django.core.asgi
+      - django.core.wsgi
+      - django.core.handlers
+      - django.test
+  static_patterns:
+    required:
+      - "Flask("
+    forbidden:
+      - rest_framework
+      - get_asgi_application
+      - WSGIMiddleware
+      - django.test.Client
+      - ".mount("
+      - "_dispatch"
+
+commands:
+  regression:
+    - ["{python}", "manage.py", "test", "reservations", "--verbosity", "0"]
+
+evaluation:
+  driver: evaluation/driver.py
+  scenarios: evaluation/scenarios.json
+  repeat: 2
+  timeout_seconds: 120
