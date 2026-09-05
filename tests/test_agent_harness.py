@@ -943,7 +943,10 @@ def test_budget_exhaustion_freezes_the_workspace(
     assert argv[argv.index("--max-budget-usd") + 1] == "5.0"
 
 
-def test_stream_transcript_is_preserved_and_result_is_last_event(tmp_path: Path) -> None:
+@pytest.mark.parametrize("trailing_notification", [False, True])
+def test_stream_transcript_preserves_result_before_notifications(
+    tmp_path: Path, trailing_notification: bool
+) -> None:
     task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
     preamble = [
         {"type": "system", "subtype": "init", "model": "fake"},
@@ -959,17 +962,14 @@ def test_stream_transcript_is_preserved_and_result_is_last_event(tmp_path: Path)
         "subtype": "success",
         "result": "done",
     }
-    agent = _fake_agent(tmp_path, result=result, touch="target_app.py", preamble=preamble)
+    notification = {"type": "system", "subtype": "task_notification", "status": "completed"}
+    events = [*preamble, result, *([notification] if trailing_notification else [])]
+    agent = _fake_agent(tmp_path, result=events[-1], touch="target_app.py", preamble=events[:-1])
     out = tmp_path / "candidate"
     outcome = _run_adapter(task, agent, out)
     assert outcome.returncode == 0, outcome.stderr
     log_lines = (out / "agent-log.jsonl").read_text(encoding="utf-8").splitlines()
-    assert [json.loads(line)["type"] for line in log_lines] == [
-        "system",
-        "assistant",
-        "user",
-        "result",
-    ]
+    assert [json.loads(line)["type"] for line in log_lines] == [event["type"] for event in events]
     assert json.loads((out / "agent-result.json").read_text(encoding="utf-8")) == result
     disclosure = (out / "GENERATED.md").read_text(encoding="utf-8")
     assert "completed within budget" in disclosure
