@@ -125,3 +125,20 @@ def test_result_schema_accepts_the_new_optional_fields() -> None:
         "errors": [],
     }
     validate_payload(result, "result", label="synthetic")
+
+
+def test_scenario_parity_preserves_json_boolean_types() -> None:
+    for left, right, expected in (
+        (True, 1, False),
+        (0, False, False),
+        ({"items": [True, {"enabled": False}]}, {"items": [1, {"enabled": 0}]}, False),
+        ({"a": 1, "b": [False, None]}, {"b": [False, None], "a": 1.0}, True),
+        ({"a": 1}, {"b": 1}, False),
+        ([1, 2], [2, 1], False),
+        ([], {}, False),
+    ):
+        source = dict.fromkeys(("response", "database", "side_effects"), left)
+        candidate = dict.fromkeys(("response", "database", "side_effects"), right)
+        report = _scenario_reports([{"id": "json-types"}], [[source]], [[candidate]])[0]
+        for field in ("behavior_match", "database_match", "side_effect_match"):
+            assert report[field] is expected, (field, left, right)

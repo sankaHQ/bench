@@ -420,15 +420,15 @@ def _scenario_reports(
         candidates = [run[scenario_index] for run in candidate_runs]
         target_ran = all(candidate is not None for candidate in candidates)
         behavior = target_ran and all(
-            _view(source, "response") == _view(candidate, "response")
+            _json_equal(_view(source, "response"), _view(candidate, "response"))
             for source, candidate in zip(sources, candidates, strict=True)
         )
         database = target_ran and all(
-            _view(source, "database") == _view(candidate, "database")
+            _json_equal(_view(source, "database"), _view(candidate, "database"))
             for source, candidate in zip(sources, candidates, strict=True)
         )
         side_effects = target_ran and all(
-            _view(source, "side_effects") == _view(candidate, "side_effects")
+            _json_equal(_view(source, "side_effects"), _view(candidate, "side_effects"))
             for source, candidate in zip(sources, candidates, strict=True)
         )
         verdicts = [_native_verdict(candidate, framework) for candidate in candidates]
@@ -479,6 +479,21 @@ def _scenario_reports(
             }
         )
     return reports
+
+
+def _json_equal(left: Any, right: Any) -> bool:
+    # JSON booleans are distinct from numbers, despite Python's True == 1.
+    if isinstance(left, bool) or isinstance(right, bool):
+        return type(left) is type(right) and left == right
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(
+            _json_equal(value, right[key]) for key, value in left.items()
+        )
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(
+            _json_equal(a, b) for a, b in zip(left, right, strict=True)
+        )
+    return bool(left == right)
 
 
 def _view(payload: dict[str, Any] | None, field: str) -> Any:
