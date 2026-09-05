@@ -747,6 +747,17 @@ def test_secret_scan_ignores_short_placeholders(tmp_path: Path) -> None:
     assert secret_hits(tmp_path, ["", "test"]) == []
 
 
+def test_secret_scan_distinguishes_flask_paths_from_credentials(tmp_path: Path) -> None:
+    artifact = tmp_path / "report.json"
+    artifact.write_text("drf-flask-002-claude-code-deepseek-v4-flash-with-sanka")
+    assert secret_hits(tmp_path, []) == []
+    for prefix in ("sk-", "sk-ant-", "sk-proj-", "fw_"):
+        artifact.write_text(json.dumps({"token": prefix + "a" * 24}))
+        assert secret_hits(tmp_path, []) == ["report.json"]
+    artifact.write_text("embedded-secret-value")
+    assert secret_hits(tmp_path, ["secret-value"]) == ["report.json"]
+
+
 def test_artifact_audit_verifies_telemetry_transcript_candidate_and_report(
     tmp_path: Path,
 ) -> None:

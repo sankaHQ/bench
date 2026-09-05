@@ -33,7 +33,7 @@ from run_matrix_cell import ALLOWED_KEYS, evaluation_environment, read_allowlist
 from sanka_bench.environment import isolated_environment
 from sanka_bench.hashing import digest_tree
 
-_KNOWN_SECRET = re.compile(rb"(?:sk-(?:ant-|proj-)?|fw_)[A-Za-z0-9_-]{16,}")
+_KNOWN_SECRET = re.compile(rb"(?<![A-Za-z0-9_])(?:sk-(?:ant-|proj-)?|fw_)[A-Za-z0-9_-]{16,}")
 
 
 def utc_now() -> str:
