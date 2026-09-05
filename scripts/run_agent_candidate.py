@@ -151,6 +151,16 @@ A project-local `sanka-cli` skill is installed in this workspace and is
 available to use.
 """
 
+
+def _inline_skill(record: dict[str, str]) -> str:
+    """Deliver exactly the pinned installed content, with auditable exposure."""
+    content = (Path(record["path"]) / "SKILL.md").read_bytes()
+    if hashlib.sha256(content).hexdigest() != record["content_sha256"]:
+        raise RuntimeError("Sanka skill changed after installation")
+    record["delivery"] = "inline-prompt-v1"
+    return "\nThe following installed Sanka Skill applies to this migration:\n\n" + content.decode()
+
+
 VERIFIER_COMMAND = (
     "{sanka} verify . --to fastapi --scenarios public-tests/scenarios.json "
     "--candidate . --entrypoint target_app.py --db-env BENCH_DB_PATH --edge-probes "
@@ -247,6 +257,8 @@ def _readiness_context(
     plan: dict[str, object],
     threshold: float,
     scan: dict[str, object] | None = None,
+    *,
+    partial_scaffold: bool = False,
 ) -> dict[str, object]:
     readiness = float(plan.get("readiness") or 0.0)
     native_routes = int(plan.get("native_routes") or 0)
@@ -283,8 +295,9 @@ def _readiness_context(
         "needs_adaptation_routes": int(plan.get("needs_adaptation_routes") or len(routes)),
         "plan_hash": str(plan.get("plan_hash") or ""),
         "decision": "emit-scaffold"
-        if native_routes > 0 and readiness >= threshold
+        if partial_scaffold or (native_routes > 0 and readiness >= threshold)
         else "gap-report-only",
+        "partial_scaffold": partial_scaffold,
         "unsupported_routes": routes,
         "skipped_routes": [
             {
@@ -324,6 +337,11 @@ def _readiness_prompt(context: dict[str, object], sanka: Path) -> str:
                 "Original source files were preserved. Check the source behavior and public "
                 "scenarios, complete any missing native behavior, then run the verifier below. "
                 "A generated scaffold is a starting point, not evidence of correctness."
+            )
+        if context.get("partial_scaffold"):
+            decision += (
+                " Partial generation was explicitly selected, regardless of readiness. "
+                "Unconverted routes remain manual gaps; generated files do not imply parity."
             )
     else:
         decision = (
@@ -627,6 +645,7 @@ def _prepare_readiness_context(
     env: dict[str, str],
     threshold: float,
     framework: str = "fastapi",
+    partial_scaffold: bool = False,
 ) -> dict[str, object]:
     _enable_sanka_extension(sanka_bin, workspace=workspace, env=env, framework=framework)
     scanned = _run_sanka_command(
@@ -658,7 +677,9 @@ def _prepare_readiness_context(
     scan = json.loads(scan_path.read_text(encoding="utf-8"))
     if not isinstance(scan, dict):
         raise RuntimeError(f"Sanka scan is not an object: {scan_path}")
-    context = _readiness_context(plan, threshold, scan)
+    context = _readiness_context(
+        plan, threshold, scan, partial_scaffold=partial_scaffold and framework == "flask"
+    )
     context["target_framework"] = framework
     # sanka-cli reviews the core plan (which wraps the extension plan); apply wants the
     # core hash from the CLI response. Older engines had a single hash: fall back to it.
@@ -819,7 +840,7 @@ def main() -> int:
     parser.add_argument("--sanka-skill-sha256")
     parser.add_argument(
         "--sanka-workflow",
-        choices=("availability-v1", "artifacts-first-v1"),
+        choices=("availability-v1", "artifacts-first-v1", "artifacts-first-v2"),
         default="availability-v1",
     )
     parser.add_argument(
@@ -987,13 +1008,14 @@ def main() -> int:
                     skill_record = install_sanka_skill(
                         sanka_bin, workspace, env, args.sanka_skill_sha256
                     )
-                if args.sanka_workflow == "artifacts-first-v1":
+                if args.sanka_workflow in {"artifacts-first-v1", "artifacts-first-v2"}:
                     readiness_context = _prepare_readiness_context(
                         workspace,
                         sanka_bin,
                         env,
                         args.sanka_readiness_threshold,
                         task["target"]["framework"],
+                        args.sanka_workflow == "artifacts-first-v2",
                     )
                     if readiness_context["decision"] == "emit-scaffold":
                         generated_files = _promote_scaffold(workspace)
@@ -1014,7 +1036,12 @@ def main() -> int:
             else:
                 prompt += PROMPT_SANKA.format(sanka=sanka_bin)
             if mode == "with-sanka":
-                prompt += PROMPT_SANKA_SKILL
+                assert skill_record is not None
+                prompt += (
+                    _inline_skill(skill_record)
+                    if args.sanka_workflow == "artifacts-first-v2"
+                    else PROMPT_SANKA_SKILL
+                )
         elif mode == "readiness-aware":
             assert args.sanka_bin is not None
             try:
@@ -1784,9 +1811,9 @@ add-only):
 
 ## Prompt (verbatim)
 
-```
+````
 {prompt}
-```
+````
 """,
         encoding="utf-8",
     )

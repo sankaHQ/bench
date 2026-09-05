@@ -884,6 +884,14 @@ def test_workflow_is_validated_and_invalidates_cached_cells(tmp_path: Path) -> N
     value["execution"]["sanka_workflow"] = "artifacts-first-v1"
     validate_official_manifest(value, tmp_path)
     assert build_cells(value)[0].input_digest != old
+    previous = build_cells(value)[0].input_digest
+    value["execution"]["sanka_workflow"] = "artifacts-first-v2"
+    validate_official_manifest(value, tmp_path)
+    assert build_cells(value)[0].input_digest not in {old, previous}
+    value["experimental_toolchain"] = {"wheel_sha256": {"extension.whl": "a" * 64}}
+    previous = build_cells(value)[0].input_digest
+    value["experimental_toolchain"]["wheel_sha256"]["extension.whl"] = "b" * 64
+    assert build_cells(value)[0].input_digest != previous
     for threshold in (True, float("nan"), -1, 2):
         value["execution"]["sanka_readiness_threshold"] = threshold
         with pytest.raises(ValueError, match="threshold"):

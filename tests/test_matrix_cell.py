@@ -134,11 +134,12 @@ def test_each_cell_has_an_isolated_persistent_sandbox(driver: object, tmp_path: 
     assert first_paths.sandbox != second_paths.sandbox
 
 
+@pytest.mark.parametrize("workflow", ["artifacts-first-v1", "artifacts-first-v2"])
 def test_v2_generation_command_passes_route_and_sandbox_metadata(
-    driver: object, tmp_path: Path
+    driver: object, tmp_path: Path, workflow: str
 ) -> None:
     manifest = _manifest(samples=1)
-    manifest["execution"]["sanka_workflow"] = "artifacts-first-v1"
+    manifest["execution"]["sanka_workflow"] = workflow
     manifest["execution"]["sanka_readiness_threshold"] = 0.75
     manifest["schema"] = "sanka-bench/model-matrix-run-manifest/v2"
     manifest["execution"]["configurations"] = ["alone", "with-sanka"]  # type: ignore[index]
@@ -169,7 +170,7 @@ def test_v2_generation_command_passes_route_and_sandbox_metadata(
         manifest, cell, paths, tools, attempt=1, prior_failure=None
     )
 
-    assert command[command.index("--sanka-workflow") + 1] == "artifacts-first-v1"
+    assert command[command.index("--sanka-workflow") + 1] == workflow
     assert command[command.index("--sanka-readiness-threshold") + 1] == "0.75"
     assert command[command.index("--sandbox") + 1] == str(paths.sandbox)
     assert command[command.index("--actual-model-id") + 1] == cell.actual_model_id

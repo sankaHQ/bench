@@ -1246,8 +1246,9 @@ def test_scaffold_preserves_source_and_rejects_symlinks(harness, tmp_path):
 
 @pytest.mark.parametrize("mode", ["sanka-cli", "with-sanka"])
 @pytest.mark.parametrize("silent_timeout", [False, True])
+@pytest.mark.parametrize("workflow", ["artifacts-first-v1", "artifacts-first-v2"])
 def test_artifacts_first_reuses_scaffold_without_hiding_silent_timeout(
-    harness, tmp_path, monkeypatch, mode, silent_timeout
+    harness, tmp_path, monkeypatch, mode, silent_timeout, workflow
 ):
     agent = _fake_agent(tmp_path, result={"num_turns": 1}, touch=False)
     task = SCRIPTS.parent / "tasks" / "drf-fastapi" / "drf-fastapi-001"
@@ -1270,7 +1271,7 @@ def test_artifacts_first_reuses_scaffold_without_hiding_silent_timeout(
             "--sanka-bin",
             str(agent),
             "--sanka-workflow",
-            "artifacts-first-v1",
+            workflow,
         ],
     )
 
@@ -1288,12 +1289,23 @@ def test_artifacts_first_reuses_scaffold_without_hiding_silent_timeout(
         }
 
     monkeypatch.setattr(harness, "_prepare_readiness_context", prepare)
-    monkeypatch.setattr(harness, "install_sanka_skill", lambda *_args: {"sha256": "test"})
+
+    def install(_binary, workspace, *_args):
+        target = workspace / ".claude/skills/sanka-cli"
+        target.mkdir(parents=True)
+        content = b"Use this exact verified skill content."
+        (target / "SKILL.md").write_bytes(content)
+        return {"path": str(target), "content_sha256": hashlib.sha256(content).hexdigest()}
+
+    monkeypatch.setattr(harness, "install_sanka_skill", install)
     monkeypatch.setattr(harness, "_sanka_tool_versions", lambda *_args, **_kw: "test")
 
     def run(command, *, workspace, **_kwargs):
         assert (workspace / "target_app.py").read_text() == "generated"
         assert "already installed" in command[2]
+        assert ("Use this exact verified skill content." in command[2]) is (
+            workflow == "artifacts-first-v2" and mode == "with-sanka"
+        )
         if silent_timeout:
             raise subprocess.TimeoutExpired(command, 1, output="")
         stdout = (
@@ -1315,6 +1327,18 @@ def test_artifacts_first_reuses_scaffold_without_hiding_silent_timeout(
     assert telemetry["treatment"]["agent_changed_files"] == 0
     assert telemetry["treatment"]["generated_files_retained_unchanged"] == 1
     assert (out / "overlay" / "target_app.py").exists() is not silent_timeout
+
+
+def test_partial_scaffold_preserves_zero_readiness_and_skill_tampering_fails(harness, tmp_path):
+    plan = {"readiness": 0, "native_routes": 0, "native_eligible_routes": 3}
+    assert harness._readiness_context(plan, 0.5)["decision"] == "gap-report-only"
+    context = harness._readiness_context(plan, 0.5, partial_scaffold=True)
+    assert context["decision"] == "emit-scaffold"
+    assert context["native_routes"] == context["readiness"] == 0
+    assert "regardless of readiness" in harness._readiness_prompt(context, Path("/tools/sanka"))
+    (tmp_path / "SKILL.md").write_text("changed")
+    with pytest.raises(RuntimeError, match="changed after installation"):
+        harness._inline_skill({"path": str(tmp_path), "content_sha256": "0" * 64})
 
 
 def test_observed_work_deduplicates_streamed_events(harness):
