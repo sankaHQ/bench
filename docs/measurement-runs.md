@@ -20,6 +20,10 @@ arm's run-specific home are writable. System tools and selected runtimes are
 readable; evaluator files and other runs are excluded. Network access remains
 available for provider requests.
 
+On Ubuntu 24.04, Bubblewrap also needs an AppArmor profile granting `userns`.
+The CI installation step loads a profile for `/usr/bin/bwrap` and checks namespace
+startup before testing; it leaves the system-wide namespace restriction enabled.
+
 Claude receives Bash, Read, Write and Edit tools, with hooks, memory
 and external MCP configuration disabled. The model-only and CLI-only arms
 disable skills; the skill arm adds Skill with only the project-installed `sanka-cli`

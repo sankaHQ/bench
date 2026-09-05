@@ -24,7 +24,17 @@ jobs:
           version: "0.11.21"
           enable-cache: true
       - name: Install agent filesystem isolation
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap
+          # Ubuntu 24.04 restricts user namespaces unless the executable has a profile.
+          sudo tee /etc/apparmor.d/bwrap > /dev/null <<'EOF'
+          abi <abi/4.0>,
+          /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          EOF
+          sudo apparmor_parser -r /etc/apparmor.d/bwrap
+          bwrap --unshare-user --unshare-pid --ro-bind / / --proc /proc -- /usr/bin/true
       - run: uv sync --frozen --python 3.12 --extra fixture --group dev
       - run: make lint typecheck test-unit
       - run: uv run sanka-bench validate
