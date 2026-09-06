@@ -189,27 +189,47 @@ def test_claude_stats_do_not_turn_partial_usage_into_zero(harness: object) -> No
     assert stats["total_tokens"] is None
 
 
-def test_prompts_differ_only_by_the_sanka_paragraph(harness: object) -> None:
+def test_sanka_prompt_exposes_cli_with_extension_environment(harness: object) -> None:
     core = harness.PROMPT_CORE  # type: ignore[attr-defined]
     extra = harness.PROMPT_SANKA  # type: ignore[attr-defined]
     assert "Add new files only" in core
     assert "target_app.py" in core
     assert "rest_framework" in core
     assert "must not import" in core
-    # the grading basis is disclosed: a hidden superset extends the public sample
-    assert "hidden superset" in core
-    assert "representative sample" in core
+    assert "{grading_scope}" in core
     assert "FastAPI `APIRoute`" in core
     assert "raw Starlette `Route`" in core
-    # the +Sanka variant is strictly additive: the installed project skill owns
-    # usage guidance, so the benchmark prompt only discloses availability.
+    # Both Sanka arms receive the same runtime plumbing. Without this explicit
+    # passthrough, the CLI's isolated extension process cannot import the fixture.
     rendered = extra.format(sanka="/tools/sanka")
     assert "Sanka migration CLI" in rendered
     assert "/tools/sanka" in rendered
-    assert "skill" not in rendered.lower()
+    assert "--extension-env PYTHONPATH" in rendered
     assert "scan" not in rendered
     assert "plan" not in rendered
     assert "apply" not in rendered
+
+
+def test_skill_prompt_discloses_project_local_skill_without_usage_guidance(
+    harness: object,
+) -> None:
+    rendered = harness.PROMPT_SANKA_SKILL  # type: ignore[attr-defined]
+    assert "project-local" in rendered
+    assert "sanka-cli" in rendered
+    assert "scan" not in rendered
+    assert "plan" not in rendered
+    assert "apply" not in rendered
+
+
+def test_prompt_uses_the_tasks_actual_grading_scope_and_budget(harness: object) -> None:
+    tasks = SCRIPTS.parent / "tasks" / "drf-fastapi"
+    public = harness.task_prompt(tasks / "drf-fastapi-001", 60, 3600)  # type: ignore[attr-defined]
+    hidden = harness.task_prompt(tasks / "drf-fastapi-004", 120, 900)  # type: ignore[attr-defined]
+    assert "hidden superset" not in public
+    assert "hidden superset" in hidden
+    assert "60 tool-use turns" in public
+    assert "120 tool-use turns" in hidden
+    assert "900 seconds" in hidden
 
 
 def test_candidate_modes_preserve_official_arms_and_add_diagnostic_arm(
@@ -412,7 +432,7 @@ def test_readiness_preflight_mechanically_gates_scaffold(
     assert commands[0][2:4] == ["marketplace", "add"]
     assert commands[1][2:4] == ["add", "sanka/drf-to-fastapi"]
     assert commands[3][2:5] == [".", "--to", "fastapi"]
-    assert commands[3][5:-1] == [
+    assert commands[3][5:-3] == [
         "--strategy",
         "native",
         "--generation",
@@ -422,6 +442,7 @@ def test_readiness_preflight_mechanically_gates_scaffold(
         "--output",
         ".sanka/output/fastapi",
     ]
+    assert all(command[-3:-1] == ["--extension-env", "PYTHONPATH"] for command in commands[2:])
     if expects_apply:
         assert "--plan-hash" in commands[-1]
         assert "sha256:preflight" in commands[-1]
@@ -681,7 +702,14 @@ def _fake_agent(
     script = tmp_path / "fake-agent"
     if exit_code is None:
         exit_code = 1 if (result or {}).get("is_error") else 0
-    lines = [json.dumps(event) for event in (preamble or [])]
+    events = preamble if preamble is not None else [{"type": "system", "subtype": "init"}]
+    events = [
+        {"skills": [], "tools": ["Bash", "Read", "Write", "Edit", "Skill"], **event}
+        if event.get("subtype") == "init"
+        else event
+        for event in events
+    ]
+    lines = [json.dumps(event) for event in events]
     if result is not None:
         lines.append(json.dumps(result))
     prints = "".join(f"printf '%s\\n' '{line}'\n" for line in lines)
@@ -692,15 +720,16 @@ def _fake_agent(
     script.write_text(
         "#!/bin/sh\n"
         'if [ "$1" = "--version" ]; then echo fake-agent-1.0; exit 0; fi\n'
-        f"printf '%s\\n' \"$@\" > '{tmp_path / 'fake-agent-argv.txt'}'\n"
+        'printf \'%s\\n\' "$@" > "$CLAUDE_CONFIG_DIR/fake-agent-argv.txt"\n'
+        'printf \'%s\' "$0" > "$CLAUDE_CONFIG_DIR/fake-agent-executable.txt"\n'
         f"printf '%s\\n' \"${{CLAUDE_CONFIG_DIR:-}}\" > "
-        f"'{tmp_path / 'fake-agent-claude-config.txt'}'\n"
-        f"printf '%s' \"${{UNRELATED_SECRET:-}}\" > '{tmp_path / 'fake-agent-secret.txt'}'\n"
-        f"printf '%s' \"${{OPENAI_API_KEY:-}}\" > '{tmp_path / 'fake-agent-openai-key.txt'}'\n"
+        f'"$CLAUDE_CONFIG_DIR/fake-agent-claude-config.txt"\n'
+        f'printf \'%s\' "${{UNRELATED_SECRET:-}}" > "$CLAUDE_CONFIG_DIR/fake-agent-secret.txt"\n'
+        f'printf \'%s\' "${{OPENAI_API_KEY:-}}" > "$CLAUDE_CONFIG_DIR/fake-agent-openai-key.txt"\n'
         f"printf '%s' \"${{ANTHROPIC_AUTH_TOKEN:-}}\" > "
-        f"'{tmp_path / 'fake-agent-anthropic-token.txt'}'\n"
-        f"printf '%s' \"$PATH\" > '{tmp_path / 'fake-agent-path.txt'}'\n"
-        f"command -v sanka > '{tmp_path / 'fake-agent-sanka.txt'}' 2>/dev/null || true\n"
+        f'"$CLAUDE_CONFIG_DIR/fake-agent-anthropic-token.txt"\n'
+        f'printf \'%s\' "$PATH" > "$CLAUDE_CONFIG_DIR/fake-agent-path.txt"\n'
+        f'command -v sanka > "$CLAUDE_CONFIG_DIR/fake-agent-sanka.txt" 2>/dev/null || true\n'
         f"{touch_line}\n"
         f"{early_prints}"
         f"sleep {sleep_seconds}\n"
@@ -736,13 +765,19 @@ def _run_adapter(
     if sandbox is not None:
         command.extend(["--sandbox", str(sandbox)])
     command.extend(extra_args or [])
-    return subprocess.run(
+    sandbox = sandbox or out.parent / "sandbox"
+    if "--sandbox" not in command:
+        command.extend(["--sandbox", str(sandbox)])
+    result = subprocess.run(
         command,
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
     )
+    for path in (sandbox / "claude-config").glob("fake-agent-*.txt"):
+        (out.parent / path.name).write_bytes(path.read_bytes())
+    return result
 
 
 def test_persistent_sandbox_keeps_workspace_config_and_raw_stream(tmp_path: Path) -> None:
@@ -770,6 +805,40 @@ def test_persistent_sandbox_keeps_workspace_config_and_raw_stream(tmp_path: Path
     assert (tmp_path / "fake-agent-claude-config.txt").read_text().strip() == str(
         sandbox / "claude-config"
     )
+    argv = (tmp_path / "fake-agent-argv.txt").read_text().splitlines()
+    assert argv[argv.index("--setting-sources") + 1] == "project"
+    assert "--dangerously-skip-permissions" not in argv
+    assert "--disable-slash-commands" in argv
+
+
+def test_agent_symlink_invokes_the_mounted_executable(tmp_path: Path) -> None:
+    task = SCRIPTS.parent / "tasks/drf-fastapi/drf-fastapi-001"
+    agent = _fake_agent(
+        tmp_path,
+        result={"num_turns": 1, "is_error": False, "subtype": "success"},
+        touch="target_app.py",
+    )
+    alias = tmp_path / "claude-alias"
+    alias.symlink_to(agent)
+    result = _run_adapter(task, alias, tmp_path / "candidate")
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "fake-agent-executable.txt").read_text() == str(agent.resolve())
+
+
+def test_contaminated_skill_inventory_is_preserved_but_not_scored(tmp_path: Path) -> None:
+    task = SCRIPTS.parent / "tasks/drf-fastapi/drf-fastapi-001"
+    agent = _fake_agent(
+        tmp_path,
+        result={"num_turns": 1, "is_error": False, "subtype": "success"},
+        touch="target_app.py",
+        preamble=[{"type": "system", "subtype": "init", "skills": ["sanka-bench-run"]}],
+    )
+    out = tmp_path / "candidate"
+    result = _run_adapter(task, agent, out)
+    assert result.returncode == 1
+    assert "skill inventory" in result.stderr
+    assert (out / "agent-log.jsonl").is_file()
+    assert not (out / "candidate.yaml").exists()
 
 
 def test_alone_agent_cannot_inherit_host_secrets_or_global_sanka(
@@ -1146,3 +1215,108 @@ def test_sanka_artifact_prefers_the_cli_listing_then_the_extension_directory(
     assert locate("not json", "plan-fastapi.json", tmp_path) == legacy
     with pytest.raises(RuntimeError):
         locate("", "missing.json", tmp_path)
+
+
+def test_scaffold_preserves_source_and_rejects_symlinks(harness, tmp_path):
+    overlay = tmp_path / "bench-candidate" / "overlay"
+    overlay.mkdir(parents=True)
+    (tmp_path / "settings.py").write_text("original")
+    (overlay / "settings.py").write_text("generated")
+    (overlay / "target_app.py").write_text("native")
+    files = harness._promote_scaffold(tmp_path)
+    assert set(files) == {"target_app.py"}
+    assert (tmp_path / "settings.py").read_text() == "original"
+    assert (tmp_path / "target_app.py").read_text() == "native"
+    (overlay / "escape").symlink_to(tmp_path.parent)
+    with pytest.raises(RuntimeError, match="Unsafe"):
+        harness._promote_scaffold(tmp_path)
+    with pytest.raises(RuntimeError, match="escapes workspace"):
+        harness._sanka_artifact('{"artifacts":["../scan.json"]}', "scan.json", tmp_path)
+
+
+@pytest.mark.parametrize("mode", ["sanka-cli", "with-sanka"])
+@pytest.mark.parametrize("silent_timeout", [False, True])
+def test_artifacts_first_reuses_scaffold_without_hiding_silent_timeout(
+    harness, tmp_path, monkeypatch, mode, silent_timeout
+):
+    agent = _fake_agent(tmp_path, result={"num_turns": 1}, touch=False)
+    task = SCRIPTS.parent / "tasks" / "drf-fastapi" / "drf-fastapi-001"
+    out = tmp_path / "candidate"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_agent_candidate",
+            "--task",
+            str(task),
+            "--candidate-id",
+            f"fake-{mode}",
+            "--out",
+            str(out),
+            "--sandbox",
+            str(tmp_path / "sandbox"),
+            "--agent-bin",
+            str(agent),
+            "--sanka-bin",
+            str(agent),
+            "--sanka-workflow",
+            "artifacts-first-v1",
+        ],
+    )
+
+    def prepare(workspace, *_args):
+        overlay = workspace / "bench-candidate" / "overlay"
+        overlay.mkdir(parents=True)
+        (overlay / "target_app.py").write_text("generated")
+        return {
+            "decision": "emit-scaffold",
+            "readiness": 1,
+            "threshold": 0.5,
+            "native_routes": 1,
+            "native_eligible_routes": 1,
+            "plan_hash": "test",
+        }
+
+    monkeypatch.setattr(harness, "_prepare_readiness_context", prepare)
+    monkeypatch.setattr(harness, "install_sanka_skill", lambda *_args: {"sha256": "test"})
+    monkeypatch.setattr(harness, "_sanka_tool_versions", lambda *_args, **_kw: "test")
+
+    def run(command, *, workspace, **_kwargs):
+        assert (workspace / "target_app.py").read_text() == "generated"
+        assert "already installed" in command[2]
+        if silent_timeout:
+            raise subprocess.TimeoutExpired(command, 1, output="")
+        stdout = (
+            json.dumps(
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "skills": ["sanka-cli"] if mode == "with-sanka" else [],
+                }
+            )
+            + "\n"
+        )
+        stdout += json.dumps({"type": "result", "num_turns": 1, "subtype": "success"})
+        return subprocess.CompletedProcess(command, 0, stdout, "")
+
+    monkeypatch.setattr(harness.agent_isolation, "run", run)
+    assert harness.main() == (1 if silent_timeout else 0)
+    telemetry = json.loads((out / "telemetry.json").read_text())
+    assert telemetry["treatment"]["agent_changed_files"] == 0
+    assert telemetry["treatment"]["generated_files_retained_unchanged"] == 1
+    assert (out / "overlay" / "target_app.py").exists() is not silent_timeout
+
+
+def test_observed_work_deduplicates_streamed_events(harness):
+    event = json.dumps(
+        {
+            "type": "assistant",
+            "message": {"id": "response1", "content": [{"type": "tool_use", "id": "tool1"}]},
+        }
+    )
+    assert harness._observed_work(event + "\n" + event) == {
+        "observed_model_responses": 1,
+        "tool_calls": 1,
+        "provider_api_requests": None,
+        "provider_retries": None,
+    }

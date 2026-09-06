@@ -9,6 +9,39 @@ Implementing or testing this runner does not authorize a paid model call. A
 scored run additionally requires the exact authorization recorded in its
 manifest.
 
+## Agent isolation and runtime
+
+Run `make sync` to use the task's Python 3.12 runtime. The adapter rejects a
+different Python minor version before calling the model. Agent processes and
+their children use macOS `sandbox-exec` or Linux `bubblewrap` (install the
+`bubblewrap` OS package). Missing isolation fails closed. Only the copied
+workspace, isolated configuration and temporary directories, and the Sanka
+arm's run-specific home are writable. System tools and selected runtimes are
+readable; evaluator files and other runs are excluded. Network access remains
+available for provider requests.
+
+On Ubuntu 24.04, Bubblewrap also needs an AppArmor profile granting `userns`.
+The CI installation step loads a profile for `/usr/bin/bwrap` and checks namespace
+startup before testing; it leaves the system-wide namespace restriction enabled.
+
+Claude receives Bash, Read, Write and Edit tools, with hooks, memory
+and external MCP configuration disabled. The model-only and CLI-only arms
+disable skills; the skill arm adds Skill with only the project-installed `sanka-cli`
+skill. The adapter saves startup inventories and rejects unexpected skills.
+To verify startup with a real pinned binary without a paid provider call:
+
+```bash
+BENCH_TEST_CLAUDE_BIN=/absolute/path/to/claude \
+  uv run python -m pytest tests/test_agent_isolation.py
+```
+
+Every arm receives the same implementation milestones and actual grading
+scope. `telemetry.json` records `timing.first_target_file_seconds`, sampled
+approximately every 250 ms; this measures file creation, not successful boot.
+Sanka diagnostic lifecycle commands forward the fixture dependency path to
+their extension process. These changes require a new pinned manifest and run
+directory; preserve previous candidates and results.
+
 ## Manifest v2
 
 Use `sanka-bench/model-matrix-run-manifest/v2`. Two-arm records remain valid;
@@ -210,3 +243,67 @@ only reviewed summaries.
 6. Resume untouched cells on the same treatment, or create a new labelled
    treatment and authorization.
 7. Rebuild aggregates only after the credential and artifact gates pass.
+
+## Generated-artifact comparison contract
+
+New three-arm runs should set these fields in the existing pinned manifest:
+
+```json
+{
+  "configurations": ["alone", "sanka-cli", "with-sanka"],
+  "sanka_workflow": "artifacts-first-v1",
+  "sanka_readiness_threshold": 0.5
+}
+```
+
+These are `execution` fields. The workflow and threshold participate in every
+cell input digest; changing either requires a new run directory and authorization
+scope. Keep model route, source, evaluator, budget, samples and concurrency equal
+across configurations. Missing workflow means historical `availability-v1`.
+
+Both Sanka arms run the existing pinned CLI scan/plan/apply workflow before model
+invocation. Apply is readiness-gated; below threshold the agent receives plan
+context and implements the native target. Above threshold the harness installs
+new generated files, preserving original source files when names overlap. The
+agent reuses and repairs that scaffold. Only `with-sanka` installs the skill.
+Scaffold existence alone cannot turn a silent provider timeout into a scored run.
+Setup failures remain infrastructure failures, with disclosed retries; there are
+no quality retries or selection of the best candidate. Final-cell totals exclude
+earlier incident overhead, so any infrastructure retry makes efficiency goals
+unknown until that overhead is accounted for.
+
+`telemetry.json` records generated file hashes, how many remain unchanged, files
+changed during the agent phase, unique observed response IDs, and tool-use IDs.
+These are work proxies, not estimates of semantic code contribution. Responses
+are not provider request counts: internal requests/retries remain unknown.
+
+`matrix.json` and `REPORT.md` compare all scheduled task/sample pairs per model.
+They report task pass@1, route-weighted pass@1, paired regressions, generation
+(including preparation), end-to-end time (including evaluation), token classes,
+turns, observed responses/tool calls, infrastructure retries and cost basis.
+Serial-equivalent successful tasks/hour is successes divided by total cell
+end-to-end time. It is not measured concurrent throughput; use the recorded stage
+makespan and concurrency when studying actual scheduler capacity. Failed scored
+tasks remain in timing/token totals; missing or invalid evidence prevents a
+complete comparison. Multi-sample pass@1 is the empirical single-attempt pass rate.
+
+Accuracy at least equal to baseline is the primary requirement. The report also
+requires no paired task regression before declaring all goals met. Fewer tokens,
+lower comparable inference cost, faster generation/end-to-end time and higher
+serial throughput must each be demonstrated. Unknown cost cannot pass the cost
+goal; Claude-equivalent dollars are never substituted for Fireworks billing.
+The cost comparison is inference-only and excludes unmetered local compute.
+One task or sample is calibration evidence, not a statistically established
+suite-wide benefit. Preserve and disclose counterexamples instead of changing
+the evaluator or dropping unsuccessful cells.
+
+Rebuild reports without model calls:
+
+```bash
+python scripts/run_agent_matrix.py --manifest RUN/run-manifest.json report
+```
+
+The same report runs at stage completion for artifacts-first manifests. Hash and
+credential checks run before publication. Historical availability scores remain
+separate; a fresh, explicitly authorized run is required to measure the new
+workflow's effect.

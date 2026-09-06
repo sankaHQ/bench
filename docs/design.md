@@ -492,22 +492,37 @@ cell with Wilson and bootstrap intervals and cost per verified route, as
 
 ## Task-sharded baseline CI
 
-Baseline evaluations are independent only at the task boundary: every
+Baseline evaluations are independent at the task boundary: every
 task/candidate pair already receives isolated temporary workspaces and a
 task-specific report path, while a single evaluator run owns its scenario
-sequence and determinism repetitions. CI therefore shards the ten task suites
-across GitHub-hosted runners with a bounded five-task concurrency limit instead
-of starting multiple evaluators inside one two-core runner.
+sequence and determinism repetitions. CI shards all eleven evaluator test
+modules across GitHub-hosted runners, with at most five local task jobs and
+ten Docker task jobs. The fast unit job excludes those evaluator modules.
+Each local shard runs its module-scoped baseline fixture once and checks the
+resulting verdicts, native gates and scenarios. It does not repeat those same
+four evaluations through a second CLI invocation. All 44 Docker baselines
+still run through the CLI, including their determinism repetitions.
 
 The stable required checks remain `check` and `docker-baselines`. Each is an
 aggregate gate over its underlying unit/local or Docker task shards, so branch
 protection still fails closed when any shard fails or is cancelled. The
 Makefile retains the full sequential `baselines` and `docker-baselines` targets
-for local control-set proof and exposes task-scoped targets such as
-`baselines-008` and `docker-baselines-008` for CI.
+for producing local reports and exposes task-scoped targets such as
+`test-evaluator-008` and `docker-baselines-008` for CI. Superseded PR runs are
+cancelled within that PR's concurrency group.
+
+`make check` runs lint, types, all tests and schema validation. `make test`
+uses Make's existing job scheduler with two workers by default, grouping tests
+by module so expensive fixtures are not duplicated across workers. Set
+`TEST_WORKERS=1` under memory pressure, or at most four with adequate headroom.
+`make test-unit` runs just the fast subset. Tests write separate JUnit files
+under `reports/` and show their slowest durations. A coverage check ensures
+every test file belongs to exactly one suite partition.
 
 Docker evaluator images are content-addressed from the repository tree. A task
 shard builds its image on the first candidate and reuses that exact local image
 for the remaining candidates; a changed task, candidate, lockfile, or evaluator
-source produces a different tag. Evaluation containers keep the existing
+source produces a different tag. Dependencies are compiled to bytecode at
+image build time to reduce repeated Python import work in the read-only
+containers. Evaluation containers keep the existing
 network, filesystem, capability, memory, CPU, and process isolation controls.

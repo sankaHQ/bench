@@ -190,6 +190,12 @@ make baselines
 make docker-baselines
 ```
 
+For complete development validation, run `make check`. It runs the full test
+suite with two workers by default; use `make check TEST_WORKERS=1` when memory
+is constrained. `make test-unit` provides quick harness feedback, and
+`make test-evaluator-008` evaluates and asserts all four baselines for one task.
+CI runs every task's evaluator tests once, plus all Docker baselines.
+
 ## Repository boundary
 
 - This repository owns evaluator schemas, public fixtures, isolation, baseline
@@ -277,12 +283,26 @@ GPT and other models may use a declared Anthropic-protocol gateway only after
 that exact route passes qualification. The compatibility Codex runner is not
 an official matrix harness.
 
-The two official configurations share the same model, budget, and contract;
-the with-Sanka lane installs the pinned Sanka skill into the cell's project and
-adds only a short availability sentence to the core prompt. The agent decides
-whether to use it. A third candidate ending in `-with-sanka-readiness-aware`
-remains a separately labelled diagnostic arm and is excluded from the official
-paired effect. Every frozen overlay is graded by the same evaluator.
+The three configurations share the same model, budget, and grading contract:
+model only, model + Sanka CLI, and model + Sanka CLI + Skills. For new runs,
+pin `execution.sanka_workflow` to `artifacts-first-v1` and
+`execution.sanka_readiness_threshold` to `0.5`. Both Sanka arms run the same
+scan/plan/apply preparation and receive its generated files before the agent
+starts. Only the Skills arm installs the pinned project skill. Preparation time
+is included in the comparison. Below the readiness threshold, both arms receive
+the plan context and implement the native target without a scaffold.
+
+The goal is accuracy at least equal to model-only, with fewer tokens, lower
+inference cost, shorter execution time, and higher successful-task throughput.
+These are measured requirements, never evaluator overrides. Reports flag paired
+accuracy regressions and leave missing evidence or unverified cost unknown.
+Run `python scripts/run_agent_matrix.py --manifest RUN/run-manifest.json report`
+to rebuild the comparison; artifacts-first runs also generate it automatically.
+
+Omitting the workflow retains the historical `availability-v1` treatment, where
+the agent decides whether to use Sanka. Existing frozen results must not be
+relabeled as artifacts-first. The `-with-sanka-readiness-aware` diagnostic remains
+separate. Every frozen overlay is graded by the same tool-neutral evaluator.
 
 For larger model matrices, use `scripts/run_agent_matrix.py` as the single
 foreground coordinator. It preserves generated candidates across resumes,

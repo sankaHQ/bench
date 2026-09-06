@@ -865,3 +865,74 @@ def test_aggregate_refuses_secret_or_incomplete_artifacts(tmp_path: Path) -> Non
     events = (tmp_path / "scheduler-events.jsonl").read_text(encoding="utf-8")
     assert "publication-gate-failed" in events
     assert "sk-ant-this-is-a-secret" not in events
+
+
+def test_workflow_is_validated_and_invalidates_cached_cells(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    old = build_cells(value)[0].input_digest
+    value["execution"]["sanka_workflow"] = "artifacts-first-v1"
+    validate_official_manifest(value, tmp_path)
+    assert build_cells(value)[0].input_digest != old
+    for threshold in (True, float("nan"), -1, 2):
+        value["execution"]["sanka_readiness_threshold"] = threshold
+        with pytest.raises(ValueError, match="threshold"):
+            validate_official_manifest(value, tmp_path)
+    value["execution"]["sanka_readiness_threshold"] = 0.5
+    value["execution"]["sanka_workflow"] = "unknown"
+    with pytest.raises(ValueError, match="workflow"):
+        validate_official_manifest(value, tmp_path)
+
+
+def test_comparison_keeps_regressions_missing_evidence_and_unverified_cost():
+    from matrix_report import compare
+
+    rows = [
+        {
+            "model_slug": "deepseek",
+            "task": task,
+            "sample": 1,
+            "config": config,
+            "route_weight": 1,
+            "passed": True,
+            "generation_seconds": seconds,
+            "end_to_end_seconds": seconds + 1,
+            "total_tokens": seconds,
+            "cost_usd": None,
+        }
+        for config, seconds in [("alone", 10), ("sanka-cli", 5), ("with-sanka", 4)]
+        for task in ["001", "002"]
+    ]
+    result = compare(rows)[1]
+    assert result["goals"]["accuracy_at_least_baseline"] is True
+    assert result["goals"]["faster_generation"] is True
+    assert result["goals"]["lower_cost"] is None
+    assert result["all_goals_met"] is None
+    rows[2]["infrastructure_retries"] = 1
+    assert compare(rows)[1]["goals"]["faster_generation"] is None
+    rows[2]["infrastructure_retries"] = 0
+    rows[2]["passed"] = False
+    result = compare(rows)[1]
+    assert result["paired_regressions"] == 1
+    assert result["goals"]["accuracy_at_least_baseline"] is False
+    assert result["all_goals_met"] is False
+    rows[2]["passed"] = None
+    result = compare(rows)[1]
+    assert result["expected"] == 2 and result["scored"] == 1
+    assert result["pass_at_1"] is None
+    assert result["goals"]["accuracy_at_least_baseline"] is None
+
+
+def test_artifacts_first_auto_report_keeps_unscored_rows_and_blocks_secrets(tmp_path):
+    value = official_manifest(tmp_path)
+    value["execution"]["sanka_workflow"] = "artifacts-first-v1"
+    path = write_manifest(tmp_path, value)
+    coordinator = RollingCoordinator(path, provider_cap=1, model_cap=1, evaluation_cap=1)
+    assert coordinator.aggregate("unscored") == 0
+    report = json.loads((tmp_path / "matrix.json").read_text())
+    assert len(report["rows"]) == 2
+    assert all(row["passed"] is None for row in report["rows"])
+    assert report["comparisons"][1]["all_goals_met"] is None
+    prior = (tmp_path / "matrix.json").read_bytes()
+    (tmp_path / "leak.log").write_text("sk-ant-this-is-a-secret")
+    assert coordinator.aggregate("blocked") != 0
+    assert (tmp_path / "matrix.json").read_bytes() == prior

@@ -462,6 +462,14 @@ def generation_command(
         "--provider",
         cell.provider,
     ]
+    command.extend(
+        [
+            "--sanka-workflow",
+            manifest["execution"].get("sanka_workflow", "availability-v1"),
+            "--sanka-readiness-threshold",
+            str(manifest["execution"].get("sanka_readiness_threshold", 0.5)),
+        ]
+    )
     if cell.gateway_profile is not None:
         command.extend(["--gateway-profile", cell.gateway_profile])
     if attempt > 1:

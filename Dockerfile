@@ -8,7 +8,7 @@ WORKDIR /bench
 
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
-RUN uv sync --frozen --no-dev --extra fixture
+RUN uv sync --frozen --no-dev --extra fixture --compile-bytecode
 
 COPY tasks ./tasks
 COPY baselines ./baselines

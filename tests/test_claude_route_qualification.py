@@ -36,15 +36,16 @@ def _fake_claude(root: Path, *, creates_file: bool) -> Path:
         "if '--version' in sys.argv:\n"
         "    print('2.1.241')\n"
         "    raise SystemExit(0)\n"
-        f"Path({str(root / 'qualification-env.json')!r}).write_text(json.dumps({{"
+        "environment = {"
         "'PATH': os.environ.get('PATH'), "
         "'AWS_SECRET_ACCESS_KEY': os.environ.get('AWS_SECRET_ACCESS_KEY'), "
         "'ANTHROPIC_BASE_URL': os.environ.get('ANTHROPIC_BASE_URL'), "
         "'ANTHROPIC_AUTH_TOKEN': os.environ.get('ANTHROPIC_AUTH_TOKEN'), "
-        "'CLAUDE_CONFIG_DIR': os.environ.get('CLAUDE_CONFIG_DIR')}))\n"
+        "'CLAUDE_CONFIG_DIR': os.environ.get('CLAUDE_CONFIG_DIR')}\n"
         f"{write_probe}\n"
         "print(json.dumps({'type': 'assistant', 'message': {'content': []}}))\n"
-        "print(json.dumps({'type': 'result', 'subtype': 'success', 'is_error': False, "
+        "print(json.dumps({'type': 'result', 'probe_environment': environment, "
+        "'subtype': 'success', 'is_error': False, "
         "'num_turns': 1, 'modelUsage': {'gateway-alias': {'inputTokens': 5, "
         "'cacheCreationInputTokens': 1, 'cacheReadInputTokens': 2, 'outputTokens': 3}}}))\n",
         encoding="utf-8",
@@ -216,7 +217,8 @@ def test_native_qualification_uses_isolated_config_without_gateway_or_host_secre
         output=tmp_path / "qualification.json",
     )
 
-    environment = json.loads((tmp_path / "qualification-env.json").read_text())
+    result = json.loads((tmp_path / "qualification.jsonl").read_text().splitlines()[-1])
+    environment = result["probe_environment"]
     assert environment["PATH"] == os.defpath
     assert environment["AWS_SECRET_ACCESS_KEY"] is None
     assert environment["ANTHROPIC_BASE_URL"] is None
