@@ -801,6 +801,9 @@ def main() -> int:
     parser.add_argument("--agent-bin", default=None)
     parser.add_argument("--model", default="claude-sonnet-5")
     parser.add_argument("--actual-model-id", default=None)
+    parser.add_argument(
+        "--reasoning-effort", choices=("none", "low", "medium", "high", "xhigh", "max")
+    )
     parser.add_argument("--route-kind", default="legacy")
     parser.add_argument("--billing-mode", default="unknown")
     parser.add_argument("--gateway-profile", default=None)
@@ -871,6 +874,13 @@ def main() -> int:
     if args.agent == "codex" and args.provider not in PROVIDER_BASE_URLS:
         print(f"unsupported Codex provider: {args.provider}", file=sys.stderr)
         return 2
+
+    if args.agent == "codex" and args.max_agent_cost_usd is not None:
+        parser.error(
+            "--max-agent-cost-usd is a Claude-only limit; use the recorded Codex wall limit"
+        )
+    if args.reasoning_effort is not None and args.agent != "codex":
+        parser.error("--reasoning-effort currently requires the Codex harness")
 
     task_dir = args.task.resolve()
     source = task_dir / "source"
@@ -1133,8 +1143,20 @@ def main() -> int:
             )
         measured_ms = (time.monotonic() - started) * 1000
         agent_ended_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        codex_evidence = None
+        codex_evidence_error = None
         if args.agent == "codex":
-            stats = _codex_stats(outcome.stdout, args, measured_ms)
+            if args.reasoning_effort is not None:
+                try:
+                    codex_evidence = _codex_session_evidence(
+                        codex_home, args.model, args.reasoning_effort
+                    )
+                except (OSError, ValueError) as exc:
+                    codex_evidence_error = str(exc)
+            usage_event = (
+                json.dumps({"usage": codex_evidence["total_token_usage"]}) if codex_evidence else ""
+            )
+            stats = _codex_stats(outcome.stdout + "\n" + usage_event, args, measured_ms)
         else:
             stats = claude_stats(
                 outcome.stdout,
@@ -1145,6 +1167,9 @@ def main() -> int:
             )
         out_dir = args.out.resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
+        if codex_evidence is not None:
+            session = Path(str(codex_evidence.pop("session_path")))
+            shutil.copyfile(session, out_dir / "codex-session.jsonl")
         raw = outcome.stdout.strip().splitlines()
         result = _claude_result(outcome.stdout) if args.agent == "claude-code" else None
         result_text = json.dumps(result) if result is not None else (raw[-1] if raw else None)
@@ -1194,9 +1219,18 @@ def main() -> int:
             "route_kind": args.route_kind,
             "billing_mode": args.billing_mode,
             "gateway_profile": args.gateway_profile,
+            "reasoning_effort": args.reasoning_effort,
+            "codex_session": codex_evidence,
             "started_at": agent_started_at,
             "ended_at": agent_ended_at,
-            "work": _observed_work(outcome.stdout),
+            "work": {
+                **_observed_work(outcome.stdout),
+                **(
+                    {key: codex_evidence[key] for key in ("observed_model_responses", "tool_calls")}
+                    if codex_evidence
+                    else {}
+                ),
+            },
             "treatment": {
                 "sanka_workflow": "readiness-aware"
                 if mode == "readiness-aware"
@@ -1225,6 +1259,7 @@ def main() -> int:
                     "output_tokens",
                     "total_tokens",
                     "model_usage",
+                    "reasoning_output_tokens",
                 )
             },
             "cost": {
@@ -1274,6 +1309,9 @@ def main() -> int:
             ):
                 print("agent isolation failed: unexpected skill inventory", file=sys.stderr)
                 return 1
+        if codex_evidence_error is not None:
+            print(f"agent reported an error: {codex_evidence_error}", file=sys.stderr)
+            return 1
         if readiness_context is not None:
             (out_dir / "sanka-readiness.json").write_text(
                 json.dumps(readiness_context, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -1408,7 +1446,10 @@ def _codex_command(args: argparse.Namespace, prompt: str, codex_home: Path) -> l
     # with client-executed function tools, and the migration task needs no web
     # access anyway, so every Codex cell runs with web search disabled — one
     # tool surface across providers, disclosed in GENERATED.md.
-    command += ["--config", 'web_search="disabled"']
+    command += ["--config", 'web_search="disabled"', "--config", "project_doc_max_bytes=0"]
+    effort = getattr(args, "reasoning_effort", None)
+    if effort is not None:
+        command += ["--config", f'model_reasoning_effort="{effort}"']
     command.append(prompt)
     return command
 
@@ -1417,6 +1458,8 @@ def _codex_stats(stdout: str, args: argparse.Namespace, measured_ms: float) -> d
     turns = 0
     input_tokens = 0
     cached_input_tokens = 0
+    cache_write_input_tokens = 0
+    reasoning_output_tokens = 0
     output_tokens = 0
     terminal_kind: str | None = None
     error_events = 0
@@ -1447,6 +1490,12 @@ def _codex_stats(stdout: str, args: argparse.Namespace, measured_ms: float) -> d
             last_error = json.dumps(event)[:500]
         usage = _find_usage(event)
         if usage:
+            cache_write_input_tokens = max(
+                cache_write_input_tokens, int(usage.get("cache_write_input_tokens") or 0)
+            )
+            reasoning_output_tokens = max(
+                reasoning_output_tokens, int(usage.get("reasoning_output_tokens") or 0)
+            )
             input_tokens = max(input_tokens, int(usage.get("input_tokens") or 0)) or input_tokens
             cached_input_tokens = (
                 max(cached_input_tokens, int(usage.get("cached_input_tokens") or 0))
@@ -1478,13 +1527,64 @@ def _codex_stats(stdout: str, args: argparse.Namespace, measured_ms: float) -> d
         "subtype": subtype,
         "result": last_error,
         "cost_basis": basis,
-        "input_tokens": input_tokens or None,
-        "cached_input_tokens": cached_input_tokens or None,
+        "input_tokens": max(0, input_tokens - cached_input_tokens - cache_write_input_tokens),
+        "cached_input_tokens": cached_input_tokens,
+        "cache_creation_input_tokens": cache_write_input_tokens,
+        "cache_read_input_tokens": cached_input_tokens,
+        "reasoning_output_tokens": reasoning_output_tokens,
+        "total_tokens": input_tokens + output_tokens,
         "output_tokens": output_tokens or None,
         "recovered_error_events": error_events if terminal_kind == "turn.completed" else 0,
         "terminal_event": terminal_kind,
     }
     return stats
+
+
+def _codex_session_evidence(home: Path, model: str, effort: str) -> dict[str, object]:
+    """Keep native session evidence for effort, per-request billing and tool counts."""
+    sessions = list((home / "sessions").rglob("*.jsonl"))
+    if len(sessions) != 1:
+        raise ValueError("Codex reasoning evidence requires exactly one session")
+    raw = sessions[0].read_bytes()
+    contexts = []
+    requests = []
+    calls = set()
+    totals: dict[str, object] = {}
+    seen = set()
+    for line in raw.decode().splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        payload = event.get("payload", {})
+        if event.get("type") == "turn_context":
+            contexts.append({"model": payload.get("model"), "effort": payload.get("effort")})
+        if event.get("type") == "response_item" and payload.get("type") in {
+            "function_call",
+            "custom_tool_call",
+        }:
+            calls.add(payload.get("call_id"))
+        if event.get("type") == "event_msg" and payload.get("type") == "token_count":
+            info = payload.get("info") or {}
+            total = info.get("total_token_usage")
+            last = info.get("last_token_usage")
+            if isinstance(total, dict) and isinstance(last, dict):
+                key = json.dumps(total, sort_keys=True)
+                if key not in seen:
+                    seen.add(key)
+                    requests.append(last)
+                    totals = total
+    if not contexts or any(c != {"model": model, "effort": effort} for c in contexts):
+        raise ValueError("Codex model or reasoning effort differs from the pinned request")
+    return {
+        "contexts": contexts,
+        "request_usage": requests,
+        "total_token_usage": totals,
+        "observed_model_responses": len(requests),
+        "tool_calls": len(calls),
+        "session_path": str(sessions[0]),
+        "sha256": _sha256_bytes(raw),
+    }
 
 
 def _find_usage(event: dict) -> dict | None:
@@ -1746,7 +1846,7 @@ def _write_disclosure(
     else:
         budget_text = (
             f"{args.max_turns} requested - not enforced by Codex CLI; "
-            "the 3600s wall-clock timeout is the binding limit"
+            f"the {args.wall_clock_seconds}s wall-clock timeout is the binding limit"
         )
     modified_text = (
         "\n".join(f"- `{name}`" for name in modified)
@@ -1792,6 +1892,7 @@ intervention between prompt and frozen overlay.
 | Provider | {provider} |
 | Provider variant | {args.provider_variant} |
 | Web search | {web_search_text} |
+| Reasoning effort | {getattr(args, "reasoning_effort", None) or "provider default (not pinned)"} |
 | Recovered transport notices | {stats.get("recovered_error_events", 0)} |
 | Cost basis | {stats.get("cost_basis", "agent-reported")} |
 | Requested model | `{args.model}` |

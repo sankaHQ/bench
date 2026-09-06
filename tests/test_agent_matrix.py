@@ -271,14 +271,14 @@ def test_manifest_rejects_unsafe_and_colliding_artifact_names() -> None:
         build_cells(colliding)
 
 
-def test_official_manifest_requires_claude_code_and_matching_qualification(
+def test_official_manifest_requires_matching_harness_qualification(
     tmp_path: Path,
 ) -> None:
     value = official_manifest(tmp_path)
     validate_official_manifest(value, tmp_path)
 
     value["models"][0]["harness"] = "codex"
-    with pytest.raises(ValueError, match="Claude Code"):
+    with pytest.raises(ValueError, match="codex version and binary pins"):
         validate_official_manifest(value, tmp_path)
 
 
@@ -1007,3 +1007,77 @@ def test_estimated_cost_limit_is_part_of_cell_identity(tmp_path: Path) -> None:
     before = build_cells(spec)[0].input_digest
     spec["execution"]["max_agent_cost_usd"] = 5.0
     assert build_cells(spec)[0].input_digest != before
+
+
+def test_codex_api_matrix_pins_effort_session_and_binary(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    model = value["models"][0]
+    model.update(
+        harness="codex",
+        provider="openai",
+        route_kind="openai-responses",
+        billing_mode="api_key",
+        gateway_profile=None,
+        reasoning_effort="high",
+        requested_model_id="gpt-5.6-luna",
+        actual_model_id="gpt-5.6-luna",
+    )
+    value["toolchain"].update(codex_version="codex-cli test", codex_bin_sha256="sha256:" + "a" * 64)
+    del value["toolchain"]["claude_version"]
+    del value["toolchain"]["claude_bin_sha256"]
+    path = tmp_path / model["qualification"]
+    evidence = json.loads(path.read_text())
+    evidence.update(
+        {
+            k: model[k]
+            for k in (
+                "requested_model_id",
+                "actual_model_id",
+                "provider",
+                "provider_variant",
+                "route_kind",
+                "billing_mode",
+                "gateway_profile",
+                "reasoning_effort",
+            )
+        }
+    )
+    evidence["schema"] = "sanka-bench/codex-route-qualification/v1"
+    evidence["codex"] = {"version": "codex-cli test", "sha256": "sha256:" + "a" * 64}
+    session = path.with_suffix(".session.jsonl")
+    session.write_text(
+        json.dumps({"type": "turn_context", "payload": {"model": "gpt-5.6-luna", "effort": "high"}})
+        + "\n"
+    )
+    evidence["evidence"]["session_sha256"] = (
+        "sha256:" + hashlib.sha256(session.read_bytes()).hexdigest()
+    )
+    path.write_text(json.dumps(evidence))
+    model["qualification_sha256"] = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    validate_official_manifest(value, tmp_path)
+    before = build_cells(value)[0].input_digest
+    model["reasoning_effort"] = "medium"
+    assert build_cells(value)[0].input_digest != before
+    with pytest.raises(ValueError, match="reasoning effort"):
+        validate_official_manifest(value, tmp_path)
+    model["reasoning_effort"] = "high"
+    model["billing_mode"] = "subscription"
+    with pytest.raises(ValueError, match="API-key"):
+        validate_official_manifest(value, tmp_path)
+    model["billing_mode"] = "api_key"
+    value["execution"]["max_agent_cost_usd"] = 5
+    with pytest.raises(ValueError, match="Claude-only"):
+        validate_official_manifest(value, tmp_path)
+
+
+def test_report_records_effort_without_inventing_unscored_results(tmp_path: Path) -> None:
+    from matrix_report import write_report
+
+    value = manifest()
+    for model in value["models"]:
+        model.update(harness="codex", reasoning_effort="high")
+    write_report(value, tmp_path)
+    rows = json.loads((tmp_path / "matrix.json").read_text())["rows"]
+    assert all(row["reasoning_effort"] == "high" and row["harness"] == "codex" for row in rows)
+    assert all(row["passed"] is None and row["total_tokens"] is None for row in rows)
+    assert "codex / high" in (tmp_path / "REPORT.md").read_text()

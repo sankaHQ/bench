@@ -262,6 +262,8 @@ def cell_input_digest(
     toolchain_fields = (
         "claude_version",
         "claude_bin_sha256",
+        "codex_version",
+        "codex_bin_sha256",
         "agent_runner_sha256",
         "evaluator_sha256",
         "sanka_cli",
@@ -416,26 +418,48 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
     toolchain = manifest.get("toolchain")
     if not isinstance(toolchain, dict):
         raise ValueError("official v2 manifest requires toolchain pins")
-    claude_version = toolchain.get("claude_version")
-    claude_sha = toolchain.get("claude_bin_sha256")
     skill_sha = toolchain.get("sanka_skill_sha256")
-    if (
-        not isinstance(claude_version, str)
-        or not claude_version
-        or not isinstance(claude_sha, str)
-        or re.fullmatch(r"sha256:[0-9a-f]{64}", claude_sha) is None
-        or not isinstance(skill_sha, str)
-        or re.fullmatch(r"sha256:[0-9a-f]{64}", skill_sha) is None
-    ):
-        raise ValueError("official v2 manifest requires Claude and Sanka skill pins")
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", str(skill_sha or "")) is None:
+        raise ValueError("official v2 manifest requires Sanka skill pins")
     root = root.resolve()
     for model in manifest["models"]:
-        if model.get("harness") != "claude-code":
-            raise ValueError("official v2 matrices require the Claude Code harness")
+        harness = model.get("harness")
+        if harness not in {"claude-code", "codex"}:
+            raise ValueError("official v2 matrices require Claude Code or Codex")
+        agent_tool = "claude" if harness == "claude-code" else "codex"
+        agent_version = toolchain.get(f"{agent_tool}_version")
+        agent_sha = toolchain.get(f"{agent_tool}_bin_sha256")
+        if (
+            not isinstance(agent_version, str)
+            or not agent_version
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", str(agent_sha or "")) is None
+        ):
+            raise ValueError(f"official v2 manifest requires {agent_tool} version and binary pins")
+        if harness == "codex":
+            if (
+                model.get("provider") != "openai"
+                or model.get("route_kind") != "openai-responses"
+                or model.get("billing_mode") != "api_key"
+                or model.get("gateway_profile") is not None
+            ):
+                raise ValueError("Codex official matrices require OpenAI Responses API-key billing")
+            if model.get("reasoning_effort") not in {
+                "none",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+            }:
+                raise ValueError("Codex official matrices require explicit reasoning effort")
+            if cost_limit is not None:
+                raise ValueError("max_agent_cost_usd is a Claude-only limit")
         route_kind = model.get("route_kind")
         billing_mode = model.get("billing_mode")
         gateway_profile = model.get("gateway_profile")
-        if route_kind == "anthropic-native":
+        if route_kind == "openai-responses" and harness == "codex":
+            pass
+        elif route_kind == "anthropic-native":
             if billing_mode != "subscription" or gateway_profile is not None:
                 raise ValueError(
                     "anthropic-native routes require subscription billing and no gateway profile"
@@ -454,7 +478,7 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
             raise ValueError("qualification digest does not match the manifest")
         evidence = load_json(path)
         if (
-            evidence.get("schema") != "sanka-bench/claude-route-qualification/v1"
+            evidence.get("schema") != f"sanka-bench/{agent_tool}-route-qualification/v1"
             or evidence.get("status") != "qualified"
         ):
             raise ValueError("qualification record is not qualified")
@@ -464,11 +488,14 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
             checks.get(name) is not True for name in required_checks
         ):
             raise ValueError("qualification checks are incomplete")
-        claude = evidence.get("claude")
-        if not isinstance(claude, dict) or (
-            claude.get("version") != claude_version or claude.get("sha256") != claude_sha
+        agent_evidence = evidence.get(agent_tool)
+        if not isinstance(agent_evidence, dict) or (
+            agent_evidence.get("version") != agent_version
+            or agent_evidence.get("sha256") != agent_sha
         ):
-            raise ValueError("qualification Claude harness evidence does not match the manifest")
+            raise ValueError(
+                f"qualification {agent_tool.title()} harness evidence does not match the manifest"
+            )
         hashes = evidence.get("evidence")
         if not isinstance(hashes, dict) or any(
             re.fullmatch(r"sha256:[0-9a-f]{64}", str(hashes.get(name) or "")) is None
@@ -481,6 +508,25 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
             or qualification_digest(transcript) != hashes["transcript_sha256"]
         ):
             raise ValueError("qualification transcript digest does not match its evidence")
+        if harness == "codex":
+            if evidence.get("reasoning_effort") != model["reasoning_effort"]:
+                raise ValueError("qualification reasoning effort does not match the manifest")
+            session = path.with_suffix(".session.jsonl")
+            if not session.is_file() or qualification_digest(session) != hashes.get(
+                "session_sha256"
+            ):
+                raise ValueError("qualification session digest mismatch")
+            contexts = [
+                event["payload"]
+                for line in session.read_text().splitlines()
+                if (event := json.loads(line)).get("type") == "turn_context"
+            ]
+            if not contexts or any(
+                c.get("model") != model["actual_model_id"]
+                or c.get("effort") != model["reasoning_effort"]
+                for c in contexts
+            ):
+                raise ValueError("qualification session model or reasoning mismatch")
         for field in (
             "requested_model_id",
             "actual_model_id",
