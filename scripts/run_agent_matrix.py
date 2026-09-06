@@ -280,6 +280,8 @@ def cell_input_digest(
         },
         "toolchain": {key: toolchain.get(key) for key in toolchain_fields if key in toolchain},
     }
+    if "experimental_toolchain" in manifest:
+        payload["experimental_toolchain"] = manifest["experimental_toolchain"]
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
@@ -395,7 +397,7 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
         raise ValueError("official v2 manifest container engine must be docker or podman")
     workflow = manifest["execution"].get("sanka_workflow", "availability-v1")
     threshold = manifest["execution"].get("sanka_readiness_threshold", 0.5)
-    if workflow not in {"availability-v1", "artifacts-first-v1"}:
+    if workflow not in {"availability-v1", "artifacts-first-v1", "artifacts-first-v2"}:
         raise ValueError("unknown Sanka workflow")
     if (
         isinstance(threshold, bool)
@@ -993,7 +995,10 @@ class RollingCoordinator:
 
     def aggregate(self, stage_id: str) -> int:
         template = self.manifest["execution"].get("aggregate_command")
-        if self.manifest["execution"].get("sanka_workflow") == "artifacts-first-v1":
+        if self.manifest["execution"].get("sanka_workflow") in {
+            "artifacts-first-v1",
+            "artifacts-first-v2",
+        }:
             from matrix_report import write_report
 
             try:
