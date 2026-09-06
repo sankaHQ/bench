@@ -1072,9 +1072,8 @@ def main() -> int:
                 args.model,
                 "--max-turns",
                 str(args.max_turns),
-                # stream-json keeps every assistant/tool event, so
-                # agent-log.jsonl is the per-turn transcript instead of a copy
-                # of the final result line; the result event stays last.
+                # Keep every event, including notifications after the terminal result.
+                # agent-log.jsonl preserves the complete stream.
                 "--output-format",
                 "stream-json",
                 "--verbose",
@@ -1147,9 +1146,11 @@ def main() -> int:
         out_dir = args.out.resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
         raw = outcome.stdout.strip().splitlines()
+        result = _claude_result(outcome.stdout) if args.agent == "claude-code" else None
+        result_text = json.dumps(result) if result is not None else (raw[-1] if raw else None)
         for directory in (out_dir, raw_dir):
-            if raw:
-                (directory / "agent-result.json").write_text(raw[-1] + "\n", encoding="utf-8")
+            if result_text is not None:
+                (directory / "agent-result.json").write_text(result_text + "\n", encoding="utf-8")
             if outcome.stdout:
                 (directory / "agent-log.jsonl").write_text(outcome.stdout, encoding="utf-8")
             if outcome.stderr:
@@ -1563,15 +1564,7 @@ def claude_stats(
     actual_model_id: str,
     measured_ms: float,
 ) -> dict[str, object]:
-    payload: dict[str, object] | None = None
-    for line in reversed([line for line in stdout.splitlines() if line.strip()]):
-        try:
-            value = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(value, dict) and "num_turns" in value:
-            payload = value
-            break
+    payload = _claude_result(stdout)
     if payload is None:
         return {}
 
@@ -1639,25 +1632,37 @@ def claude_stats(
     }
 
 
-def _agent_stats(stdout: str) -> dict[str, object]:
-    for line in reversed([line for line in stdout.splitlines() if line.strip()]):
+def _claude_result(stdout: str) -> dict[str, object] | None:
+    """Find the terminal summary even when background notifications follow it."""
+    for line in reversed(stdout.splitlines()):
         try:
             payload = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(payload, dict) and "num_turns" in payload:
-            return {
-                key: payload.get(key)
-                for key in (
-                    "num_turns",
-                    "duration_ms",
-                    "total_cost_usd",
-                    "is_error",
-                    "subtype",
-                    "result",
-                )
-            }
-    return {}
+        if (
+            isinstance(payload, dict)
+            and payload.get("type") in (None, "result")
+            and "num_turns" in payload
+        ):
+            return payload
+    return None
+
+
+def _agent_stats(stdout: str) -> dict[str, object]:
+    payload = _claude_result(stdout)
+    if payload is None:
+        return {}
+    return {
+        key: payload.get(key)
+        for key in (
+            "num_turns",
+            "duration_ms",
+            "total_cost_usd",
+            "is_error",
+            "subtype",
+            "result",
+        )
+    }
 
 
 def _write_candidate(
