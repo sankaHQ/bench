@@ -1284,6 +1284,12 @@ def main() -> int:
             },
         }
         _write_json_atomic(out_dir / "telemetry.json", telemetry)
+        if args.agent == "codex":
+            # Runtime caches are disposable; keep sessions and all frozen evidence.
+            for name in (".tmp", "shell_snapshots"):
+                cache = codex_home / name
+                if cache.exists():
+                    shutil.rmtree(cache)
         if args.agent == "claude-code":
             events = []
             for line in raw:
@@ -1451,7 +1457,14 @@ def _codex_command(args: argparse.Namespace, prompt: str, codex_home: Path) -> l
     # with client-executed function tools, and the migration task needs no web
     # access anyway, so every Codex cell runs with web search disabled — one
     # tool surface across providers, disclosed in GENERATED.md.
-    command += ["--config", 'web_search="disabled"', "--config", "project_doc_max_bytes=0"]
+    command += [
+        "--config",
+        'web_search="disabled"',
+        "--config",
+        "project_doc_max_bytes=0",
+        "--config",
+        "features.shell_snapshot=false",
+    ]
     effort = getattr(args, "reasoning_effort", None)
     if effort is not None:
         command += ["--config", f'model_reasoning_effort="{effort}"']

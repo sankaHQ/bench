@@ -1382,6 +1382,7 @@ def test_codex_high_effort_and_cache_accounting(harness: object, tmp_path: Path)
     command = harness._codex_command(args, "migrate", tmp_path)  # type: ignore[attr-defined]
     assert 'model_reasoning_effort="high"' in command
     assert "project_doc_max_bytes=0" in command
+    assert "features.shell_snapshot=false" in command
     usage = {
         "input_tokens": 100,
         "cached_input_tokens": 60,
@@ -1464,9 +1465,16 @@ def test_codex_candidate_preserves_api_usage_and_checks_runtime_effort(
         "reasoning_output_tokens": 12,
     }
 
+    cache_dirs = []
+
     def run(command, *, workspace, env, **_kwargs):
         assert 'model_reasoning_effort="high"' in command
         home = Path(env["CODEX_HOME"])
+        for name in (".tmp", "shell_snapshots"):
+            cache = home / name
+            cache.mkdir()
+            (cache / "runtime-only").write_text("disposable runtime cache")
+            cache_dirs.append(cache)
         session = home / "sessions/run.jsonl"
         session.parent.mkdir()
         events = [
@@ -1490,6 +1498,7 @@ def test_codex_candidate_preserves_api_usage_and_checks_runtime_effort(
 
     monkeypatch.setattr(harness.agent_isolation, "run", run)
     assert harness.main() == (0 if observed_effort == "high" else 1)
+    assert cache_dirs and all(not p.exists() for p in cache_dirs)
     assert (out / "agent-log.jsonl").is_file()
     telemetry = json.loads((out / "telemetry.json").read_text())
     assert telemetry["reasoning_effort"] == "high"

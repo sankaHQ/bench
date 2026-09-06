@@ -332,3 +332,8 @@ reasoning output and per-request counts for provider pricing. Reasoning output
 is part of output tokens, not an additional token charge. Compare treatments
 within the same harness; a Codex-versus-Claude comparison includes a harness
 change as well as any model change.
+
+Codex API-key runs disable shell snapshots, which can otherwise serialize the
+provider environment. After the agent exits, discard only its temporary plugin
+and shell caches; preserve native sessions, transcripts and frozen outputs. The
+credential scan continues to cover every retained run artifact.
