@@ -1369,6 +1369,12 @@ def test_flask_prompt_and_readiness_do_not_advertise_fastapi_replay(harness, rep
     assert "does not yet provide differential replay" in rendered
     assert "--to fastapi" not in rendered
 
+    context["extension_commands"] = ["apply", "plan", "scan", "verify"]
+    rendered = harness._readiness_prompt(context, Path("/tools/sanka"))
+    assert "--to flask --scenarios" in rendered
+    assert "does not yet provide" not in rendered
+    assert "--to fastapi" not in rendered
+
 
 def test_codex_high_effort_and_cache_accounting(harness: object, tmp_path: Path) -> None:
     args = SimpleNamespace(
