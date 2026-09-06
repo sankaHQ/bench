@@ -1368,3 +1368,169 @@ def test_flask_prompt_and_readiness_do_not_advertise_fastapi_replay(harness, rep
     rendered = harness._readiness_prompt(context, Path("/tools/sanka"))
     assert "does not yet provide differential replay" in rendered
     assert "--to fastapi" not in rendered
+
+
+def test_codex_high_effort_and_cache_accounting(harness: object, tmp_path: Path) -> None:
+    args = SimpleNamespace(
+        agent_bin="codex",
+        model="gpt-5.6-luna",
+        provider="openai",
+        reasoning_effort="high",
+        price_in=None,
+        price_out=None,
+    )
+    command = harness._codex_command(args, "migrate", tmp_path)  # type: ignore[attr-defined]
+    assert 'model_reasoning_effort="high"' in command
+    assert "project_doc_max_bytes=0" in command
+    assert "features.shell_snapshot=false" in command
+    usage = {
+        "input_tokens": 100,
+        "cached_input_tokens": 60,
+        "cache_write_input_tokens": 30,
+        "output_tokens": 20,
+        "reasoning_output_tokens": 12,
+    }
+    stats = harness._codex_stats(json.dumps({"type": "turn.completed", "usage": usage}), args, 1)  # type: ignore[attr-defined]
+    assert stats["input_tokens"] == 10
+    assert stats["cache_read_input_tokens"] == 60
+    assert stats["cache_creation_input_tokens"] == 30
+    assert stats["reasoning_output_tokens"] == 12
+    assert stats["total_tokens"] == 120
+
+
+def test_codex_session_evidence_deduplicates_usage_and_rejects_effort_drift(
+    harness: object, tmp_path: Path
+) -> None:
+    session = tmp_path / "sessions/run.jsonl"
+    session.parent.mkdir()
+    usage = {"input_tokens": 100, "cached_input_tokens": 60, "output_tokens": 20}
+    events = [
+        {"type": "turn_context", "payload": {"model": "gpt-5.6-luna", "effort": "high"}},
+        {"type": "response_item", "payload": {"type": "function_call", "call_id": "call1"}},
+        {
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {"total_token_usage": usage, "last_token_usage": usage},
+            },
+        },
+    ]
+    session.write_text("\n".join(json.dumps(e) for e in [*events, events[-1]]) + "\n")
+    evidence = harness._codex_session_evidence(tmp_path, "gpt-5.6-luna", "high")  # type: ignore[attr-defined]
+    assert len(evidence["request_usage"]) == 1
+    assert evidence["tool_calls"] == 1
+    assert evidence["observed_model_responses"] == 1
+    with pytest.raises(ValueError, match="reasoning"):
+        harness._codex_session_evidence(tmp_path, "gpt-5.6-luna", "medium")  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("observed_effort", ["high", "medium"])
+def test_codex_candidate_preserves_api_usage_and_checks_runtime_effort(
+    harness, tmp_path, monkeypatch, observed_effort
+):
+    agent = _fake_agent(tmp_path, result={"num_turns": 1}, touch=False)
+    out = tmp_path / "candidate"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_agent_candidate",
+            "--task",
+            str(SCRIPTS.parent / "tasks/drf-fastapi/drf-fastapi-001"),
+            "--candidate-id",
+            "codex-luna-alone",
+            "--out",
+            str(out),
+            "--sandbox",
+            str(tmp_path / "sandbox"),
+            "--agent-bin",
+            str(agent),
+            "--agent",
+            "codex",
+            "--model",
+            "gpt-5.6-luna",
+            "--reasoning-effort",
+            "high",
+            "--route-kind",
+            "openai-responses",
+            "--billing-mode",
+            "api_key",
+        ],
+    )
+    usage = {
+        "input_tokens": 100,
+        "cached_input_tokens": 60,
+        "cache_write_input_tokens": 30,
+        "output_tokens": 20,
+        "reasoning_output_tokens": 12,
+    }
+
+    cache_dirs = []
+
+    def run(command, *, workspace, env, **_kwargs):
+        assert 'model_reasoning_effort="high"' in command
+        home = Path(env["CODEX_HOME"])
+        for name in (".tmp", "shell_snapshots"):
+            cache = home / name
+            cache.mkdir()
+            (cache / "runtime-only").write_text("disposable runtime cache")
+            cache_dirs.append(cache)
+        session = home / "sessions/run.jsonl"
+        session.parent.mkdir()
+        events = [
+            {
+                "type": "turn_context",
+                "payload": {"model": "gpt-5.6-luna", "effort": observed_effort},
+            },
+            {
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {"total_token_usage": usage, "last_token_usage": usage},
+                },
+            },
+        ]
+        session.write_text("\n".join(json.dumps(e) for e in events) + "\n")
+        (workspace / "target_app.py").write_text("from fastapi import FastAPI\napp=FastAPI()\n")
+        return subprocess.CompletedProcess(
+            command, 0, json.dumps({"type": "turn.completed", "usage": usage}), ""
+        )
+
+    monkeypatch.setattr(harness.agent_isolation, "run", run)
+    assert harness.main() == (0 if observed_effort == "high" else 1)
+    assert cache_dirs and all(not p.exists() for p in cache_dirs)
+    assert (out / "agent-log.jsonl").is_file()
+    telemetry = json.loads((out / "telemetry.json").read_text())
+    assert telemetry["reasoning_effort"] == "high"
+    assert telemetry["billing_mode"] == "api_key"
+    assert telemetry["usage"]["total_tokens"] == 120
+    if observed_effort == "high":
+        assert (out / "codex-session.jsonl").is_file()
+        assert telemetry["codex_session"]["contexts"] == [
+            {"model": "gpt-5.6-luna", "effort": "high"}
+        ]
+        assert (out / "candidate.yaml").is_file()
+    else:
+        assert not (out / "candidate.yaml").exists()
+
+
+def test_invalid_candidate_id_fails_before_task_or_agent_access(
+    harness, monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_agent_candidate.py",
+            "--task",
+            str(tmp_path),
+            "--out",
+            str(tmp_path / "out"),
+            "--candidate-id",
+            "codex-gpt-5.6-luna-alone",
+        ],
+    )
+    with pytest.raises(SystemExit) as error:
+        harness.main()
+    assert error.value.code == 2
+    assert not (tmp_path / "out").exists()

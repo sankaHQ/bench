@@ -1,6 +1,6 @@
-# Reliable Claude Code model-matrix runs
+# Reliable coding-agent model-matrix runs
 
-Official measurements are pass@1 experiments: the same pinned Claude Code
+Official measurements are pass@1 experiments: the same pinned coding-agent
 harness runs each model treatment alone, with the Sanka CLI only, and with the
 project-local Sanka skill. The evaluator stays tool-neutral. A run never swaps
 harnesses, models, providers, or routes to fill a failed cell.
@@ -307,3 +307,33 @@ The same report runs at stage completion for artifacts-first manifests. Hash and
 credential checks run before publication. Historical availability scores remain
 separate; a fresh, explicitly authorized run is required to measure the new
 workflow's effect.
+
+
+## OpenAI Platform API runs with Codex
+
+Official Codex runs use `harness: codex`, `provider: openai`,
+`route_kind: openai-responses`, `billing_mode: api_key`, no gateway profile,
+and an explicit `reasoning_effort` (for example `high`) on each model record.
+Pin `codex_version` and `codex_bin_sha256` in the toolchain. Each disposable
+Codex home uses the OpenAI Responses endpoint and `OPENAI_API_KEY`; it does
+not inherit the operator's subscription login or project instructions.
+
+Qualification uses `sanka-bench/codex-route-qualification/v1` with the existing
+route, tool-use, streaming, terminal and usage evidence fields, plus `codex`
+binary/version pins and `reasoning_effort`. Keep the raw native session beside
+the qualification JSON as `.session.jsonl`, pin its `session_sha256`, and
+verify its `turn_context` model and effort match. The runner preserves and
+checks the same native session evidence for every scored candidate.
+
+Codex does not accept Claude's `max_agent_cost_usd`; that combination is
+rejected. Its recorded wall-clock limit applies, with cumulative spending
+admission handled by the run owner. Usage retains cache reads, cache writes,
+reasoning output and per-request counts for provider pricing. Reasoning output
+is part of output tokens, not an additional token charge. Compare treatments
+within the same harness; a Codex-versus-Claude comparison includes a harness
+change as well as any model change.
+
+Codex API-key runs disable shell snapshots, which can otherwise serialize the
+provider environment. After the agent exits, discard only its temporary plugin
+and shell caches; preserve native sessions, transcripts and frozen outputs. The
+credential scan continues to cover every retained run artifact.

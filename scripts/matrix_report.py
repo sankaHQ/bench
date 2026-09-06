@@ -140,6 +140,7 @@ def write_report(manifest: dict[str, Any], root: Path) -> None:
     if artifact_issues(root, cells) or secret_hits(root, credential_values(manifest)):
         raise ValueError("Matrix publication failed artifact integrity or credential checks")
     rows = []
+    models = {model["slug"]: model for model in manifest["models"]}
     for cell in cells:
         paths = artifacts(root, cell)
         state = cell_state(root, cell)
@@ -150,6 +151,8 @@ def write_report(manifest: dict[str, Any], root: Path) -> None:
         timing = telemetry.get("timing", {})
         row = {
             "model_slug": cell.model_slug,
+            "harness": cell.harness,
+            "reasoning_effort": models[cell.model_slug].get("reasoning_effort"),
             "actual_model_id": cell.actual_model_id,
             "provider": cell.provider,
             "provider_variant": cell.provider_variant,
@@ -201,6 +204,13 @@ def write_report(manifest: dict[str, Any], root: Path) -> None:
         "Throughput is a serial equivalent, not measured concurrent capacity.",
         "Observed model responses are not provider API request counts. "
         "Cost basis and Claude-equivalent estimates remain separate in matrix.json.",
+        "Harness / requested effort: "
+        + "; ".join(
+            f"{m['slug']}: {m.get('harness') or m.get('agent')} / "
+            f"{m.get('reasoning_effort') or 'not pinned'}"
+            for m in manifest["models"]
+        )
+        + ".",
         "If infrastructure retries occurred, efficiency goals remain unknown because "
         "final-cell totals exclude prior incident overhead.",
         "",

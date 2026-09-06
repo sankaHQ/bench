@@ -113,6 +113,7 @@ class Cell:
     config: str
     sample: int
     samples: int
+    reasoning_effort: str | None = None
 
     @property
     def candidate_id(self) -> str:
@@ -180,6 +181,7 @@ def resolve_cell(
         config=config,
         sample=sample,
         samples=samples,
+        reasoning_effort=model.get("reasoning_effort"),
     )
 
 
@@ -207,6 +209,11 @@ def route_environment(base: dict[str, str], cell: Cell) -> dict[str, str]:
         for name in ALLOWED_KEYS:
             env.pop(name, None)
         return env
+    if cell.route_kind == "openai-responses":
+        for name in ALLOWED_KEYS - {"OPENAI_API_KEY"}:
+            env.pop(name, None)
+        if not env.get("OPENAI_API_KEY"):
+            raise ValueError("OpenAI Responses route requires OPENAI_API_KEY")
     if cell.route_kind == "gateway":
         for name in ALLOWED_KEYS - {
             "ANTHROPIC_BASE_URL",
@@ -274,24 +281,26 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
             f"agent runner digest mismatch: expected {expected_digest}, got {actual_digest}"
         )
     if manifest.get("schema") == "sanka-bench/model-matrix-run-manifest/v2":
-        expected_claude_digest = str(manifest["toolchain"].get("claude_bin_sha256") or "")
-        actual_claude_digest = "sha256:" + hashlib.sha256(tools["claude"].read_bytes()).hexdigest()
+        expected_claude_digest = str(manifest["toolchain"].get(f"{agent_tool}_bin_sha256") or "")
+        actual_claude_digest = (
+            "sha256:" + hashlib.sha256(tools[agent_tool].read_bytes()).hexdigest()
+        )
         if actual_claude_digest != expected_claude_digest:
             raise ValueError(
-                "Claude binary digest mismatch: "
+                f"{agent_tool.title()} binary digest mismatch: "
                 f"expected {expected_claude_digest}, got {actual_claude_digest}"
             )
         version = subprocess.run(
-            [str(tools["claude"]), "--version"],
+            [str(tools[agent_tool]), "--version"],
             capture_output=True,
             text=True,
             check=False,
             env=isolated_environment(os.environ),
         )
-        expected_version = str(manifest["toolchain"].get("claude_version") or "")
+        expected_version = str(manifest["toolchain"].get(f"{agent_tool}_version") or "")
         if version.returncode != 0 or version.stdout.strip() != expected_version:
             raise ValueError(
-                f"Claude version mismatch: expected {expected_version!r}, "
+                f"{agent_tool.title()} version mismatch: expected {expected_version!r}, "
                 f"got {version.stdout.strip()!r}"
             )
     return tools
@@ -478,6 +487,8 @@ def generation_command(
     )
     if manifest["execution"].get("max_agent_cost_usd") is not None:
         command.extend(["--max-agent-cost-usd", str(manifest["execution"]["max_agent_cost_usd"])])
+    if cell.reasoning_effort is not None:
+        command.extend(["--reasoning-effort", cell.reasoning_effort])
     if cell.gateway_profile is not None:
         command.extend(["--gateway-profile", cell.gateway_profile])
     if attempt > 1:
@@ -623,6 +634,7 @@ def run_generation(
         f"PROVIDER={cell.provider}",
         f"PROVIDER_VARIANT={cell.provider_variant}",
         f"MODEL_ID={cell.model_id}",
+        f"REASONING_EFFORT={cell.reasoning_effort or 'default'}",
         f"CONFIG={cell.config}",
         f"ATTEMPT={attempt}",
         f"SANKA_CLI={toolchain.get('sanka_cli', 'not offered')}",

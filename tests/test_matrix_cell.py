@@ -529,3 +529,27 @@ def test_flask_lane_selects_its_own_extension_distribution(driver, monkeypatch):
     monkeypatch.setattr(driver, "sanka_versions", versions)
     driver.check_sanka_toolchain(manifest, Path("/tools/sanka"))
     assert observed == ["sanka-extension-drf-to-flask"]
+
+
+def test_codex_openai_route_only_inherits_platform_key_and_explicit_effort(
+    driver: object, tmp_path: Path
+) -> None:
+    manifest = _manifest(samples=1)
+    model = manifest["models"][1]
+    model.update(route_kind="openai-responses", billing_mode="api_key", reasoning_effort="high")
+    cell = driver.resolve_cell(manifest, "001", "gpt56sol", "alone", 1)  # type: ignore[attr-defined]
+    env = driver.route_environment(
+        {
+            "OPENAI_API_KEY": "platform-test",
+            "FIREWORKS_API_KEY": "other",  # type: ignore[attr-defined]
+            "ANTHROPIC_AUTH_TOKEN": "subscription",
+            "PATH": "/usr/bin",
+        },
+        cell,
+    )
+    assert env == {"OPENAI_API_KEY": "platform-test", "PATH": "/usr/bin"}
+    paths = driver.resolve_paths(tmp_path / "run-manifest.json", manifest, cell)  # type: ignore[attr-defined]
+    tools = {"python": Path("python"), "agent_runner": Path("runner"), "codex": Path("codex")}
+    command = driver.generation_command(manifest, cell, paths, tools, attempt=1, prior_failure=None)  # type: ignore[attr-defined]
+    assert command[command.index("--reasoning-effort") + 1] == "high"
+    assert "--max-budget-usd" not in command

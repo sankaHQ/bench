@@ -12,6 +12,22 @@ import pytest
 from sanka_bench import agent_isolation
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS zsh and sandbox-exec")
+def test_zsh_heredoc_uses_owned_scratch(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    result = agent_isolation.run(
+        ["/bin/zsh", "-fc", "cat <<'EOF'\nhello\nEOF"],
+        workspace=workspace,
+        writable=[workspace],
+        readable=[],
+        env={"PATH": os.defpath, "TMPDIR": str(workspace), "TMPPREFIX": "/tmp/zsh"},
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "hello\n"
+
+
 @pytest.mark.skipif(
     sys.platform != "darwin" and shutil.which("bwrap") is None,
     reason="requires macOS sandbox-exec or Linux bubblewrap",
