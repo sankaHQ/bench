@@ -693,17 +693,20 @@ def authorize_retry(
     return ledger
 
 
-def prioritized(root: Path, cells: Iterable[CellSpec]) -> list[CellSpec]:
+def prioritized(
+    root: Path, cells: Iterable[CellSpec], *, matrix_cells: Iterable[CellSpec] | None = None
+) -> list[CellSpec]:
     cells = list(cells)
+    reference = cells if matrix_cells is None else list(matrix_cells)
     states = {cell.key: cell_state(root, cell) for cell in cells}
-    pairs: dict[tuple[str, str, int], int] = {}
-    for cell in cells:
-        pairs.setdefault((cell.task, cell.model_slug, cell.sample), len(pairs) + 1)
+    configurations = list(dict.fromkeys(cell.config for cell in reference))
+    pairs: dict[tuple[str, int], int] = {}
+    for cell in reference:
+        pairs.setdefault((cell.task, cell.sample), len(pairs))
 
     def lane_rank(cell: CellSpec) -> int:
-        pair = pairs[(cell.task, cell.model_slug, cell.sample)]
-        preferred = "alone" if pair % 2 else "with-sanka"
-        return 0 if cell.config == preferred else 1
+        pair = pairs[(cell.task, cell.sample)]
+        return (configurations.index(cell.config) - pair) % len(configurations)
 
     return sorted(
         cells,
@@ -1061,7 +1064,7 @@ class RollingCoordinator:
         )
         tasks = [
             asyncio.create_task(self._run_cell(cell, stage_id, result))
-            for cell in prioritized(self.root, cells)
+            for cell in prioritized(self.root, cells, matrix_cells=self.cells)
         ]
         loop = asyncio.get_running_loop()
         current = asyncio.current_task()

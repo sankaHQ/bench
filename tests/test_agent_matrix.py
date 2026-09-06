@@ -435,6 +435,44 @@ def test_retry_preserves_the_failed_sandbox_with_the_incident(tmp_path: Path) ->
     assert not paths.sandbox.exists()
 
 
+@pytest.mark.parametrize("subset", [False, True])
+def test_three_arm_rotation_is_balanced_for_each_model_and_stage(
+    tmp_path: Path, subset: bool
+) -> None:
+    value = manifest()
+    tasks = ["drf-fastapi-001", "drf-fastapi-002", "drf-fastapi-003"]
+    value["suite"] = {"tasks": tasks, "route_weights": dict.fromkeys(tasks, 1)}
+    value["execution"].update(
+        configurations=["alone", "sanka-cli", "with-sanka"], samples=2, expected_rows=54
+    )
+    cells = build_cells(value)
+    selected = [cell for cell in cells if not subset or cell.task == tasks[1]]
+    ordered = (
+        prioritized(tmp_path, selected, matrix_cells=cells)
+        if subset
+        else prioritized(tmp_path, selected)
+    )
+    expected = [
+        ["alone", "sanka-cli", "with-sanka"],
+        ["sanka-cli", "with-sanka", "alone"],
+        ["with-sanka", "alone", "sanka-cli"],
+        ["alone", "sanka-cli", "with-sanka"],
+        ["sanka-cli", "with-sanka", "alone"],
+        ["with-sanka", "alone", "sanka-cli"],
+    ]
+    for model in value["models"]:
+        for index, task in enumerate(tasks):
+            if subset and task != tasks[1]:
+                continue
+            for sample in (1, 2):
+                actual = [
+                    cell.config
+                    for cell in ordered
+                    if (cell.model_slug, cell.task, cell.sample) == (model["slug"], task, sample)
+                ]
+                assert actual == expected[index * 2 + sample - 1]
+
+
 def test_prioritized_alternates_the_first_lane_for_each_pair(tmp_path: Path) -> None:
     value = official_manifest(tmp_path)
     value["suite"] = {

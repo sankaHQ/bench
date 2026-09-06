@@ -32,7 +32,11 @@ Use `alone`, `sanka-cli`, `with-sanka` in that order and
 pinned CLI/extension and pre-generation treatment. Only `with-sanka` gets the
 installed skill. Keep prompts, task inputs, model/provider version, generation
 budget and concurrency identical within each paired comparison. Retain the
-coordinator's rotated arm order. Record setup time separately and include it in
+coordinator's rotated arm order. Each model cycles through all three positions
+across task/sample pairs: model-only → CLI → Skills, CLI → Skills → model-only,
+then Skills → model-only → CLI. Stage subsets retain the full manifest's rotation,
+so splitting a run into waves does not reset which arm goes first.
+Record setup time separately and include it in
 end-to-end time; a warm-cache comparison must be explicitly labeled.
 
 The initial Flask extension converts a narrow stateless APIView subset. Its scan
