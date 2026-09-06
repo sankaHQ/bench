@@ -1,0 +1,8 @@
+schema_version: sanka-bench/candidate/v0.1
+id: compatibility-bridge
+kind: overlay
+overlay: overlay
+provenance:
+  producer: benchmark-author
+  revision: drf-flask-004-compatibility-bridge-v1
+  command: deliberate forbidden Django WSGI bridge

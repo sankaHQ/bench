@@ -15,7 +15,10 @@ source-code similarity to one preferred implementation.
 
 ## Status
 
-Version 1: one lane (`drf-fastapi`), eleven tasks, 170 verifiable method-routes.
+Version 1 has eleven `drf-fastapi` tasks (170 verifiable method-routes).
+The additional `drf-flask` lane adds four migration tasks, three using existing DRF
+source families and one new wallet-transfer application. There are fifteen source/target tasks across twelve source
+applications; compare and report each lane separately.
 Published numbers come only from runs whose frozen candidates, evaluator
 reports, and full agent logs exist, measured as
 [docs/measurement-design.md](docs/measurement-design.md) specifies; nothing is
@@ -31,7 +34,7 @@ adding tasks. Lanes are scored separately — framework, data, and object
 lanes will never be blended into one number, because their route units are
 not commensurable. Score changes bump the score version (current: v0.2).
 
-Eleven synthetic fixtures exist. `drf-fastapi-001` covers CRUD and validation;
+The FastAPI lane has eleven synthetic source fixtures. `drf-fastapi-001` covers CRUD and validation;
 `drf-fastapi-002` adds database-backed `TokenAuthentication`, `IsAuthenticated`,
 and object-level permissions (author-or-read-only), with 401-variant,
 403, and `WWW-Authenticate`/`Allow` header scenarios — a native candidate must
@@ -212,8 +215,8 @@ The suite is deliberately small and verification-heavy today; the plan is to
 grow it the same way it started — every task ships with its behavior oracle,
 public scenarios, and hard gates, never as a prompt list.
 
-1. **Hard tier (~5 tasks).** The first three tasks saturate at 100% for
-   strong models; these are designed to break that, each targeting a
+1. **Hard tier (~5 tasks).** These extend the first three introductory tasks,
+   each targeting a
    failure mode already observed in recorded runs or real-app scans:
    auth-and-permission matrices (multiple authentication schemes, per-action
    and object-level permissions, 401/403 branch coverage; landed as
@@ -356,3 +359,24 @@ the benchmark evaluator remains tool-neutral. See the
 [converter check instructions](https://github.com/sankaHQ/extensions/blob/main/docs/converter-regression.md)
 for local execution and the distinction between fully migrated, partial, and
 expected-refusal outcomes.
+
+## Flask lane and broader model comparison
+
+The Flask lane uses native Flask URL dispatch evidence, endpoint provenance,
+forbidden-import/process/network records, and the same independent HTTP,
+database, side-effect and determinism gates as FastAPI. A Django WSGI bridge is
+an explicit negative control, even when all responses match.
+
+- `drf-flask-001`: optimistic locking, state transitions and atomic event records.
+- `drf-flask-002`: multipart uploads, stored bytes, download headers and media types.
+- `drf-flask-003`: decimal aggregates, stable pagination and computed fields.
+- `drf-flask-004`: new tenant-scoped wallet transfers, idempotency and atomic audit records.
+
+The first three reuse DRF sources from FastAPI tasks 010, 009 and 011 respectively, so they
+measure destination diversity without pretending to be independent source apps.
+Run `make test-evaluator-flask-001` (and 002/003/004) for qualified positive/negative
+controls. `make check`, `make baselines`, `make docker-baselines` and CI include
+the new lane, using bounded task shards.
+
+See [the expanded comparison protocol](docs/expanded-comparison.md) before a paid
+run. A 100% result on a single calibration task is not full-suite saturation.

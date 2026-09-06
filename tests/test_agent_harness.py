@@ -905,7 +905,16 @@ def test_persistent_sandbox_refuses_a_nonempty_workspace(tmp_path: Path) -> None
     assert (workspace / "prior-attempt.txt").read_text() == "keep me\n"
 
 
-def test_turn_budget_exhaustion_freezes_the_workspace(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "subtype,disclosure_text",
+    [
+        ("error_max_turns", "turn budget (60)"),
+        ("error_max_budget_usd", "agent estimated-cost budget (5.0 USD)"),
+    ],
+)
+def test_budget_exhaustion_freezes_the_workspace(
+    tmp_path: Path, subtype: str, disclosure_text: str
+) -> None:
     task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
     agent = _fake_agent(
         tmp_path,
@@ -914,23 +923,24 @@ def test_turn_budget_exhaustion_freezes_the_workspace(tmp_path: Path) -> None:
             "duration_ms": 1000,
             "total_cost_usd": 0.1,
             "is_error": True,
-            "subtype": "error_max_turns",
+            "subtype": subtype,
             "result": "max turns reached",
         },
         touch="target_app.py",
     )
     out = tmp_path / "candidate"
-    outcome = _run_adapter(task, agent, out)
+    outcome = _run_adapter(task, agent, out, extra_args=["--max-agent-cost-usd", "5"])
     # The fake exits 1 like the real CLI does on error_max_turns; the parsed
     # result must still win over the exit code and the workspace must freeze.
     assert outcome.returncode == 0, outcome.stderr
     assert (out / "overlay" / "target_app.py").is_file()
     disclosure = (out / "GENERATED.md").read_text(encoding="utf-8")
-    assert "turn budget (60) exhausted" in disclosure
+    assert disclosure_text + " exhausted" in disclosure
     assert "frozen as-is" in disclosure
     argv = (tmp_path / "fake-agent-argv.txt").read_text(encoding="utf-8").splitlines()
     assert argv[argv.index("--output-format") + 1] == "stream-json"
     assert "--verbose" in argv
+    assert argv[argv.index("--max-budget-usd") + 1] == "5.0"
 
 
 def test_stream_transcript_is_preserved_and_result_is_last_event(tmp_path: Path) -> None:
@@ -1320,3 +1330,17 @@ def test_observed_work_deduplicates_streamed_events(harness):
         "provider_api_requests": None,
         "provider_retries": None,
     }
+
+
+def test_flask_prompt_and_readiness_do_not_advertise_fastapi_replay(harness, repository_root):
+    prompt = harness.task_prompt(repository_root / "tasks/drf-flask/drf-flask-004", 60, 3600)
+    assert "Flask" in prompt and "Flask URL rule" in prompt
+    assert "FastAPI" not in prompt and "APIRoute" not in prompt
+    context = harness._readiness_context(
+        {"native_routes": 0, "native_eligible_routes": 4, "readiness": 0, "plan_hash": "reviewed"},
+        0.5,
+    )
+    context["target_framework"] = "flask"
+    rendered = harness._readiness_prompt(context, Path("/tools/sanka"))
+    assert "does not yet provide differential replay" in rendered
+    assert "--to fastapi" not in rendered

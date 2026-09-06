@@ -353,9 +353,12 @@
     },
     "nativeEvidence": {
       "type": "object",
+      "anyOf": [
+        { "required": ["app_is_fastapi"] },
+        { "required": ["app_is_flask", "route_is_flask_rule", "flask_dispatch_observed"] }
+      ],
       "additionalProperties": false,
       "required": [
-        "app_is_fastapi",
         "route_class",
         "endpoint_in_workspace",
         "forbidden_imports",
@@ -364,6 +367,9 @@
         "settings_module"
       ],
       "properties": {
+        "app_is_flask": { "type": "boolean" },
+        "route_is_flask_rule": { "type": "boolean" },
+        "flask_dispatch_observed": { "type": "boolean" },
         "app_is_fastapi": {
           "type": "boolean"
         },

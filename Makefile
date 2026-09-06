@@ -73,3 +73,24 @@ docker-baselines: $(addprefix docker-baselines-,$(BASELINE_TASKS))
 
 report:
 	uv run sanka-bench report
+
+# Flask tasks use the same bounded per-task CI jobs as FastAPI.
+FLASK_TASKS = 001 002 003 004
+
+define FLASK_RULES
+.PHONY: test-evaluator-flask-$(1) baselines-flask-$(1) docker-baselines-flask-$(1)
+test-evaluator-flask-$(1):
+	uv run python -m pytest tests/test_evaluator_flask.py -k drf-flask-$(1) --durations=5 --junitxml=reports/tests-evaluator-flask-$(1).xml
+baselines-flask-$(1):
+	@for name in noop compatibility-bridge native-reference $(if $(filter 004,$(1)),missing-audit); do \
+		uv run sanka-bench evaluate --runner local --task tasks/drf-flask/drf-flask-$(1) --candidate baselines/drf-flask-$(1)/$$$$name --output reports/drf-flask-$(1)-$$$$name.json || exit 1; \
+	done
+docker-baselines-flask-$(1):
+	@for name in noop compatibility-bridge native-reference $(if $(filter 004,$(1)),missing-audit); do \
+		uv run sanka-bench evaluate --runner docker --container-engine $$(CONTAINER_ENGINE) --task tasks/drf-flask/drf-flask-$(1) --candidate baselines/drf-flask-$(1)/$$$$name --output reports/drf-flask-$(1)-$$$$name-docker.json || exit 1; \
+	done
+endef
+$(foreach task,$(FLASK_TASKS),$(eval $(call FLASK_RULES,$(task))))
+test-suite: $(addprefix test-evaluator-flask-,$(FLASK_TASKS))
+baselines: $(addprefix baselines-flask-,$(FLASK_TASKS))
+docker-baselines: $(addprefix docker-baselines-flask-,$(FLASK_TASKS))

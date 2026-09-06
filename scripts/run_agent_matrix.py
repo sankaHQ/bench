@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -248,6 +249,7 @@ def cell_input_digest(
 ) -> str:
     execution_fields = (
         "max_turns",
+        "max_agent_cost_usd",
         "wall_clock_seconds",
         "prompt_sha256",
         "sanka_prompt_sha256",
@@ -362,6 +364,11 @@ def qualification_digest(path: Path) -> str:
 def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
     if manifest.get("schema") != "sanka-bench/model-matrix-run-manifest/v2":
         return
+    lanes = {str(task).rsplit("-", 1)[0] for task in manifest["suite"]["tasks"]}
+    if len(lanes) != 1 or not lanes <= {"drf-fastapi", "drf-flask"}:
+        raise ValueError(
+            "official v2 comparisons require one supported migration lane per manifest"
+        )
     if manifest["execution"].get("configurations") not in (
         ["alone", "with-sanka"],
         ["alone", "sanka-cli", "with-sanka"],
@@ -376,6 +383,14 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
         for name in ("max_turns", "wall_clock_seconds")
     ):
         raise ValueError("official v2 manifest requires positive execution budgets")
+    cost_limit = manifest["execution"].get("max_agent_cost_usd")
+    if cost_limit is not None and (
+        isinstance(cost_limit, bool)
+        or not isinstance(cost_limit, int | float)
+        or not math.isfinite(cost_limit)
+        or cost_limit <= 0
+    ):
+        raise ValueError("max_agent_cost_usd must be finite and positive")
     if manifest["execution"].get("container_engine", "docker") not in {"docker", "podman"}:
         raise ValueError("official v2 manifest container engine must be docker or podman")
     workflow = manifest["execution"].get("sanka_workflow", "availability-v1")

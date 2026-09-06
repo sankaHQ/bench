@@ -54,7 +54,6 @@ COORDINATOR_ENV_KEYS = {
     "SANKA_BENCH_WAVE_ID",
 }
 OFFICIAL_MARKETPLACE = "https://github.com/sankaHQ/extensions.git"
-DRF_EXTENSION_ID = "sanka/drf-to-fastapi"
 DRF_EXTENSION_DISTRIBUTION = "sanka-extension-drf-to-fastapi"
 
 
@@ -241,7 +240,7 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
     ).strip()
     if actual_sha != expected_sha:
         raise ValueError(f"worktree SHA mismatch: expected {expected_sha}, got {actual_sha}")
-    task = paths.worktree / "tasks" / "drf-fastapi" / cell.task_id
+    task = paths.worktree / "tasks" / cell.task_id.rsplit("-", 1)[0] / cell.task_id
     python = paths.worktree / ".venv" / "bin" / "python"
     bench = paths.worktree / ".venv" / "bin" / "sanka-bench"
     agent_runner = paths.worktree / "scripts" / "run_agent_candidate.py"
@@ -298,7 +297,9 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
     return tools
 
 
-def sanka_versions(sanka_bin: Path) -> tuple[str, str]:
+def sanka_versions(
+    sanka_bin: Path, distribution: str = DRF_EXTENSION_DISTRIBUTION
+) -> tuple[str, str]:
     """(`sanka --version`, installed DRF extension version) for the pinned runtime env."""
     env = isolated_environment(os.environ)
     version = subprocess.run(
@@ -309,7 +310,7 @@ def sanka_versions(sanka_bin: Path) -> tuple[str, str]:
         [
             str(python),
             "-c",
-            f"import importlib.metadata as m; print(m.version({DRF_EXTENSION_DISTRIBUTION!r}))",
+            f"import importlib.metadata as m; print(m.version({distribution!r}))",
         ],
         capture_output=True,
         text=True,
@@ -321,14 +322,19 @@ def sanka_versions(sanka_bin: Path) -> tuple[str, str]:
 
 def check_sanka_toolchain(manifest: dict[str, Any], sanka_bin: Path) -> dict[str, str]:
     """The run measures exactly the Sanka the manifest names; anything else aborts."""
-    version, extension = sanka_versions(sanka_bin)
+    targets = {str(task).rsplit("-", 1)[0] for task in manifest["suite"]["tasks"]}
+    if len(targets) != 1 or not targets <= {"drf-fastapi", "drf-flask"}:
+        raise ValueError("Sanka toolchain requires one supported migration lane")
+    framework = next(iter(targets)).removeprefix("drf-")
+    distribution = f"sanka-extension-drf-to-{framework}"
+    version, extension = sanka_versions(sanka_bin, distribution)
     expected_cli = str(manifest["toolchain"].get("sanka_cli", ""))
     expected_extension = str(manifest["toolchain"].get("extension_version", ""))
     if not expected_cli or version != expected_cli:
         raise ValueError(f"sanka CLI mismatch: expected {expected_cli!r}, got {version!r}")
     if not expected_extension or extension != expected_extension:
         raise ValueError(
-            f"{DRF_EXTENSION_DISTRIBUTION} mismatch: expected {expected_extension!r}, "
+            f"{distribution} mismatch: expected {expected_extension!r}, "
             f"installed {extension!r} (uv sync removes ad-hoc wheels; reinstall the "
             "release wheels into the runtime environment)"
         )
@@ -434,7 +440,7 @@ def generation_command(
         str(tools["python"]),
         str(tools["agent_runner"]),
         "--task",
-        str(Path("tasks") / "drf-fastapi" / cell.task_id),
+        str(Path("tasks") / cell.task_id.rsplit("-", 1)[0] / cell.task_id),
         "--candidate-id",
         cell.candidate_id,
         "--agent",
@@ -470,6 +476,8 @@ def generation_command(
             str(manifest["execution"].get("sanka_readiness_threshold", 0.5)),
         ]
     )
+    if manifest["execution"].get("max_agent_cost_usd") is not None:
+        command.extend(["--max-agent-cost-usd", str(manifest["execution"]["max_agent_cost_usd"])])
     if cell.gateway_profile is not None:
         command.extend(["--gateway-profile", cell.gateway_profile])
     if attempt > 1:
@@ -518,7 +526,7 @@ def evaluation_command(
         "--container-engine",
         str(manifest["execution"].get("container_engine") or "docker"),
         "--task",
-        str(Path("tasks") / "drf-fastapi" / cell.task_id),
+        str(Path("tasks") / cell.task_id.rsplit("-", 1)[0] / cell.task_id),
         "--candidate",
         str(paths.candidate),
         "--output",

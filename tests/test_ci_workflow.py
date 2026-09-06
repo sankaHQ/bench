@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import yaml
 
-TASKS = [f"{index:03d}" for index in range(1, 12)]
+TASKS = [f"{index:03d}" for index in range(1, 12)] + [f"flask-{index:03d}" for index in range(1, 5)]
 
 
 def test_baseline_workflow_shards_every_task_and_preserves_aggregate_gates(

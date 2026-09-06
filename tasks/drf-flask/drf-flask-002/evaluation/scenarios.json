@@ -1,0 +1,451 @@
+[
+  {
+    "id": "list-canonical",
+    "method": "GET",
+    "path": "/api/files/"
+  },
+  {
+    "id": "detail-canonical",
+    "method": "GET",
+    "path": "/api/files/1/"
+  },
+  {
+    "id": "list-json-media-type",
+    "method": "GET",
+    "path": "/api/files.json",
+    "capture_headers": ["Content-Type"]
+  },
+  {
+    "id": "detail-api-media-type",
+    "method": "GET",
+    "path": "/api/files/1.api",
+    "capture_headers": ["Content-Type"]
+  },
+  {
+    "id": "download-canonical-bytes",
+    "method": "GET",
+    "path": "/api/files/1/download/",
+    "response_body": "base64",
+    "capture_headers": ["Content-Type", "Content-Disposition"]
+  },
+  {
+    "id": "upload-canonical-txt",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "fields": {"key": "public-file", "label": "Public file"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "public.txt",
+          "content_type": "text/plain",
+          "content_b64": "bmV3IGZpbGUNCg=="
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-wrong-extension",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "fields": {"key": "wrong-type", "label": "Wrong type"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "payload.exe",
+          "content_type": "application/octet-stream",
+          "content_b64": "YmFk"
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-oversized",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "fields": {"key": "too-large", "label": "Too large"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "large.txt",
+          "content_type": "text/plain",
+          "content_b64": "eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4"
+        }
+      ]
+    }
+  },
+  {
+    "id": "list-api-media-type",
+    "method": "GET",
+    "path": "/api/files.api",
+    "capture_headers": ["Content-Type"]
+  },
+  {
+    "id": "detail-json-second-file",
+    "method": "GET",
+    "path": "/api/files/2.json",
+    "capture_headers": ["Content-Type"]
+  },
+  {
+    "id": "detail-api-second-file",
+    "method": "GET",
+    "path": "/api/files/2.api",
+    "capture_headers": ["Content-Type"]
+  },
+  {
+    "id": "download-json-first-file",
+    "method": "GET",
+    "path": "/api/files/1/download.json",
+    "response_body": "base64",
+    "capture_headers": ["Content-Type", "Content-Disposition"]
+  },
+  {
+    "id": "download-api-second-file",
+    "method": "GET",
+    "path": "/api/files/2/download.api",
+    "response_body": "base64",
+    "capture_headers": ["Content-Type", "Content-Disposition"]
+  },
+  {
+    "id": "download-canonical-second-file",
+    "method": "GET",
+    "path": "/api/files/2/download/",
+    "response_body": "base64",
+    "capture_headers": ["Content-Type", "Content-Disposition"]
+  },
+  {
+    "id": "upload-api-unusual-boundary",
+    "method": "POST",
+    "path": "/api/files.api",
+    "capture_headers": ["Content-Type"],
+    "multipart": {
+      "boundary": "----Sanka.009+Boundary_42",
+      "fields": {"key": "boundary-file", "label": "Boundary upload"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "boundary.txt",
+          "content_type": "text/plain",
+          "content_b64": "cmF3DQpib3VuZGFyeQo="
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-json-csv",
+    "method": "POST",
+    "path": "/api/files.json",
+    "capture_headers": ["Content-Type"],
+    "multipart": {
+      "fields": {"key": "csv-file", "label": "CSV file"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "rows.csv",
+          "content_type": "text/csv",
+          "content_b64": "YSxiDQoxLDINCg=="
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-api-json",
+    "method": "POST",
+    "path": "/api/files.api",
+    "capture_headers": ["Content-Type"],
+    "multipart": {
+      "fields": {"key": "json-file", "label": "JSON file"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "payload.json",
+          "content_type": "application/json",
+          "content_b64": "eyJvayI6dHJ1ZX0K"
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-uppercase-extension",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "fields": {"key": "upper-file", "label": "Uppercase suffix"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "UPPER.TXT",
+          "content_type": "text/plain",
+          "content_b64": "VVBQRVIK"
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-exactly-32-bytes",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "fields": {"key": "exact-limit", "label": "Exact limit"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "limit.txt",
+          "content_type": "text/plain",
+          "content_b64": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-33-bytes-api",
+    "method": "POST",
+    "path": "/api/files.api",
+    "capture_headers": ["Content-Type"],
+    "multipart": {
+      "fields": {"key": "over-limit", "label": "Over limit"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "limit.txt",
+          "content_type": "text/plain",
+          "content_b64": "eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4"
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-missing-file",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "fields": {"key": "missing-file", "label": "Missing file"},
+      "files": []
+    }
+  },
+  {
+    "id": "upload-blank-key",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "fields": {"key": "", "label": "Blank key"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "blank.txt",
+          "content_type": "text/plain",
+          "content_b64": "YmFk"
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-blank-label",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "fields": {"key": "blank-label", "label": ""},
+      "files": [
+        {
+          "field": "file",
+          "filename": "blank.txt",
+          "content_type": "text/plain",
+          "content_b64": "YmFk"
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-duplicate-key",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "fields": {"key": "guide", "label": "Duplicate guide"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "duplicate.txt",
+          "content_type": "text/plain",
+          "content_b64": "YmFk"
+        }
+      ]
+    }
+  },
+  {
+    "id": "detail-missing-api",
+    "method": "GET",
+    "path": "/api/files/999.api",
+    "capture_headers": ["Content-Type"]
+  },
+  {
+    "id": "download-missing-json",
+    "method": "GET",
+    "path": "/api/files/999/download.json",
+    "capture_headers": ["Content-Type"]
+  },
+  {
+    "id": "upload-boundary-like-content",
+    "method": "POST",
+    "path": "/api/files/",
+    "multipart": {
+      "boundary": "InnerBoundary",
+      "fields": {"key": "boundary-content", "label": "Boundary content"},
+      "files": [
+        {
+          "field": "file",
+          "filename": "inner.txt",
+          "content_type": "text/plain",
+          "content_b64": "cHJlZml4LS1Jbm5lckJvdW5kYXJ5LS1zdWZmaXg="
+        }
+      ]
+    }
+  },
+  {
+    "id": "upload-then-detail-canonical",
+    "method": "GET",
+    "path": "/api/files/3/",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/files/",
+        "multipart": {
+          "fields": {"key": "detail-file", "label": "Detail file"},
+          "files": [
+            {
+              "field": "file",
+              "filename": "detail.txt",
+              "content_type": "text/plain",
+              "content_b64": "ZGV0YWlsIGJ5dGVzCg=="
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "upload-then-detail-api",
+    "method": "GET",
+    "path": "/api/files/3.api",
+    "capture_headers": ["Content-Type"],
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/files.api",
+        "capture_headers": ["Content-Type"],
+        "multipart": {
+          "fields": {"key": "api-detail", "label": "API detail"},
+          "files": [
+            {
+              "field": "file",
+              "filename": "api.txt",
+              "content_type": "text/plain",
+              "content_b64": "YXBpIGRldGFpbAo="
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "upload-then-download-binary",
+    "method": "GET",
+    "path": "/api/files/3/download.api",
+    "response_body": "base64",
+    "capture_headers": ["Content-Type", "Content-Disposition"],
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/files.json",
+        "multipart": {
+          "fields": {"key": "binary-file", "label": "Binary bytes"},
+          "files": [
+            {
+              "field": "file",
+              "filename": "binary.txt",
+              "content_type": "application/octet-stream",
+              "content_b64": "AAECCg1/gP8="
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "valid-upload-then-rejected-upload-rolls-back-files",
+    "method": "GET",
+    "path": "/api/files/",
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/files/",
+        "multipart": {
+          "fields": {"key": "kept-file", "label": "Kept file"},
+          "files": [
+            {
+              "field": "file",
+              "filename": "keep.txt",
+              "content_type": "text/plain",
+              "content_b64": "a2VlcCBtZQo="
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/files.api",
+        "multipart": {
+          "fields": {"key": "rejected-file", "label": "Rejected file"},
+          "files": [
+            {
+              "field": "file",
+              "filename": "reject.txt",
+              "content_type": "text/plain",
+              "content_b64": "eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "duplicate-after-valid-upload-keeps-original-file",
+    "method": "GET",
+    "path": "/api/files/3/download/",
+    "response_body": "base64",
+    "capture_headers": ["Content-Type", "Content-Disposition"],
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/files/",
+        "multipart": {
+          "fields": {"key": "stable-file", "label": "Stable file"},
+          "files": [
+            {
+              "field": "file",
+              "filename": "stable.txt",
+              "content_type": "text/plain",
+              "content_b64": "a2VlcCBtZQo="
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/files.json",
+        "multipart": {
+          "fields": {"key": "stable-file", "label": "Duplicate stable file"},
+          "files": [
+            {
+              "field": "file",
+              "filename": "other.txt",
+              "content_type": "text/plain",
+              "content_b64": "YmFk"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

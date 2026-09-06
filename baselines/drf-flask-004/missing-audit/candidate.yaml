@@ -1,0 +1,8 @@
+schema_version: sanka-bench/candidate/v0.1
+id: missing-audit
+kind: overlay
+overlay: overlay
+provenance:
+  producer: benchmark-author
+  revision: drf-flask-004-reference-v1
+  command: "negative control: same responses but missing audit writes"
