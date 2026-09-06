@@ -1,0 +1,227 @@
+[
+  {
+    "id": "get-alpha",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "get-beta",
+    "method": "GET",
+    "path": "/api/documents/2/",
+    "headers": {
+      "Authorization": "ApiKey team-b"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "missing-auth",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {},
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "matching-etag",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-None-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "weak-read-etag",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-None-Match": "W/\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "update",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "Changed"
+    }
+  },
+  {
+    "id": "missing-precondition",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "Changed"
+    }
+  },
+  {
+    "id": "stale-write",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r0\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "Changed"
+    }
+  },
+  {
+    "id": "blank-title",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "  "
+    }
+  },
+  {
+    "id": "delete",
+    "method": "DELETE",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ]
+  },
+  {
+    "id": "stale-after-update",
+    "method": "PATCH",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a",
+      "If-Match": "\"doc-1-r1\""
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "body": {
+      "title": "Again"
+    },
+    "setup": [
+      {
+        "id": "update",
+        "method": "PATCH",
+        "path": "/api/documents/1/",
+        "headers": {
+          "Authorization": "ApiKey team-a",
+          "If-Match": "\"doc-1-r1\""
+        },
+        "capture_headers": [
+          "ETag",
+          "Cache-Control",
+          "Allow",
+          "WWW-Authenticate"
+        ],
+        "body": {
+          "title": "Changed"
+        }
+      }
+    ]
+  },
+  {
+    "id": "read-after-delete",
+    "method": "GET",
+    "path": "/api/documents/1/",
+    "headers": {
+      "Authorization": "ApiKey team-a"
+    },
+    "capture_headers": [
+      "ETag",
+      "Cache-Control",
+      "Allow",
+      "WWW-Authenticate"
+    ],
+    "setup": [
+      {
+        "id": "delete",
+        "method": "DELETE",
+        "path": "/api/documents/1/",
+        "headers": {
+          "Authorization": "ApiKey team-a",
+          "If-Match": "\"doc-1-r1\""
+        },
+        "capture_headers": [
+          "ETag",
+          "Cache-Control",
+          "Allow",
+          "WWW-Authenticate"
+        ]
+      }
+    ]
+  }
+]

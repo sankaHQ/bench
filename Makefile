@@ -75,7 +75,7 @@ report:
 	uv run sanka-bench report
 
 # Flask tasks use the same bounded per-task CI jobs as FastAPI.
-FLASK_TASKS = 001 002 003 004
+FLASK_TASKS = 001 002 003 004 005 006
 
 define FLASK_RULES
 .PHONY: test-evaluator-flask-$(1) baselines-flask-$(1) docker-baselines-flask-$(1)

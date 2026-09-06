@@ -9,18 +9,26 @@ Sanka's results.
 The new Flask fixtures and control candidates were authored with Codex for
 evaluator qualification. They are not blind model attempts and must not appear
 as model pass@1 results. The first three native references adapt existing private
-benchmark controls; the wallet task adds an independent synthetic source.
+benchmark controls; wallets, conditional documents and capacity reservations add
+three independent synthetic sources. The six Flask tasks contain 192 graded
+scenarios. Tasks 005–006 were authored after artifacts-first-v2 and its existing
+fifteen-task run were frozen, and have not been used to tune that treatment.
+Their 64 graded scenarios and 24 public examples belong to a later comparison,
+not the current run or its denominator. These source-controlled tasks are public
+benchmark material, not a permanent secret holdout.
 
 ## Freeze two lane manifests
 
 Use the existing `sanka-bench/model-matrix-run-manifest/v2` format, one run directory
 per lane. The coordinator now rejects an official manifest mixing destination
-lanes. Keep the original eleven FastAPI tasks; add Flask 001–004 in the second
-manifest. They share three source families, so do not pool them as fifteen
-independent source applications or blend lane route-weighted scores.
+lanes. Keep the original eleven FastAPI tasks; use Flask 001–006 for a newly
+authorized full-corpus comparison. They share three source families: the seventeen
+tasks represent fourteen source applications. Do not blend lane route-weighted
+scores. Existing frozen manifests retain their original task lists.
 
 Use `alone`, `sanka-cli`, `with-sanka` in that order and
-`execution.sanka_workflow = "artifacts-first-v1"`. Both Sanka arms get the same
+`execution.sanka_workflow = "artifacts-first-v2"` for a new treatment (see
+[its delivery contract](artifacts-first-v2.md)). Both Sanka arms get the same
 pinned CLI/extension and pre-generation treatment. Only `with-sanka` gets the
 installed skill. Keep prompts, task inputs, model/provider version, generation
 budget and concurrency identical within each paired comparison. Retain the
