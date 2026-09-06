@@ -32,6 +32,7 @@ from run_matrix_cell import ALLOWED_KEYS, evaluation_environment, read_allowlist
 
 from sanka_bench.environment import isolated_environment
 from sanka_bench.hashing import digest_tree
+from sanka_bench.schema import validate_candidate_id
 
 _KNOWN_SECRET = re.compile(rb"(?<![A-Za-z0-9_])(?:sk-(?:ant-|proj-)?|fw_)[A-Za-z0-9_-]{16,}")
 
@@ -351,6 +352,8 @@ def build_cells(manifest: dict[str, Any]) -> list[CellSpec]:
                             samples=samples,
                         )
                     )
+    for cell in cells:
+        validate_candidate_id(cell.candidate_id)
     expected = int(manifest["execution"]["expected_rows"])
     if len(cells) != expected:
         raise ValueError(f"manifest expands to {len(cells)} cells, expected {expected}")

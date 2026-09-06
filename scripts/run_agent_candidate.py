@@ -37,7 +37,7 @@ Two agent families share the same contract, prompt, and freezing logic:
   per-model prices passed via ``--price-in``/``--price-out`` (USD per million
   tokens) — the disclosure names that basis explicitly.
 
-Candidate ids stay free-form (``<agent>-<model-slug>-alone`` /
+Candidate ids use lowercase letters, digits and hyphens (``<agent>-<model-slug>-alone`` /
 ``...-sanka-cli`` / ``...-with-sanka`` / ``...-with-sanka-readiness-aware``); the suffix selects
 the run configuration.
 
@@ -93,7 +93,7 @@ from pathlib import Path
 from sanka_bench import agent_isolation
 from sanka_bench.environment import isolated_environment
 from sanka_bench.hashing import digest_tree
-from sanka_bench.schema import load_and_validate
+from sanka_bench.schema import load_and_validate, validate_candidate_id
 
 PROMPT_CORE = """Migrate this Django REST Framework application to FastAPI, natively.
 
@@ -881,6 +881,11 @@ def main() -> int:
         )
     if args.reasoning_effort is not None and args.agent != "codex":
         parser.error("--reasoning-effort currently requires the Codex harness")
+
+    try:
+        validate_candidate_id(args.candidate_id)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     task_dir = args.task.resolve()
     source = task_dir / "source"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -55,3 +56,11 @@ def load_and_validate(path: Path, schema_name: str) -> dict[str, Any]:
     payload = load_document(path)
     validate_payload(payload, schema_name, label=str(path))
     return payload
+
+
+def validate_candidate_id(candidate_id: str) -> None:
+    pattern = load_schema("candidate")["properties"]["id"]["pattern"]
+    if re.fullmatch(pattern, candidate_id) is None:
+        raise SchemaError(
+            f"invalid candidate id: {candidate_id!r}; use lowercase letters, digits and hyphens"
+        )

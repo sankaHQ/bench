@@ -1081,3 +1081,11 @@ def test_report_records_effort_without_inventing_unscored_results(tmp_path: Path
     assert all(row["reasoning_effort"] == "high" and row["harness"] == "codex" for row in rows)
     assert all(row["passed"] is None and row["total_tokens"] is None for row in rows)
     assert "codex / high" in (tmp_path / "REPORT.md").read_text()
+
+
+@pytest.mark.parametrize("slug", ["codex-gpt-5.6-luna", "Codex-Luna", "codex_luna"])
+def test_candidate_schema_id_is_checked_before_generation(slug: str) -> None:
+    data = manifest()
+    data["models"][0]["candidate_slug"] = slug
+    with pytest.raises(ValueError, match="candidate id"):
+        build_cells(data)

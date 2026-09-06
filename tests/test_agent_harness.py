@@ -1503,3 +1503,25 @@ def test_codex_candidate_preserves_api_usage_and_checks_runtime_effort(
         assert (out / "candidate.yaml").is_file()
     else:
         assert not (out / "candidate.yaml").exists()
+
+
+def test_invalid_candidate_id_fails_before_task_or_agent_access(
+    harness, monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_agent_candidate.py",
+            "--task",
+            str(tmp_path),
+            "--out",
+            str(tmp_path / "out"),
+            "--candidate-id",
+            "codex-gpt-5.6-luna-alone",
+        ],
+    )
+    with pytest.raises(SystemExit) as error:
+        harness.main()
+    assert error.value.code == 2
+    assert not (tmp_path / "out").exists()
