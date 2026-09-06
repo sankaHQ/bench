@@ -311,8 +311,9 @@ def _readiness_context(
     }
 
 
-def _verifier_prompt(sanka: Path) -> str:
-    return PROMPT_VERIFIER.format(verifier=VERIFIER_COMMAND.format(sanka=sanka))
+def _verifier_prompt(sanka: Path, framework: str = "fastapi") -> str:
+    command = VERIFIER_COMMAND.format(sanka=sanka).replace("--to fastapi", f"--to {framework}")
+    return PROMPT_VERIFIER.format(verifier=command)
 
 
 def _readiness_prompt(context: dict[str, object], sanka: Path) -> str:
@@ -350,11 +351,13 @@ def _readiness_prompt(context: dict[str, object], sanka: Path) -> str:
             "FastAPI target from the source."
         )
     framework = str(context.get("target_framework", "fastapi"))
+    replay_supported = framework == "fastapi" or "verify" in context.get("extension_commands", [])
     if framework == "flask":
         decision = decision.replace("FastAPI", "Flask").replace("plan-fastapi", "plan-flask")
-        decision = decision.replace(
-            "run the verifier below", "compare source and candidate in local tests"
-        )
+        if not replay_supported:
+            decision = decision.replace(
+                "run the verifier below", "compare source and candidate in local tests"
+            )
     return PROMPT_SANKA_READINESS.format(
         readiness_percent=float(context["readiness"]) * 100,
         native_routes=context["native_routes"],
@@ -363,8 +366,8 @@ def _readiness_prompt(context: dict[str, object], sanka: Path) -> str:
         plan_hash=context["plan_hash"],
         decision=decision,
         notes=_notes_prompt(context),
-        verifier=_verifier_prompt(sanka)
-        if framework == "fastapi"
+        verifier=_verifier_prompt(sanka, framework)
+        if replay_supported
         else (
             "The Flask extension does not yet provide differential replay. Use source and "
             "Flask test clients with identical fixtures and the public scenarios.\n"
@@ -474,7 +477,7 @@ PLAN_INPUTS = (
 
 def _enable_sanka_extension(
     sanka_bin: Path, *, workspace: Path, env: dict[str, str], framework: str = "fastapi"
-) -> None:
+) -> list[str]:
     """Make the DRF extension usable in the workspace: marketplace snapshot + project lock.
 
     sanka-cli resolves extensions through a trusted marketplace snapshot in SANKA_HOME
@@ -488,11 +491,19 @@ def _enable_sanka_extension(
         env=env,
         tolerate=("SANKA_MARKETPLACE_EXISTS",),
     )
-    _run_sanka_command(
+    enabled = _run_sanka_command(
         [str(sanka_bin), "extension", "add", f"sanka/drf-to-{framework}", "--json"],
         workspace=workspace,
         env=env,
     )
+
+    records = _cli_data(enabled.stdout).get("records")
+    for record in records if isinstance(records, list) else []:
+        if isinstance(record, dict) and record.get("id") == f"sanka/drf-to-{framework}":
+            commands = record.get("commands")
+            if isinstance(commands, list) and all(isinstance(item, str) for item in commands):
+                return commands
+    return []
 
 
 def install_sanka_skill(
@@ -647,7 +658,7 @@ def _prepare_readiness_context(
     framework: str = "fastapi",
     partial_scaffold: bool = False,
 ) -> dict[str, object]:
-    _enable_sanka_extension(sanka_bin, workspace=workspace, env=env, framework=framework)
+    commands = _enable_sanka_extension(sanka_bin, workspace=workspace, env=env, framework=framework)
     scanned = _run_sanka_command(
         [str(sanka_bin), "scan", ".", "--extension-env", "PYTHONPATH", "--json"],
         workspace=workspace,
@@ -681,6 +692,7 @@ def _prepare_readiness_context(
         plan, threshold, scan, partial_scaffold=partial_scaffold and framework == "flask"
     )
     context["target_framework"] = framework
+    context["extension_commands"] = commands
     # sanka-cli reviews the core plan (which wraps the extension plan); apply wants the
     # core hash from the CLI response. Older engines had a single hash: fall back to it.
     context["core_plan_hash"] = _cli_data(planned.stdout).get("plan_hash") or context["plan_hash"]
