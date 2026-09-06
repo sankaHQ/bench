@@ -74,7 +74,10 @@ def qualify(
     gateway_profile: str | None,
     provider_evidence: Path,
     output: Path,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
+    if reasoning_effort not in {None, "low", "medium", "high", "max"}:
+        raise ValueError("Claude reasoning effort must be low, medium, high, or max")
     output = output.resolve()
     transcript_path = output.with_suffix(".jsonl")
     stderr_path = output.with_suffix(".stderr.log")
@@ -143,6 +146,7 @@ def qualify(
                 "stream-json",
                 "--verbose",
                 *agent_isolation.claude_arguments(with_skill=False),
+                *(["--effort", reasoning_effort] if reasoning_effort else []),
             ],
             workspace=workspace,
             readable=[claude_bin, Path(sys.prefix), Path(sys.base_prefix)],
@@ -184,6 +188,7 @@ def qualify(
         "route_kind": route_kind,
         "billing_mode": billing_mode,
         "gateway_profile": gateway_profile,
+        "reasoning_effort": reasoning_effort,
         "claude": {
             "version": version.stdout.strip(),
             "sha256": sha256_path(claude_bin),
@@ -225,6 +230,7 @@ def main() -> int:
     parser.add_argument("--route-kind", choices=("anthropic-native", "gateway"), required=True)
     parser.add_argument("--billing-mode", choices=("subscription", "api_key"), required=True)
     parser.add_argument("--gateway-profile")
+    parser.add_argument("--reasoning-effort", choices=("low", "medium", "high", "max"))
     parser.add_argument("--provider-evidence", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -239,6 +245,7 @@ def main() -> int:
             gateway_profile=args.gateway_profile,
             provider_evidence=args.provider_evidence,
             output=args.output,
+            reasoning_effort=args.reasoning_effort,
         )
     except (
         OSError,

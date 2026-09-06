@@ -457,6 +457,14 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
                 raise ValueError("Codex official matrices require explicit reasoning effort")
             if cost_limit is not None:
                 raise ValueError("max_agent_cost_usd is a Claude-only limit")
+        if harness == "claude-code" and model.get("reasoning_effort") not in {
+            None,
+            "low",
+            "medium",
+            "high",
+            "max",
+        }:
+            raise ValueError("Claude reasoning effort must be low, medium, high, or max")
         route_kind = model.get("route_kind")
         billing_mode = model.get("billing_mode")
         gateway_profile = model.get("gateway_profile")
@@ -511,9 +519,9 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
             or qualification_digest(transcript) != hashes["transcript_sha256"]
         ):
             raise ValueError("qualification transcript digest does not match its evidence")
+        if evidence.get("reasoning_effort") != model.get("reasoning_effort"):
+            raise ValueError("qualification reasoning effort does not match the manifest")
         if harness == "codex":
-            if evidence.get("reasoning_effort") != model["reasoning_effort"]:
-                raise ValueError("qualification reasoning effort does not match the manifest")
             session = path.with_suffix(".session.jsonl")
             if not session.is_file() or qualification_digest(session) != hashes.get(
                 "session_sha256"

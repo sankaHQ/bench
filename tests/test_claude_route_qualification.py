@@ -45,7 +45,7 @@ def _fake_claude(root: Path, *, creates_file: bool) -> Path:
         f"{write_probe}\n"
         "print(json.dumps({'type': 'assistant', 'message': {'content': []}}))\n"
         "print(json.dumps({'type': 'result', 'probe_environment': environment, "
-        "'subtype': 'success', 'is_error': False, "
+        "'argv': sys.argv, 'subtype': 'success', 'is_error': False, "
         "'num_turns': 1, 'modelUsage': {'gateway-alias': {'inputTokens': 5, "
         "'cacheCreationInputTokens': 1, 'cacheReadInputTokens': 2, 'outputTokens': 3}}}))\n",
         encoding="utf-8",
@@ -89,9 +89,13 @@ def test_qualification_records_tool_stream_model_and_usage(
         gateway_profile="example-anthropic-v1",
         provider_evidence=_provider_evidence(tmp_path),
         output=tmp_path / "qualification.json",
+        reasoning_effort="high",
     )
 
     assert record["actual_model_id"] == "gpt-5.6"
+    assert record["reasoning_effort"] == "high"
+    argv = json.loads((tmp_path / "qualification.jsonl").read_text().splitlines()[-1])["argv"]
+    assert argv[argv.index("--effort") + 1] == "high"
     assert record["checks"] == {
         "tool_use": True,
         "streaming": True,

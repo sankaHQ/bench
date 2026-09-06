@@ -891,8 +891,14 @@ def main() -> int:
         parser.error(
             "--max-agent-cost-usd is a Claude-only limit; use the recorded Codex wall limit"
         )
-    if args.reasoning_effort is not None and args.agent != "codex":
-        parser.error("--reasoning-effort currently requires the Codex harness")
+    if args.agent == "claude-code" and args.reasoning_effort not in {
+        None,
+        "low",
+        "medium",
+        "high",
+        "max",
+    }:
+        parser.error("Claude reasoning effort must be low, medium, high, or max")
 
     try:
         validate_candidate_id(args.candidate_id)
@@ -1105,6 +1111,7 @@ def main() -> int:
                 "stream-json",
                 "--verbose",
                 *agent_isolation.claude_arguments(with_skill=mode == "with-sanka"),
+                *(["--effort", args.reasoning_effort] if args.reasoning_effort else []),
             ]
         if args.max_agent_cost_usd is not None:
             command.extend(["--max-budget-usd", str(args.max_agent_cost_usd)])

@@ -780,7 +780,10 @@ def _run_adapter(
     return result
 
 
-def test_persistent_sandbox_keeps_workspace_config_and_raw_stream(tmp_path: Path) -> None:
+@pytest.mark.parametrize("effort", [None, "high"])
+def test_persistent_sandbox_keeps_workspace_config_and_raw_stream(
+    tmp_path: Path, effort: str | None
+) -> None:
     task = Path(__file__).resolve().parents[1] / "tasks" / "drf-fastapi" / "drf-fastapi-001"
     agent = _fake_agent(
         tmp_path,
@@ -796,7 +799,13 @@ def test_persistent_sandbox_keeps_workspace_config_and_raw_stream(tmp_path: Path
     )
     sandbox = tmp_path / "sandbox"
 
-    outcome = _run_adapter(task, agent, tmp_path / "candidate", sandbox)
+    outcome = _run_adapter(
+        task,
+        agent,
+        tmp_path / "candidate",
+        sandbox,
+        extra_args=["--reasoning-effort", effort] if effort else [],
+    )
 
     assert outcome.returncode == 0, outcome.stderr
     assert (sandbox / "workspace" / "target_app.py").is_file()
@@ -807,6 +816,12 @@ def test_persistent_sandbox_keeps_workspace_config_and_raw_stream(tmp_path: Path
     )
     argv = (tmp_path / "fake-agent-argv.txt").read_text().splitlines()
     assert argv[argv.index("--setting-sources") + 1] == "project"
+    if effort:
+        assert argv[argv.index("--effort") + 1] == effort
+        assert (
+            json.loads((tmp_path / "candidate/telemetry.json").read_text())["reasoning_effort"]
+            == effort
+        )
     assert "--dangerously-skip-permissions" not in argv
     assert "--disable-slash-commands" in argv
 

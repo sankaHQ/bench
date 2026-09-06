@@ -1089,3 +1089,21 @@ def test_candidate_schema_id_is_checked_before_generation(slug: str) -> None:
     data["models"][0]["candidate_slug"] = slug
     with pytest.raises(ValueError, match="candidate id"):
         build_cells(data)
+
+
+def test_claude_effort_requires_matching_qualification(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["models"][0]["reasoning_effort"] = "high"
+    with pytest.raises(ValueError, match="reasoning effort"):
+        validate_official_manifest(value, tmp_path)
+    path = tmp_path / value["models"][0]["qualification"]
+    evidence = json.loads(path.read_text())
+    evidence["reasoning_effort"] = "high"
+    path.write_text(json.dumps(evidence))
+    value["models"][0]["qualification_sha256"] = (
+        "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    )
+    validate_official_manifest(value, tmp_path)
+    value["models"][0]["reasoning_effort"] = "xhigh"
+    with pytest.raises(ValueError, match="reasoning effort"):
+        validate_official_manifest(value, tmp_path)
