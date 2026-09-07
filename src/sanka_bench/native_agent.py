@@ -97,7 +97,8 @@ def tools(with_sanka: bool) -> list[dict[str, Any]]:
                 "description": (
                     "Verify public scenarios and register completion with the harness. "
                     "Use this tool after repairs; shell verification does not register completion. "
-                    "Pass the workspace seed path when scenarios need initial rows. "
+                    "Pass a workspace Python seed script (.py) when scenarios need initial rows. "
+                    "Django is configured when the script runs; JSON fixtures are not scripts. "
                     "Does not regenerate the candidate."
                 ),
                 "parameters": {
@@ -405,6 +406,8 @@ class Runner:
             path = (self.workspace / seed).resolve()
             if not path.is_relative_to(self.workspace.resolve()) or not path.is_file():
                 raise ValueError("seed must be an existing workspace file")
+            if path.suffix != ".py":
+                raise ValueError("seed must be a Python .py script, not a JSON fixture")
         if seed == self.seed and self.verification_summary is not None:
             return self.verification_summary
         self.seed = seed
