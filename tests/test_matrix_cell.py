@@ -568,6 +568,8 @@ def test_native_cell_needs_no_agent_binary_and_strips_other_provider_keys(driver
         price_out=0.2,
     )
     manifest["execution"]["sanka_workflow"] = "native-lifecycle-v1"
+    manifest["execution"]["max_output_tokens"] = 32768
+    manifest["execution"]["max_context_bytes"] = 512000
     cell = driver.resolve_cell(manifest, "001", "gpt56sol", "alone", 1)
     env = driver.route_environment(
         {"FIREWORKS_API_KEY": "selected", "OPENAI_API_KEY": "other"}, cell
@@ -585,3 +587,5 @@ def test_native_cell_needs_no_agent_binary_and_strips_other_provider_keys(driver
     assert "--agent-bin" not in command
     assert command[command.index("--agent") + 1] == "sanka-native"
     assert command[command.index("--price-in") + 1] == "0.1"
+    assert command[command.index("--max-output-tokens") + 1] == "32768"
+    assert command[command.index("--max-context-bytes") + 1] == "512000"

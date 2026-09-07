@@ -22,10 +22,10 @@ a globally installed package manager. Home and temporary paths stay isolated.
 
 If public verification succeeds without warnings, the run ends without a
 model request. Otherwise, the model receives the task contract and lifecycle
-results, then uses just two tools: `exec` for inspection/edits/tests, and
-`verify` for public replay. Commands run sequentially in the existing OS
+results, then uses `exec` for edits/tests, `read` for bounded file or saved-output
+excerpts, and `verify` for public replay and seed registration. Commands run sequentially in the existing OS
 sandbox. No provider credentials are forwarded to commands. The model-only
-arm has only `exec`; it gets no Sanka lifecycle, CLI, or Skill.
+arm has `exec` and `read`; it gets no Sanka lifecycle, CLI, or Skill.
 
 The Skills arm receives the exact hash-checked Skill installed by `sanka skill`
 once in its initial prompt. It uses the existing installation format; no Claude
@@ -35,7 +35,9 @@ Scaffold testing and repaired-candidate verification have different scopes.
 `test` can report manual gaps or generated-scope failures; these remain in the
 record even if later public verification passes. Repairs never automatically
 rerun apply. An unchanged verification result is reused until another command
-or seed selection invalidates it. Public verification is not a benchmark score:
+or seed selection invalidates it. Read-only excerpts preserve verification.
+Repeated failed finalization or structured verification stops when the failure
+fields are unchanged, ignoring newly generated report paths. Public verification is not a benchmark score:
 the unchanged independent evaluator still grades the frozen candidate.
 
 ## State, limits, and accounting
@@ -46,8 +48,17 @@ the unchanged independent evaluator still grades the frozen candidate.
 - `--max-turns` caps both model responses and model-requested tool calls.
   CLI lifecycle commands are counted separately. The wall deadline bounds
   requests, commands, and retry waits. Each command is limited to 120 seconds.
-- Each response is limited to 8,192 output tokens. Context is limited to
-  120,000 serialized bytes. Tool results show at most 6,000 characters with a
+- Each response defaults to 8,192 output tokens, including reasoning. Set
+  `--max-output-tokens` (matrix `execution.max_output_tokens`) explicitly for
+  high-effort runs that need more room for reasoning and code. The limit is
+  recorded in request/final evidence, included in cell identity, and reserved
+  before each paid request. A response ending at its limit remains a recorded
+  `incomplete_response`, never silently retried. Context defaults to
+  120,000 serialized bytes; `--max-context-bytes` (matrix
+  `execution.max_context_bytes`) pins a different ceiling with the same
+  identity and evidence rules. It includes retained provider reasoning, not
+  just visible conversation text. Exceeding it stops before another API call.
+  Tool results show at most 6,000 characters with a
   path to the complete output. No paid summarizer or silent context eviction.
   OpenAI reasoning items/call IDs and Fireworks `reasoning_content` stay in order.
 - At most two retries for explicit HTTP 429 rejection. No retries for ambiguous
@@ -55,7 +66,10 @@ the unchanged independent evaluator still grades the frozen candidate.
   completion/repair rounds. Budget exhaustion freezes the current candidate;
   provider/protocol errors remain infrastructure failures.
 - `native/events.jsonl` records requests, raw responses, lifecycle results,
-  and tool events as they happen. `native/tools/` retains complete outputs;
+  and tool events as they happen, with monotonic elapsed timestamps. Command
+  and provider durations are aggregated in `phase_seconds`; provider retry sleeps
+  are excluded. Coverage, candidate and infrastructure failures are distinct.
+  Command timeouts are separate from a program returning exit code 124. `native/tools/` retains complete outputs;
   `native/state.json` checkpoints the conversation at termination/interruption.
   The matrix retains its existing resume rules for completed cells. Mid-call
   execution is not resumed automatically; interrupted mutations are not replayed.

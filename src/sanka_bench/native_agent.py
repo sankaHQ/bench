@@ -66,13 +66,40 @@ def tools(with_sanka: bool) -> list[dict[str, Any]]:
             },
         }
     ]
+    result.append(
+        {
+            "type": "function",
+            "name": "read",
+            "strict": True,
+            "description": (
+                "Read a bounded line range from a workspace file or saved tool output. "
+                "Reuse saved output "
+                "instead of rerunning commands. Does not invalidate verification."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "start": {"type": "integer"},
+                    "lines": {"type": "integer"},
+                },
+                "required": ["path", "start", "lines"],
+                "additionalProperties": False,
+            },
+        }
+    )
     if with_sanka:
         result.append(
             {
                 "type": "function",
                 "name": "verify",
                 "strict": True,
-                "description": "Verify public scenarios. Does not regenerate the candidate.",
+                "description": (
+                    "Verify public scenarios and register completion with the harness. "
+                    "Use this tool after repairs; shell verification does not register completion. "
+                    "Pass the workspace seed path when scenarios need initial rows. "
+                    "Does not regenerate the candidate."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {"seed": {"type": ["string", "null"]}},
@@ -126,7 +153,17 @@ class Runner:
         price_out: float | None = None,
         max_cost: float | None = None,
         expected_model: str | None = None,
+        max_output_tokens: int = MAX_OUTPUT_TOKENS,
+        max_context_bytes: int = MAX_CONTEXT_BYTES,
     ) -> None:
+        for name, value in (
+            ("max_output_tokens", max_output_tokens),
+            ("max_context_bytes", max_context_bytes),
+        ):
+            if type(value) is not int or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        self.max_output_tokens = max_output_tokens
+        self.max_context_bytes = max_context_bytes
         self.provider, self.model, self.effort, self.key = provider, model, effort, key
         self.expected_model = expected_model or model
         self.workspace, self.artifacts = workspace, artifacts
@@ -160,7 +197,7 @@ class Runner:
         (self.artifacts / "tools").mkdir(exist_ok=True)
 
     def event(self, kind: str, **data: Any) -> None:
-        item = {"type": kind, **data}
+        item = {"type": kind, "elapsed_seconds": time.monotonic() - self.started, **data}
         self.events.append(item)
         with (self.artifacts / "events.jsonl").open("a") as output:
             output.write(json.dumps(item) + "\n")
@@ -171,13 +208,28 @@ class Runner:
             raise BudgetReached("wall_clock")
         return remaining
 
-    def command(self, argv: list[str]) -> tuple[subprocess.CompletedProcess[str], str]:
+    def command(
+        self, argv: list[str], *, phase: str = "model_tool"
+    ) -> tuple[subprocess.CompletedProcess[str], str]:
         self.remaining()
         self.commands += 1
-        self.event("command_start", number=self.commands, argv=argv)
+        started = time.monotonic()
+        timed_out = False
+        self.event("command_start", number=self.commands, argv=argv, phase=phase)
         try:
             outcome = self.execute(argv, timeout=min(120, self.remaining()))
+        except OSError as exc:
+            self.event(
+                "command_end",
+                number=self.commands,
+                phase=phase,
+                duration_seconds=time.monotonic() - started,
+                failure_category="infrastructure_failure",
+                error_type=type(exc).__name__,
+            )
+            raise
         except subprocess.TimeoutExpired as exc:
+            timed_out = True
 
             def text(value: Any) -> str:
                 return value.decode(errors="replace") if isinstance(value, bytes) else value or ""
@@ -190,6 +242,10 @@ class Runner:
             "command_end",
             number=self.commands,
             exit_code=outcome.returncode,
+            phase=phase,
+            timed_out=timed_out,
+            failure_category="command_timeout" if timed_out else None,
+            duration_seconds=time.monotonic() - started,
             output_path=str(path),
             output_bytes=len(raw.encode()),
         )
@@ -213,15 +269,67 @@ class Runner:
                 "--extension-env",
                 "TMPDIR",
                 "--compact-dsl",
-            ]
+            ],
+            phase=stage,
         )
-        data = compact(outcome.stdout, stage)
+        try:
+            data = compact(outcome.stdout, stage)
+        except ValueError:
+            self.stages[stage] = {
+                "ok": False,
+                "exit_code": outcome.returncode,
+                "failure_category": "infrastructure_failure",
+            }
+            self.event(
+                "lifecycle", stage=stage, ok=False, failure_category="infrastructure_failure"
+            )
+            raise RuntimeError("invalid lifecycle protocol; inspect saved command output") from None
         ok = outcome.returncode == 0 and data["outcome"] == "success"
+        failure_category = None if ok else "infrastructure_failure"
         if stage == "verify":
-            # A zero exit code or a matching all-404 replay alone is not proof.
-            ok = ok and data.get("ok") is True and not data.get("warnings")
-        self.stages[stage] = {"ok": ok, "exit_code": outcome.returncode, "data": data}
-        self.event("lifecycle", stage=stage, ok=ok, result=data)
+            # Coverage is separate from parity: matching all-404 responses is not proof.
+            if data.get("ok") is False:
+                counts = data.get("summary", {})
+                source_only = counts.get("source_expectation_mismatches", 0) > 0 and not any(
+                    counts.get(key, 0)
+                    for key in (
+                        "status_mismatches",
+                        "body_mismatches",
+                        "header_mismatches",
+                        "database_mismatches",
+                        "non_native",
+                    )
+                )
+                failure_category = "coverage_incomplete" if source_only else "candidate_failure"
+            elif data.get("warnings") or data.get("coverage_issues"):
+                failure_category = "coverage_incomplete"
+            elif data.get("ok") is not True:
+                failure_category = "infrastructure_failure"
+            if self.events[-1].get("timed_out"):
+                failure_category = "infrastructure_failure"
+            ok = ok and data.get("ok") is True and failure_category is None
+            if not ok:
+                advice = {
+                    "coverage_incomplete": "Supply the missing seed/auth scenario prerequisite; "
+                    "do not repair target code just to silence coverage warnings.",
+                    "candidate_failure": "Repair the reported candidate mismatches.",
+                    "infrastructure_failure": "Inspect the saved command output for execution "
+                    "or protocol failure before changing the candidate.",
+                }[failure_category or "infrastructure_failure"]
+                summary += (
+                    f"\nHarness verification not accepted ({failure_category}): {advice} "
+                    "Call the verify tool with the seed path if needed. "
+                    "A CLI success alone does not satisfy this gate."
+                )
+        self.stages[stage] = {
+            "ok": ok,
+            "exit_code": outcome.returncode,
+            "data": data,
+            "failure_category": failure_category,
+        }
+        self.event("lifecycle", stage=stage, ok=ok, result=data, failure_category=failure_category)
+        if stage == "verify" and failure_category == "infrastructure_failure":
+            raise RuntimeError("verification infrastructure failed; inspect saved command output")
         return data, summary
 
     def bootstrap(self) -> str:
@@ -317,7 +425,7 @@ class Runner:
                 "include": ["reasoning.encrypted_content"],
                 "reasoning": {"effort": self.effort},
                 "parallel_tool_calls": False,
-                "max_output_tokens": MAX_OUTPUT_TOKENS,
+                "max_output_tokens": self.max_output_tokens,
             }
         return {
             "model": self.model,
@@ -327,7 +435,7 @@ class Runner:
                 for spec in specs
             ],
             "reasoning_effort": self.effort,
-            "max_tokens": MAX_OUTPUT_TOKENS,
+            "max_tokens": self.max_output_tokens,
         }
 
     def cost(self) -> float | None:
@@ -342,11 +450,13 @@ class Runner:
     def request(self) -> dict[str, Any]:
         payload = self.payload()
         size = len(json.dumps(payload).encode())
-        if size > MAX_CONTEXT_BYTES:
+        if size > self.max_context_bytes:
             raise BudgetReached("context_bytes")
         if self.max_cost is not None:
             assert self.price_in is not None and self.price_out is not None
-            reserve = ((size + 1024) * self.price_in + MAX_OUTPUT_TOKENS * self.price_out) / 1e6
+            reserve = (
+                (size + 1024) * self.price_in + self.max_output_tokens * self.price_out
+            ) / 1e6
             if (self.cost() or 0) + reserve > self.max_cost:
                 raise BudgetReached("cost_reservation")
         for attempt in range(3):
@@ -359,14 +469,23 @@ class Runner:
                 provider=self.provider,
                 reasoning_effort=self.effort,
                 context_bytes=size,
+                max_output_tokens=self.max_output_tokens,
             )
+            request_started = time.monotonic()
+            request_status = "failed"
+            request_duration: float | None = None
             try:
                 result = post(ROUTES[self.provider][0], self.key, payload, timeout)
                 self.turns += 1
+                request_status = "received"
                 return result
             except urllib.error.HTTPError as exc:
                 # Retry explicit rate rejection only, never ambiguous timeout/5xx generation.
-                self.event("provider_error", status=exc.code)
+                request_duration = time.monotonic() - request_started
+                request_status = "rate_limited" if exc.code == 429 else "provider_error"
+                self.event(
+                    "provider_error", status=exc.code, failure_category="infrastructure_failure"
+                )
                 if exc.code >= 500:
                     self.usage_complete = False
                 if exc.code != 429 or attempt == 2:
@@ -377,12 +496,28 @@ class Runner:
                 self.retries += 1
                 self.event("provider_retry", status=429, delay=delay)
                 time.sleep(delay)
+            except TimeoutError:
+                request_status = "provider_timeout"
+                self.usage_complete = False  # The in-flight response may still be billed.
+                self.remaining()  # Classify our own deadline as a budget stop, preserving output.
+                raise
             except (OSError, ValueError):
                 self.usage_complete = False  # ambiguous response: never claim zero billed tokens
                 raise
             except KeyboardInterrupt:
                 self.usage_complete = False
                 raise
+            finally:
+                self.event(
+                    "request_end",
+                    number=self.requests,
+                    status=request_status,
+                    duration_seconds=(
+                        time.monotonic() - request_started
+                        if request_duration is None
+                        else request_duration
+                    ),
+                )
         raise AssertionError("unreachable")
 
     def receive(self, response: dict[str, Any]) -> list[dict[str, Any]]:
@@ -454,6 +589,36 @@ class Runner:
             arguments = json.loads(call["arguments"])
             if not isinstance(arguments, dict):
                 raise ValueError("tool arguments must be an object")
+            if call["name"] == "read" and set(arguments) == {"path", "start", "lines"}:
+                path, start, count = arguments["path"], arguments["start"], arguments["lines"]
+                if not isinstance(path, str) or type(start) is not int or type(count) is not int:
+                    raise ValueError("read requires a path and integer line range")
+                if start < 1 or not 1 <= count <= 200:
+                    raise ValueError("start must be positive and lines between 1 and 200")
+                file = (self.workspace / path).resolve()
+                if not file.is_file() or not any(
+                    file.is_relative_to(root.resolve())
+                    for root in (self.workspace, self.artifacts / "tools")
+                ):
+                    raise ValueError("read requires an existing workspace file")
+                # Bound each line as well as the response; a minified file may be one huge line.
+                result = ""
+                with file.open(errors="replace") as stream:
+                    for number in range(1, start + count):
+                        self.remaining()
+                        line = stream.readline(MAX_TOOL_OUTPUT + 1)
+                        if not line:
+                            break
+                        if len(line) > MAX_TOOL_OUTPUT:
+                            raise ValueError(
+                                "line exceeds output bound; extract a focused field with exec"
+                            )
+                        if number >= start:
+                            excerpt = f"{number}: {line}"
+                            if len(result) + len(excerpt) > MAX_TOOL_OUTPUT:
+                                return result + f"\n[continue at line {number}]"
+                            result += excerpt
+                return result
             if call["name"] == "exec" and set(arguments) == {"command"}:
                 command = arguments["command"]
                 if not isinstance(command, str) or not command.strip() or "\0" in command:
@@ -470,7 +635,19 @@ class Runner:
         except (ValueError, KeyError) as exc:
             return f"tool error: {exc}"
 
+    def verification_failure_key(self) -> str:
+        # Output/report paths change on every replay; they are not repair progress.
+        data = self.stages.get("verify", {}).get("data", {})
+        return json.dumps(
+            {
+                key: data.get(key)
+                for key in ("ok", "summary", "failures", "warnings", "coverage_issues")
+            },
+            sort_keys=True,
+        )
+
     def run(self) -> tuple[subprocess.CompletedProcess[str], dict[str, Any]]:
+        last_failed_summary: str | None = None
         reason = "completed_unverified"
         error = False
         self.event(
@@ -490,7 +667,8 @@ class Runner:
                         "content": (
                             "Sanka results follow. Reuse generated files; repair only gaps. "
                             "Do not repeat scan/plan/apply. The scaffold test result is retained. "
-                            "Use verify after repairs. Public replay is not a benchmark score. "
+                            "Call the verify tool after repairs, not exec with a shell verify "
+                            "command. Public replay is not a benchmark score. "
                             "If scenarios need initial rows, create a "
                             "seed from source/public information and pass its path to verify.\n"
                             + summary
@@ -508,13 +686,19 @@ class Runner:
                             summary = self.verify(self.seed)
                             if not self.verified:
                                 self.repairs += 1
-                                if self.repairs >= MAX_REPAIRS:
+                                failure_key = self.verification_failure_key()
+                                if (
+                                    failure_key == last_failed_summary
+                                    or self.repairs >= MAX_REPAIRS
+                                ):
                                     reason = "verification_failed"
                                     break
+                                last_failed_summary = failure_key
                                 self.history.append({"role": "user", "content": summary})
                                 continue
                         reason = "verified" if self.verified else "completed_unverified"
                         break
+                    repeated_verification = False
                     seen: set[str] = set()
                     for call in calls:
                         call_id = call.get("call_id")
@@ -528,6 +712,17 @@ class Runner:
                             if self.provider == "openai"
                             else {"role": "tool", "tool_call_id": call_id, "content": result}
                         )
+                        if call["name"] == "verify" and not self.verified:
+                            failure_key = self.verification_failure_key()
+                            repeated_verification = failure_key == last_failed_summary
+                            last_failed_summary = failure_key
+                    if (
+                        repeated_verification
+                        and self.verification_summary is not None
+                        and not self.verified
+                    ):
+                        reason = "verification_failed"
+                        break
                     if self.verified:
                         reason = "verified"
                         break  # No paid final-summary turn after verified completion.
@@ -549,13 +744,28 @@ class Runner:
                 else str(exc)[:1000],
             )
         finally:
+            phase_seconds: dict[str, float] = {}
+            for event in self.events:
+                if event["type"] in {"command_end", "request_end"}:
+                    phase = event.get("phase", "provider")
+                    phase_seconds[phase] = phase_seconds.get(phase, 0.0) + event["duration_seconds"]
             stats: dict[str, Any] = {
                 "type": "result",
                 "subtype": "native-error" if error else "native-" + reason,
                 "is_error": error,
                 "result": reason,
+                "usage_complete": self.usage_complete,
+                "missing_usage_details": sorted(self.missing_details),
+                "failure_category": "infrastructure_failure"
+                if error
+                else (
+                    self.stages.get("verify", {}).get("failure_category")
+                    if reason == "verification_failed"
+                    else None
+                ),
                 "num_turns": self.turns,
                 "duration_ms": (time.monotonic() - self.started) * 1000,
+                "phase_seconds": phase_seconds,
                 **{
                     k: v if self.usage_complete and k not in self.missing_details else None
                     for k, v in self.usage.items()
@@ -578,6 +788,10 @@ class Runner:
                 "stages": self.stages,
                 "generated_files": self.generated,
                 "verified": self.verified,
+                "limits": {
+                    "max_output_tokens": self.max_output_tokens,
+                    "max_context_bytes": self.max_context_bytes,
+                },
             }
             checkpoint = self.artifacts / "state.tmp"
             checkpoint.write_text(json.dumps({"stats": stats, "history": self.history}))
