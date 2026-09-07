@@ -390,6 +390,10 @@ class Runner:
                 self.retries += 1
                 self.event("provider_retry", status=429, delay=delay)
                 time.sleep(delay)
+            except TimeoutError:
+                self.usage_complete = False  # The in-flight response may still be billed.
+                self.remaining()  # Classify our own deadline as a budget stop, preserving output.
+                raise
             except (OSError, ValueError):
                 self.usage_complete = False  # ambiguous response: never claim zero billed tokens
                 raise

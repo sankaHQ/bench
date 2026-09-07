@@ -284,13 +284,23 @@ def test_full_tool_output_survives_context_truncation(tmp_path):
     assert len(summary) < len(raw)
 
 
-def test_timeout_is_not_retried_or_reported_as_zero_cost(tmp_path, monkeypatch):
+@pytest.mark.parametrize("deadline_expired", [False, True])
+def test_timeout_preserves_billing_and_classifies_deadline(tmp_path, monkeypatch, deadline_expired):
+    run = runner(tmp_path, price_in=1, price_out=1)
+
     def post(*args):
+        if deadline_expired:
+            run.deadline = 0
         raise TimeoutError("response lost")
 
     monkeypatch.setattr(native, "post", post)
-    _, stats = runner(tmp_path, price_in=1, price_out=1).run()
-    assert stats["is_error"] and stats["cost_usd"] is None and stats["total_tokens"] is None
+    outcome, stats = run.run()
+    assert stats["is_error"] is not deadline_expired
+    assert outcome.returncode == (0 if deadline_expired else 1)
+    assert stats["result"] == (
+        "wall_clock" if deadline_expired else "provider_or_runner_error:TimeoutError"
+    )
+    assert stats["cost_usd"] is None and stats["total_tokens"] is None
     assert stats["work"]["provider_api_requests"] == 1
     assert stats["work"]["provider_retries"] == 0
 
