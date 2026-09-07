@@ -126,7 +126,11 @@ class Runner:
         price_out: float | None = None,
         max_cost: float | None = None,
         expected_model: str | None = None,
+        max_output_tokens: int = MAX_OUTPUT_TOKENS,
     ) -> None:
+        if type(max_output_tokens) is not int or max_output_tokens <= 0:
+            raise ValueError("max_output_tokens must be a positive integer")
+        self.max_output_tokens = max_output_tokens
         self.provider, self.model, self.effort, self.key = provider, model, effort, key
         self.expected_model = expected_model or model
         self.workspace, self.artifacts = workspace, artifacts
@@ -317,7 +321,7 @@ class Runner:
                 "include": ["reasoning.encrypted_content"],
                 "reasoning": {"effort": self.effort},
                 "parallel_tool_calls": False,
-                "max_output_tokens": MAX_OUTPUT_TOKENS,
+                "max_output_tokens": self.max_output_tokens,
             }
         return {
             "model": self.model,
@@ -327,7 +331,7 @@ class Runner:
                 for spec in specs
             ],
             "reasoning_effort": self.effort,
-            "max_tokens": MAX_OUTPUT_TOKENS,
+            "max_tokens": self.max_output_tokens,
         }
 
     def cost(self) -> float | None:
@@ -346,7 +350,9 @@ class Runner:
             raise BudgetReached("context_bytes")
         if self.max_cost is not None:
             assert self.price_in is not None and self.price_out is not None
-            reserve = ((size + 1024) * self.price_in + MAX_OUTPUT_TOKENS * self.price_out) / 1e6
+            reserve = (
+                (size + 1024) * self.price_in + self.max_output_tokens * self.price_out
+            ) / 1e6
             if (self.cost() or 0) + reserve > self.max_cost:
                 raise BudgetReached("cost_reservation")
         for attempt in range(3):
@@ -359,6 +365,7 @@ class Runner:
                 provider=self.provider,
                 reasoning_effort=self.effort,
                 context_bytes=size,
+                max_output_tokens=self.max_output_tokens,
             )
             try:
                 result = post(ROUTES[self.provider][0], self.key, payload, timeout)
@@ -578,6 +585,7 @@ class Runner:
                 "stages": self.stages,
                 "generated_files": self.generated,
                 "verified": self.verified,
+                "limits": {"max_output_tokens": self.max_output_tokens},
             }
             checkpoint = self.artifacts / "state.tmp"
             checkpoint.write_text(json.dumps({"stats": stats, "history": self.history}))

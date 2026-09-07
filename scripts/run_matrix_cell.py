@@ -495,6 +495,8 @@ def generation_command(
         )
     else:
         model = next(m for m in manifest["models"] if m["slug"] == cell.model_slug)
+        if manifest["execution"].get("max_output_tokens") is not None:
+            command.extend(["--max-output-tokens", str(manifest["execution"]["max_output_tokens"])])
         for name in ("price_in", "price_out"):
             if model.get(name) is not None:
                 command.extend(["--" + name.replace("_", "-"), str(model[name])])

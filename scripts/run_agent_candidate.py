@@ -850,6 +850,11 @@ def main() -> int:
     )
     parser.add_argument("--max-turns", type=int, default=60)
     parser.add_argument(
+        "--max-output-tokens",
+        type=int,
+        help="native per-response token limit, including reasoning (default: 8192)",
+    )
+    parser.add_argument(
         "--max-agent-cost-usd",
         type=float,
         help="estimated-cost cap (native requires prices); not verified provider billing",
@@ -906,6 +911,10 @@ def main() -> int:
         )
     if args.reasoning_effort is not None and args.agent not in {"codex", "sanka-native"}:
         parser.error("--reasoning-effort requires Codex or Sanka native")
+    if args.max_output_tokens is not None and (
+        args.agent != "sanka-native" or args.max_output_tokens <= 0
+    ):
+        parser.error("--max-output-tokens requires native harness and a positive integer")
     if args.agent != "sanka-native" and args.sanka_workflow == "native-lifecycle-v1":
         parser.error("native-lifecycle-v1 requires the native harness")
     if args.agent == "sanka-native":
@@ -1243,6 +1252,7 @@ def main() -> int:
                     price_in=args.price_in,
                     price_out=args.price_out,
                     max_cost=args.max_agent_cost_usd,
+                    max_output_tokens=args.max_output_tokens or native_agent.MAX_OUTPUT_TOKENS,
                 )
                 outcome, native_stats = runner.run()
                 generated_files = runner.generated

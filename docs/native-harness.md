@@ -46,7 +46,12 @@ the unchanged independent evaluator still grades the frozen candidate.
 - `--max-turns` caps both model responses and model-requested tool calls.
   CLI lifecycle commands are counted separately. The wall deadline bounds
   requests, commands, and retry waits. Each command is limited to 120 seconds.
-- Each response is limited to 8,192 output tokens. Context is limited to
+- Each response defaults to 8,192 output tokens, including reasoning. Set
+  `--max-output-tokens` (matrix `execution.max_output_tokens`) explicitly for
+  high-effort runs that need more room for reasoning and code. The limit is
+  recorded in request/final evidence, included in cell identity, and reserved
+  before each paid request. A response ending at its limit remains a recorded
+  `incomplete_response`, never silently retried. Context is limited to
   120,000 serialized bytes. Tool results show at most 6,000 characters with a
   path to the complete output. No paid summarizer or silent context eviction.
   OpenAI reasoning items/call IDs and Fireworks `reasoning_content` stay in order.

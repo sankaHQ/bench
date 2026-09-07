@@ -83,6 +83,25 @@ def runner(tmp_path, *, provider="openai", execute=None, **kwargs):
     )
 
 
+@pytest.mark.parametrize(
+    "provider,field", [("openai", "max_output_tokens"), ("fireworks", "max_tokens")]
+)
+def test_output_budget_controls_request_reservation_and_evidence(
+    tmp_path, monkeypatch, provider, field
+):
+    run = runner(
+        tmp_path, provider=provider, max_output_tokens=32768, price_in=0, price_out=1, max_cost=0.02
+    )
+    assert run.payload()[field] == 32768
+    monkeypatch.setattr(native, "post", lambda *args: pytest.fail("larger output must be reserved"))
+    _, stats = run.run()
+    assert stats["result"] == "cost_reservation"
+    assert stats["limits"]["max_output_tokens"] == 32768
+    assert stats["work"]["provider_api_requests"] == 0
+    with pytest.raises(ValueError, match="positive integer"):
+        runner(tmp_path, max_output_tokens=0)
+
+
 @pytest.mark.parametrize("provider", ["openai", "fireworks"])
 def test_direct_loop_preserves_reasoning_tool_results_and_usage(tmp_path, monkeypatch, provider):
     requests = []
