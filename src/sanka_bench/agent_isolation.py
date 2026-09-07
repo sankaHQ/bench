@@ -130,6 +130,7 @@ def run(
         start_new_session=True,
     ) as process:
         deadline = time.monotonic() + timeout
+        group_stopped = False
         try:
             while True:
                 if observe:
@@ -150,10 +151,12 @@ def run(
         except subprocess.TimeoutExpired:
             with suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGKILL)
+            group_stopped = True
             stdout, stderr = process.communicate()
             raise subprocess.TimeoutExpired(argv, timeout, output=stdout, stderr=stderr) from None
         finally:
             # A finished agent must not leave background probes or servers alive.
-            with suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
+            if not group_stopped:
+                with suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
     return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)

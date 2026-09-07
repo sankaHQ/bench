@@ -93,6 +93,31 @@ def test_missing_os_sandbox_fails_closed(monkeypatch: pytest.MonkeyPatch) -> Non
         agent_isolation.command(["python"], readable=[], writable=[])
 
 
+def test_timeout_kills_group_once_and_preserves_output(tmp_path, monkeypatch):
+    monkeypatch.setattr(agent_isolation, "command", lambda argv, **kw: argv)
+    killpg = os.killpg
+    calls = []
+
+    def stop_group(pid, sig):
+        calls.append(pid)
+        if len(calls) > 1:
+            raise PermissionError("group already stopped")
+        killpg(pid, sig)
+
+    monkeypatch.setattr(agent_isolation.os, "killpg", stop_group)
+    with pytest.raises(subprocess.TimeoutExpired) as error:
+        agent_isolation.run(
+            [sys.executable, "-c", "import time; print('started', flush=True); time.sleep(5)"],
+            workspace=tmp_path,
+            readable=[],
+            writable=[tmp_path],
+            env={"PATH": os.defpath},
+            timeout=0.2,
+        )
+    assert len(calls) == 1
+    assert "started" in error.value.output
+
+
 @pytest.mark.skipif(
     not os.environ.get("BENCH_TEST_CLAUDE_BIN"), reason="requires pinned Claude binary"
 )
