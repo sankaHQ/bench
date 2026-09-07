@@ -208,6 +208,30 @@ def test_repair_rechecks_without_regeneration_and_preserves_test_failure(tmp_pat
     assert stats["num_turns"] == 2  # no final summary turn
 
 
+def test_verify_warning_explains_rejection_and_seeded_tool_rechecks(tmp_path):
+    commands = []
+
+    def execute(argv, **kw):
+        commands.append(argv)
+        result = cli_response(
+            argv,
+            warnings=[] if "--seed" in argv else ["Authentication coverage missing"],
+        )
+        result.stdout += "\nok=true\n"
+        return result
+
+    run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    summary = run.verify(None)
+    assert not run.verified
+    assert "Harness verification not accepted" in summary
+    assert "Authentication coverage missing" in summary
+    assert run.verify(None) == summary and len(commands) == 1
+    (run.workspace / "seed.py").write_text("# public seed")
+    summary = run.dispatch({"name": "verify", "arguments": json.dumps({"seed": "seed.py"})})
+    assert run.verified and len(commands) == 2
+    assert "Harness verification not accepted" not in summary
+
+
 @pytest.mark.parametrize("failure", ["incomplete", "wrong-model", "missing-usage", "bad-arguments"])
 def test_invalid_response_never_executes_tools(tmp_path, monkeypatch, failure):
     value = response(calls=[("exec", {"command": "danger"})])

@@ -72,7 +72,12 @@ def tools(with_sanka: bool) -> list[dict[str, Any]]:
                 "type": "function",
                 "name": "verify",
                 "strict": True,
-                "description": "Verify public scenarios. Does not regenerate the candidate.",
+                "description": (
+                    "Verify public scenarios and register completion with the harness. "
+                    "Use this tool after repairs; shell verification does not register completion. "
+                    "Pass the workspace seed path when scenarios need initial rows. "
+                    "Does not regenerate the candidate."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {"seed": {"type": ["string", "null"]}},
@@ -230,6 +235,12 @@ class Runner:
         if stage == "verify":
             # A zero exit code or a matching all-404 replay alone is not proof.
             ok = ok and data.get("ok") is True and not data.get("warnings")
+            if not ok:
+                summary += (
+                    "\nHarness verification not accepted: resolve replay failures and coverage "
+                    "warnings above, then call the verify tool with the seed path if needed. "
+                    "A CLI success alone does not satisfy this gate."
+                )
         self.stages[stage] = {"ok": ok, "exit_code": outcome.returncode, "data": data}
         self.event("lifecycle", stage=stage, ok=ok, result=data)
         return data, summary
@@ -507,7 +518,8 @@ class Runner:
                         "content": (
                             "Sanka results follow. Reuse generated files; repair only gaps. "
                             "Do not repeat scan/plan/apply. The scaffold test result is retained. "
-                            "Use verify after repairs. Public replay is not a benchmark score. "
+                            "Call the verify tool after repairs, not exec with a shell verify "
+                            "command. Public replay is not a benchmark score. "
                             "If scenarios need initial rows, create a "
                             "seed from source/public information and pass its path to verify.\n"
                             + summary
