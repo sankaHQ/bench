@@ -22,9 +22,12 @@ def main() -> int:
     parser.add_argument("--provider-variant", default="standard")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--max-output-tokens", type=int, default=native_agent.MAX_OUTPUT_TOKENS)
+    parser.add_argument("--max-context-bytes", type=int, default=native_agent.MAX_CONTEXT_BYTES)
     args = parser.parse_args()
     if args.max_output_tokens <= 0:
         parser.error("--max-output-tokens must be positive")
+    if args.max_context_bytes <= 0:
+        parser.error("--max-context-bytes must be positive")
     key = os.environ.get(native_agent.ROUTES[args.provider][1])
     if not key:
         parser.error("selected provider API key is missing")
@@ -66,6 +69,7 @@ def main() -> int:
         max_turns=3,
         wall_seconds=120,
         max_output_tokens=args.max_output_tokens,
+        max_context_bytes=args.max_context_bytes,
     )
     outcome, stats = runner.run()
     probe = workspace / "probe.txt"

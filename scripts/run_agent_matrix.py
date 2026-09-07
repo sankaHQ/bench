@@ -251,6 +251,7 @@ def cell_input_digest(
     execution_fields = (
         "max_turns",
         "max_output_tokens",
+        "max_context_bytes",
         "max_agent_cost_usd",
         "wall_clock_seconds",
         "prompt_sha256",
@@ -394,13 +395,14 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
     ):
         raise ValueError("official v2 manifest requires positive execution budgets")
     cost_limit = manifest["execution"].get("max_agent_cost_usd")
-    output_limit = manifest["execution"].get("max_output_tokens")
-    if output_limit is not None and (
-        type(output_limit) is not int
-        or output_limit <= 0
-        or any(model.get("harness") != "sanka-native" for model in manifest["models"])
-    ):
-        raise ValueError("max_output_tokens requires native models and a positive integer")
+    for name in ("max_output_tokens", "max_context_bytes"):
+        value = manifest["execution"].get(name)
+        if value is not None and (
+            type(value) is not int
+            or value <= 0
+            or any(model.get("harness") != "sanka-native" for model in manifest["models"])
+        ):
+            raise ValueError(f"{name} requires native models and a positive integer")
     if cost_limit is not None and (
         isinstance(cost_limit, bool)
         or not isinstance(cost_limit, int | float)

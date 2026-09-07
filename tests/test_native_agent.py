@@ -102,6 +102,20 @@ def test_output_budget_controls_request_reservation_and_evidence(
         runner(tmp_path, max_output_tokens=0)
 
 
+def test_context_budget_preserves_long_reasoning_until_explicit_limit(tmp_path, monkeypatch):
+    run = runner(tmp_path, max_context_bytes=512000)
+    run.history[0]["content"] = "x" * native.MAX_CONTEXT_BYTES
+    monkeypatch.setattr(native, "post", lambda *args: {"accepted": True})
+    assert run.request() == {"accepted": True}
+    run.history[0]["content"] = "x" * 512000
+    monkeypatch.setattr(
+        native, "post", lambda *args: pytest.fail("context limit must prevent request")
+    )
+    _, stats = run.run()
+    assert stats["result"] == "context_bytes"
+    assert stats["limits"]["max_context_bytes"] == 512000
+
+
 @pytest.mark.parametrize("provider", ["openai", "fireworks"])
 def test_direct_loop_preserves_reasoning_tool_results_and_usage(tmp_path, monkeypatch, provider):
     requests = []

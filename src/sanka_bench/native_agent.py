@@ -127,10 +127,16 @@ class Runner:
         max_cost: float | None = None,
         expected_model: str | None = None,
         max_output_tokens: int = MAX_OUTPUT_TOKENS,
+        max_context_bytes: int = MAX_CONTEXT_BYTES,
     ) -> None:
-        if type(max_output_tokens) is not int or max_output_tokens <= 0:
-            raise ValueError("max_output_tokens must be a positive integer")
+        for name, value in (
+            ("max_output_tokens", max_output_tokens),
+            ("max_context_bytes", max_context_bytes),
+        ):
+            if type(value) is not int or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
         self.max_output_tokens = max_output_tokens
+        self.max_context_bytes = max_context_bytes
         self.provider, self.model, self.effort, self.key = provider, model, effort, key
         self.expected_model = expected_model or model
         self.workspace, self.artifacts = workspace, artifacts
@@ -346,7 +352,7 @@ class Runner:
     def request(self) -> dict[str, Any]:
         payload = self.payload()
         size = len(json.dumps(payload).encode())
-        if size > MAX_CONTEXT_BYTES:
+        if size > self.max_context_bytes:
             raise BudgetReached("context_bytes")
         if self.max_cost is not None:
             assert self.price_in is not None and self.price_out is not None
@@ -585,7 +591,10 @@ class Runner:
                 "stages": self.stages,
                 "generated_files": self.generated,
                 "verified": self.verified,
-                "limits": {"max_output_tokens": self.max_output_tokens},
+                "limits": {
+                    "max_output_tokens": self.max_output_tokens,
+                    "max_context_bytes": self.max_context_bytes,
+                },
             }
             checkpoint = self.artifacts / "state.tmp"
             checkpoint.write_text(json.dumps({"stats": stats, "history": self.history}))

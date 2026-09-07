@@ -51,8 +51,12 @@ the unchanged independent evaluator still grades the frozen candidate.
   high-effort runs that need more room for reasoning and code. The limit is
   recorded in request/final evidence, included in cell identity, and reserved
   before each paid request. A response ending at its limit remains a recorded
-  `incomplete_response`, never silently retried. Context is limited to
-  120,000 serialized bytes. Tool results show at most 6,000 characters with a
+  `incomplete_response`, never silently retried. Context defaults to
+  120,000 serialized bytes; `--max-context-bytes` (matrix
+  `execution.max_context_bytes`) pins a different ceiling with the same
+  identity and evidence rules. It includes retained provider reasoning, not
+  just visible conversation text. Exceeding it stops before another API call.
+  Tool results show at most 6,000 characters with a
   path to the complete output. No paid summarizer or silent context eviction.
   OpenAI reasoning items/call IDs and Fireworks `reasoning_content` stay in order.
 - At most two retries for explicit HTTP 429 rejection. No retries for ambiguous
