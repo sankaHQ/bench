@@ -330,9 +330,12 @@ def test_timeout_preserves_billing_and_classifies_deadline(tmp_path, monkeypatch
 
 
 def test_repeated_verification_uses_result_until_command_invalidates_it(tmp_path):
-    run = runner(
-        tmp_path, sanka=Path("/sanka"), execute=lambda argv, **kw: cli_response(argv, ok=False)
-    )
+    def execute(argv, **kw):
+        result = cli_response(argv)
+        result.stdout += "\nok=false\n"
+        return result
+
+    run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
     run.verify(None)
     run.verify(None)
     assert run.commands == 1
@@ -393,3 +396,156 @@ def test_qualification_records_real_sandbox_tool_roundtrip(tmp_path, monkeypatch
     assert evidence["status"] == "qualified" and all(evidence["checks"].values())
     assert evidence["native"]["version"] == native.version()
     assert out.with_suffix(".jsonl").is_file()
+
+
+def test_command_timing_distinguishes_timeout_from_exit_124(tmp_path):
+    def timeout(argv, **kwargs):
+        raise subprocess.TimeoutExpired(argv, 1, output="partial")
+
+    run = runner(tmp_path, execute=timeout)
+    run.command(["test"], phase="verify")
+    end = run.events[-1]
+    assert end["timed_out"] is True
+    assert end["phase"] == "verify"
+    assert end["duration_seconds"] >= 0
+    assert end["elapsed_seconds"] >= run.events[-2]["elapsed_seconds"]
+    run.execute = lambda argv, **kw: subprocess.CompletedProcess(argv, 124, "", "")
+    run.command(["test"])
+    assert run.events[-1]["timed_out"] is False
+
+
+def test_unchanged_failed_finalization_stops_without_third_paid_response(tmp_path, monkeypatch):
+    run = runner(tmp_path, sanka=Path("sanka"))
+    monkeypatch.setattr(run, "bootstrap", lambda: "coverage missing")
+    monkeypatch.setattr(run, "verify", lambda seed: "coverage missing")
+    requests = []
+
+    def request():
+        requests.append(1)
+        return response()
+
+    monkeypatch.setattr(run, "request", request)
+    _, stats = run.run()
+    assert stats["result"] == "verification_failed"
+    assert len(requests) == 2
+
+
+def test_bounded_read_preserves_verification_and_rejects_escape(tmp_path):
+    run = runner(tmp_path)
+    (run.workspace / "notes").write_text("first\nsecond\nthird\n")
+    run.verified = True
+
+    def read(path, start=2, lines=1):
+        return run.dispatch(
+            {
+                "name": "read",
+                "arguments": json.dumps({"path": path, "start": start, "lines": lines}),
+            }
+        )
+
+    assert read("notes") == "2: second\n"
+    assert run.verified
+    output = run.artifacts / "tools" / "saved.txt"
+    output.write_text("saved\n")
+    assert read(str(output), start=1) == "1: saved\n"
+    run.max_turns = 10
+    outside = tmp_path / "outside"
+    outside.write_text("private")
+    (run.workspace / "escape").symlink_to(outside)
+    assert read("escape").startswith("tool error:")
+    assert read("notes", lines=201).startswith("tool error:")
+    assert read("notes", start=True).startswith("tool error:")
+
+
+@pytest.mark.parametrize(
+    "data,category",
+    [
+        ({"ok": False, "summary": {"status_mismatches": 1}}, "candidate_failure"),
+        ({"ok": True, "warnings": ["seed missing"]}, "coverage_incomplete"),
+        ({"ok": False, "summary": {"source_expectation_mismatches": 1}}, "coverage_incomplete"),
+        ({"ok": True, "warnings": []}, None),
+    ],
+)
+def test_verification_failure_categories(tmp_path, data, category):
+    run = runner(tmp_path, sanka=Path("sanka"))
+
+    def execute(argv, **kw):
+        result = cli_response(argv)
+        result.stdout += "\n" + "\n".join(f"{k}={json.dumps(v)}" for k, v in data.items())
+        return result
+
+    run.execute = execute
+    run.verify(None)
+    assert run.stages["verify"]["failure_category"] == category
+    assert run.verified is (category is None)
+
+
+def test_verification_timeout_is_infrastructure_failure(tmp_path):
+    def timeout(argv, **kw):
+        raise subprocess.TimeoutExpired(argv, 1, output="partial report")
+
+    run = runner(tmp_path, sanka=Path("sanka"), execute=timeout)
+    with pytest.raises(RuntimeError, match="lifecycle protocol"):
+        run.verify(None)
+    assert run.stages["verify"]["failure_category"] == "infrastructure_failure"
+    assert run.events[-2]["timed_out"]
+
+
+def test_provider_phase_and_usage_are_recorded(tmp_path, monkeypatch):
+    run = runner(tmp_path)
+    monkeypatch.setattr(native, "post", lambda *args: response())
+    _, stats = run.run()
+    assert stats["usage_complete"]
+    assert stats["phase_seconds"]["provider"] >= 0
+    assert [e["status"] for e in run.events if e["type"] == "request_end"] == ["received"]
+
+
+@pytest.mark.parametrize("final_tool", [False, True])
+def test_same_verification_after_exec_stops_despite_new_artifact_path(
+    tmp_path, monkeypatch, final_tool
+):
+    def execute(argv, **kw):
+        if argv[0] == "/bin/sh":
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        result = cli_response(argv)
+        if argv[1] == "verify":
+            result.stdout += '\nok=false\nsummary={"status_mismatches":1}\n'
+        return result
+
+    finish = response(calls=[("verify", {"seed": None})]) if final_tool else response()
+    replies = iter([finish, response(calls=[("exec", {"command": "true"})]), finish])
+    monkeypatch.setattr(native, "post", lambda *args: next(replies))
+    run = runner(tmp_path, sanka=Path("sanka"), execute=execute)
+    _, stats = run.run()
+    assert stats["result"] == "verification_failed"
+    assert stats["num_turns"] == 3
+    assert stats["failure_category"] == "candidate_failure"
+
+
+def test_read_enforces_deadline_while_skipping_lines(tmp_path, monkeypatch):
+    run = runner(tmp_path)
+    (run.workspace / "many").write_text("x\n" * 100)
+    checks = []
+
+    def remaining():
+        checks.append(1)
+        if len(checks) == 3:
+            raise native.BudgetReached("wall_clock")
+        return 1
+
+    monkeypatch.setattr(run, "remaining", remaining)
+    with pytest.raises(native.BudgetReached, match="wall_clock"):
+        run.dispatch(
+            {"name": "read", "arguments": json.dumps({"path": "many", "start": 90, "lines": 1})}
+        )
+    assert len(checks) == 3
+
+
+def test_model_verifier_protocol_failure_stops_as_infrastructure(tmp_path, monkeypatch):
+    run = runner(tmp_path, sanka=Path("sanka"))
+    monkeypatch.setattr(run, "bootstrap", lambda: "existing scaffold")
+    monkeypatch.setattr(native, "post", lambda *args: response(calls=[("verify", {"seed": None})]))
+    _, stats = run.run()
+    assert stats["is_error"]
+    assert stats["failure_category"] == "infrastructure_failure"
+    assert stats["num_turns"] == 1
