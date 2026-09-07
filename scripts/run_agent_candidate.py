@@ -26,9 +26,11 @@ Three official configurations and one separate diagnostic arm:
   ``sanka-readiness.json``, not sent). This arm is diagnostic and never
   replaces the official pass@1 configurations.
 
-Two agent families share the same contract, prompt, and freezing logic:
+Three agent families share the same contract, prompt, and freezing logic:
 
-- ``--agent claude-code`` (default) drives the Claude CLI headlessly and uses
+- ``--agent sanka-native`` (default) owns the Sanka lifecycle and calls direct
+  OpenAI Responses or Fireworks Chat APIs only for remaining work;
+- ``--agent claude-code`` drives the Claude CLI headlessly and uses
   its self-reported turns, duration, and cost;
 - ``--agent codex`` drives OpenAI's Codex CLI (``codex exec``) against the
   OpenAI API or any OpenAI-compatible provider (``--provider deepinfra``,
@@ -90,7 +92,7 @@ from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sanka_bench import agent_isolation
+from sanka_bench import agent_isolation, native_agent
 from sanka_bench.environment import isolated_environment
 from sanka_bench.hashing import digest_tree
 from sanka_bench.schema import load_and_validate, validate_candidate_id
@@ -760,9 +762,9 @@ def _workspace_files(workspace: Path) -> dict[str, str]:
     }
 
 
-def _promote_scaffold(workspace: Path) -> dict[str, str]:
+def _promote_scaffold(workspace: Path, overlay: Path | None = None) -> dict[str, str]:
     """Install only new generated files, preserving the immutable source contract."""
-    overlay = workspace / "bench-candidate" / "overlay"
+    overlay = overlay if overlay is not None else workspace / "bench-candidate" / "overlay"
     if (
         not overlay.is_dir()
         or overlay.is_symlink()
@@ -809,9 +811,11 @@ def main() -> int:
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--sandbox", type=Path)
-    parser.add_argument("--agent", default="claude-code", choices=("claude-code", "codex"))
+    parser.add_argument(
+        "--agent", default="sanka-native", choices=("sanka-native", "claude-code", "codex")
+    )
     parser.add_argument("--agent-bin", default=None)
-    parser.add_argument("--model", default="claude-sonnet-5")
+    parser.add_argument("--model", default=None)
     parser.add_argument("--actual-model-id", default=None)
     parser.add_argument(
         "--reasoning-effort", choices=("none", "low", "medium", "high", "xhigh", "max")
@@ -836,26 +840,31 @@ def main() -> int:
         "--price-in",
         type=float,
         default=None,
-        help="codex only: USD per million input tokens, for computed cost",
+        help="USD per million input tokens, for computed cost (native: full rate incl. cache)",
     )
     parser.add_argument(
         "--price-out",
         type=float,
         default=None,
-        help="codex only: USD per million output tokens, for computed cost",
+        help="USD per million output tokens, for computed cost",
     )
     parser.add_argument("--max-turns", type=int, default=60)
     parser.add_argument(
         "--max-agent-cost-usd",
         type=float,
-        help="Claude Code estimated-cost cap; not verified provider billing",
+        help="estimated-cost cap (native requires prices); not verified provider billing",
     )
     parser.add_argument("--wall-clock-seconds", type=int, default=3600)
     parser.add_argument("--sanka-bin", type=Path, default=None)
     parser.add_argument("--sanka-skill-sha256")
     parser.add_argument(
         "--sanka-workflow",
-        choices=("availability-v1", "artifacts-first-v1", "artifacts-first-v2"),
+        choices=(
+            "availability-v1",
+            "artifacts-first-v1",
+            "artifacts-first-v2",
+            "native-lifecycle-v1",
+        ),
         default="availability-v1",
     )
     parser.add_argument(
@@ -872,6 +881,10 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.model is None:
+        if args.agent == "sanka-native":
+            parser.error("--model must name the exact provider model")
+        args.model = "claude-sonnet-5"
     if args.provider is None:
         args.provider = "anthropic" if args.agent == "claude-code" else "openai"
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.provider_variant):
@@ -891,8 +904,33 @@ def main() -> int:
         parser.error(
             "--max-agent-cost-usd is a Claude-only limit; use the recorded Codex wall limit"
         )
-    if args.reasoning_effort is not None and args.agent != "codex":
-        parser.error("--reasoning-effort currently requires the Codex harness")
+    if args.reasoning_effort is not None and args.agent not in {"codex", "sanka-native"}:
+        parser.error("--reasoning-effort requires Codex or Sanka native")
+    if args.agent != "sanka-native" and args.sanka_workflow == "native-lifecycle-v1":
+        parser.error("native-lifecycle-v1 requires the native harness")
+    if args.agent == "sanka-native":
+        if args.provider not in native_agent.ROUTES:
+            parser.error("native harness supports direct OpenAI and Fireworks API routes")
+        if args.agent_bin is not None:
+            parser.error("native harness does not use --agent-bin")
+        if args.out.exists() and any(args.out.iterdir()):
+            parser.error("native output already exists; preserve the previous attempt")
+        args.reasoning_effort = args.reasoning_effort or "high"
+        args.route_kind = "openai-responses" if args.provider == "openai" else "openai-chat"
+        args.billing_mode = "api_key"
+        if args.gateway_profile:
+            parser.error("native harness uses direct API keys, not gateway profiles")
+        if not os.environ.get(native_agent.ROUTES[args.provider][1]):
+            parser.error("native harness requires the selected provider API key")
+        prices = (args.price_in, args.price_out)
+        if any(p is not None for p in prices) and not all(
+            p is not None and math.isfinite(p) and p >= 0 for p in prices
+        ):
+            parser.error("supply both finite nonnegative --price-in and --price-out")
+        if args.max_agent_cost_usd is not None and args.price_in is None:
+            parser.error("native cost cap requires explicit provider prices")
+        if args.sanka_workflow not in {"availability-v1", "native-lifecycle-v1"}:
+            parser.error("native harness owns the lifecycle; omit --sanka-workflow")
 
     try:
         validate_candidate_id(args.candidate_id)
@@ -914,6 +952,8 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
+    if args.agent == "sanka-native" and mode == "readiness-aware":
+        parser.error("native harness supports the three primary arms only")
     if mode != "alone" and args.sanka_bin is None:
         print(f"{args.candidate_id} requires --sanka-bin", file=sys.stderr)
         return 2
@@ -924,16 +964,23 @@ def main() -> int:
         print("turn and wall-clock budgets must be positive", file=sys.stderr)
         return 2
     if args.max_agent_cost_usd is not None and (
-        args.agent != "claude-code"
+        args.agent not in {"claude-code", "sanka-native"}
         or not math.isfinite(args.max_agent_cost_usd)
         or args.max_agent_cost_usd <= 0
     ):
         print(
-            "--max-agent-cost-usd requires Claude Code and a finite positive value", file=sys.stderr
+            "--max-agent-cost-usd requires Claude Code or native and a finite positive value",
+            file=sys.stderr,
         )
         return 2
     if args.agent_bin is None:
-        args.agent_bin = "claude" if args.agent == "claude-code" else "codex"
+        args.agent_bin = (
+            sys.executable
+            if args.agent == "sanka-native"
+            else "claude"
+            if args.agent == "claude-code"
+            else "codex"
+        )
     args.agent_bin = str(Path(shutil.which(args.agent_bin) or args.agent_bin).resolve())
     task = load_and_validate(task_dir / "task.yaml", "task")
     required_python = str(task["source"]["python"])
@@ -952,6 +999,8 @@ def main() -> int:
         check=False,
         env=isolated_environment(os.environ),
     ).stdout.strip()
+    if args.agent == "sanka-native":
+        agent_version = native_agent.version()
 
     lane_started = time.monotonic()
     sandbox_context = (
@@ -992,6 +1041,16 @@ def main() -> int:
                 "TOGETHER_API_KEY",
             },
         )
+        native_key = None
+        if args.agent == "sanka-native":
+            native_key = env[native_agent.ROUTES[args.provider][1]]
+            for name in (
+                *PROVIDER_ENV_KEYS.values(),
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_AUTH_TOKEN",
+                "ANTHROPIC_BASE_URL",
+            ):
+                env.pop(name, None)
         for name in (
             "DJANGO_SETTINGS_MODULE",
             "BENCH_DB_PATH",
@@ -1066,7 +1125,7 @@ def main() -> int:
                 assert skill_record is not None
                 prompt += (
                     _inline_skill(skill_record)
-                    if args.sanka_workflow == "artifacts-first-v2"
+                    if args.sanka_workflow == "artifacts-first-v2" or args.agent == "sanka-native"
                     else PROMPT_SANKA_SKILL
                 )
         elif mode == "readiness-aware":
@@ -1086,7 +1145,9 @@ def main() -> int:
                 args.sanka_bin.resolve(), workspace=workspace, env=env
             )
             prompt += _readiness_prompt(readiness_context, args.sanka_bin.resolve())
-        if args.agent == "codex":
+        if args.agent == "sanka-native":
+            command = []  # The controller stays outside every tool sandbox.
+        elif args.agent == "codex":
             codex_home = sandbox / "codex-home"
             command = _codex_command(args, prompt, codex_home)
             env["CODEX_HOME"] = str(codex_home)
@@ -1106,7 +1167,7 @@ def main() -> int:
                 "--verbose",
                 *agent_isolation.claude_arguments(with_skill=mode == "with-sanka"),
             ]
-        if args.max_agent_cost_usd is not None:
+        if args.max_agent_cost_usd is not None and args.agent != "sanka-native":
             command.extend(["--max-budget-usd", str(args.max_agent_cost_usd)])
         readable = [Path(args.agent_bin), Path(sys.prefix), Path(sys.base_prefix)]
         writable = [workspace, claude_config, temp_dir]
@@ -1132,15 +1193,69 @@ def main() -> int:
                 first_target_seconds = round(time.monotonic() - started, 3)
 
         try:
-            outcome = agent_isolation.run(
-                command,
-                workspace=workspace,
-                readable=readable,
-                writable=writable,
-                env=env,
-                timeout=args.wall_clock_seconds,
-                observe=observe_target,
-            )
+            native_stats = None
+            if args.agent == "sanka-native":
+                artifacts = args.out.resolve() / "native"
+                (artifacts / "tools").mkdir(parents=True)
+                readable.append(artifacts / "tools")
+                tool_env = isolated_environment(
+                    env, {"SANKA_HOME", "PYTHONPATH", "PYTHONDONTWRITEBYTECODE"}
+                )
+                tool_env["HOME"] = str(claude_config)
+                tool_env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + os.defpath
+
+                def execute_native(
+                    argv: list[str], *, timeout: float
+                ) -> subprocess.CompletedProcess[str]:
+                    return agent_isolation.run(
+                        argv,
+                        workspace=workspace,
+                        readable=readable,
+                        writable=writable,
+                        env=tool_env,
+                        timeout=timeout,
+                        observe=observe_target,
+                    )
+
+                runner = native_agent.Runner(
+                    provider=args.provider,
+                    model=args.model,
+                    expected_model=args.actual_model_id or args.model,
+                    effort=args.reasoning_effort,
+                    key=native_key,
+                    prompt=prompt,
+                    workspace=workspace,
+                    artifacts=artifacts,
+                    execute=execute_native,
+                    promote=lambda: _promote_scaffold(
+                        workspace,
+                        workspace
+                        / (
+                            ".sanka/output/flask"
+                            if task["target"]["framework"] == "flask"
+                            else ".sanka/agent-candidate/overlay"
+                        ),
+                    ),
+                    sanka=args.sanka_bin.resolve() if mode != "alone" else None,
+                    target=task["target"]["framework"],
+                    max_turns=args.max_turns,
+                    wall_seconds=args.wall_clock_seconds,
+                    price_in=args.price_in,
+                    price_out=args.price_out,
+                    max_cost=args.max_agent_cost_usd,
+                )
+                outcome, native_stats = runner.run()
+                generated_files = runner.generated
+            else:
+                outcome = agent_isolation.run(
+                    command,
+                    workspace=workspace,
+                    readable=readable,
+                    writable=writable,
+                    env=env,
+                    timeout=args.wall_clock_seconds,
+                    observe=observe_target,
+                )
         except (OSError, RuntimeError) as exc:
             print(f"agent isolation failed: {exc}", file=sys.stderr)
             return 1
@@ -1162,7 +1277,10 @@ def main() -> int:
         agent_ended_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         codex_evidence = None
         codex_evidence_error = None
-        if args.agent == "codex":
+        if args.agent == "sanka-native":
+            assert native_stats is not None
+            stats = native_stats
+        elif args.agent == "codex":
             if args.reasoning_effort is not None:
                 try:
                     codex_evidence = _codex_session_evidence(
@@ -1225,6 +1343,10 @@ def main() -> int:
             for key in before_agent.keys() | after_agent.keys()
             if before_agent.get(key) != after_agent.get(key)
         }
+        if args.agent == "sanka-native":
+            changed_by_agent -= {
+                key for key, digest in generated_files.items() if after_agent.get(key) == digest
+            }
         telemetry: dict[str, object] = {
             "schema": "sanka-bench/agent-cell-telemetry/v1",
             "input_digest": os.environ.get("SANKA_BENCH_INPUT_DIGEST") or None,
@@ -1241,7 +1363,11 @@ def main() -> int:
             "started_at": agent_started_at,
             "ended_at": agent_ended_at,
             "work": {
-                **_observed_work(outcome.stdout),
+                **(
+                    stats["work"]
+                    if args.agent == "sanka-native"
+                    else _observed_work(outcome.stdout)
+                ),
                 **(
                     {key: codex_evidence[key] for key in ("observed_model_responses", "tool_calls")}
                     if codex_evidence
@@ -1249,7 +1375,9 @@ def main() -> int:
                 ),
             },
             "treatment": {
-                "sanka_workflow": "readiness-aware"
+                "sanka_workflow": "native-lifecycle-v1"
+                if args.agent == "sanka-native" and mode != "alone"
+                else "readiness-aware"
                 if mode == "readiness-aware"
                 else args.sanka_workflow
                 if mode != "alone"
@@ -1371,6 +1499,8 @@ def main() -> int:
             else:
                 print(f"agent reported an error: {stats.get('result') or stats}", file=sys.stderr)
                 return 1
+        if args.agent == "sanka-native":
+            terminal_reason = "native harness stopped: " + str(stats["result"])
         reported_turns = stats.get("num_turns")
         if (
             args.agent == "claude-code"
@@ -1871,7 +2001,7 @@ def _write_disclosure(
     equivalent_text = (
         f"${float(equivalent):.2f}" if isinstance(equivalent, int | float) else "not applicable"
     )
-    if args.agent == "claude-code":
+    if args.agent in {"claude-code", "sanka-native"}:
         budget_text = str(args.max_turns)
     else:
         budget_text = (
@@ -1890,12 +2020,16 @@ def _write_disclosure(
         )
     elif args.attempt == 1:
         attempt_text += " (pass@1; no retries)"
-    agent_label = "Claude Code" if args.agent == "claude-code" else "Codex CLI"
+    agent_label = {
+        "claude-code": "Claude Code",
+        "codex": "Codex CLI",
+        "sanka-native": "Sanka native",
+    }[args.agent]
     provider = args.provider
     web_search_text = (
         "Claude Code default tool set"
         if args.agent == "claude-code"
-        else 'disabled (`web_search="disabled"`; one tool surface across providers)'
+        else "disabled; no web-search tool"
     )
     version = agent_version or args.agent_bin
     readiness_value = "not run"

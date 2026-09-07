@@ -181,6 +181,44 @@ def official_manifest(root: Path) -> dict[str, Any]:
     return value
 
 
+@pytest.mark.parametrize(
+    "provider,route", [("openai", "openai-responses"), ("fireworks", "openai-chat")]
+)
+def test_native_matrix_pins_route_effort_and_runner(tmp_path, provider, route):
+    value = official_manifest(tmp_path)
+    model = value["models"][0]
+    model.update(
+        harness="sanka-native",
+        provider=provider,
+        route_kind=route,
+        billing_mode="api_key",
+        reasoning_effort="high",
+    )
+    value["execution"]["sanka_workflow"] = "native-lifecycle-v1"
+    value["toolchain"].update(
+        native_version="sanka-native/1", native_bin_sha256="sha256:" + "1" * 64
+    )
+    path = tmp_path / model["qualification"]
+    evidence = json.loads(path.read_text())
+    evidence.update(
+        {k: model[k] for k in ("provider", "route_kind", "billing_mode", "reasoning_effort")}
+    )
+    evidence["schema"] = "sanka-bench/native-route-qualification/v1"
+    evidence["native"] = {"version": "sanka-native/1", "sha256": "sha256:" + "1" * 64}
+    evidence["checks"]["ordered_tool_results"] = True
+    path.write_text(json.dumps(evidence))
+    model["qualification_sha256"] = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    validate_official_manifest(value, tmp_path)
+    before = cell_input_digest(value, task="drf-fastapi-001", model=model, config="alone", sample=1)
+    value["toolchain"]["native_bin_sha256"] = "sha256:" + "8" * 64
+    assert (
+        cell_input_digest(value, task="drf-fastapi-001", model=model, config="alone", sample=1)
+        != before
+    )
+    with pytest.raises(ValueError, match="harness evidence"):
+        validate_official_manifest(value, tmp_path)
+
+
 def test_official_manifest_accepts_three_arm_ablation(tmp_path: Path) -> None:
     value = official_manifest(tmp_path)
     value["execution"]["configurations"] = ["alone", "sanka-cli", "with-sanka"]

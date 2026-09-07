@@ -35,6 +35,80 @@ def test_isolated_environment_drops_host_secrets_and_global_tool_path() -> None:
     }
 
 
+def test_native_adapter_freezes_candidate_without_claude_or_exposing_keys(
+    harness, tmp_path, monkeypatch
+):
+    import shlex
+
+    from sanka_bench import native_agent
+
+    out = tmp_path / "candidate"
+    hidden = tmp_path / "hidden-grader"
+    hidden.write_text("not visible")
+    monkeypatch.setenv("OPENAI_API_KEY", "native-test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "unrelated-key")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_agent_candidate",
+            "--task",
+            str(SCRIPTS.parent / "tasks/drf-flask/drf-flask-005"),
+            "--candidate-id",
+            "native-test-alone",
+            "--model",
+            "test-model",
+            "--sanka-bin",
+            sys.executable,  # An ambient tool path must not enable Sanka in the alone arm.
+            "--out",
+            str(out),
+            "--sandbox",
+            str(tmp_path / "sandbox"),
+        ],
+    )
+    requests = []
+    code = (
+        "import os; from pathlib import Path; "
+        "assert not any(k.endswith(('API_KEY', 'AUTH_TOKEN')) for k in os.environ); "
+        "Path('target_app.py').write_text('from flask import Flask\\napp = Flask(__name__)\\n')"
+    )
+    command = (
+        f"test ! -r {shlex.quote(str(hidden))} && "
+        f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
+    )
+
+    def post(url, key, payload, timeout):
+        assert key == "native-test-key"
+        assert payload["reasoning"]["effort"] == "high"
+        requests.append(payload)
+        return {
+            "model": "test-model",
+            "status": "completed",
+            "output": [
+                {
+                    "type": "function_call",
+                    "call_id": "write",
+                    "name": "exec",
+                    "arguments": json.dumps({"command": command}),
+                }
+            ]
+            if len(requests) == 1
+            else [],
+            "usage": {"input_tokens": 10, "output_tokens": 2},
+        }
+
+    monkeypatch.setattr(native_agent, "post", post)
+    assert harness.main() == 0
+    assert (out / "overlay/target_app.py").is_file()
+    assert hidden.read_text() == "not visible"
+    data = json.loads((out / "telemetry.json").read_text())
+    assert data["harness"] == "sanka-native" and data["usage"]["total_tokens"] == 24
+    assert data["work"]["provider_api_requests"] == 2 and data["work"]["tool_calls"] == 1
+    load_and_validate(out / "candidate.yaml", "candidate")
+    assert "native-test-key" not in (out / "native/events.jsonl").read_text()
+    assert (out / "native/state.json").is_file()
+
+
 @pytest.fixture(scope="module")
 def harness() -> object:
     import importlib.util
@@ -751,6 +825,8 @@ def _run_adapter(
     command = [
         sys.executable,
         str(SCRIPTS / "run_agent_candidate.py"),
+        "--agent",
+        "claude-code",
         "--task",
         str(task),
         "--candidate-id",
@@ -1258,6 +1334,8 @@ def test_artifacts_first_reuses_scaffold_without_hiding_silent_timeout(
         "argv",
         [
             "run_agent_candidate",
+            "--agent",
+            "claude-code",
             "--task",
             str(task),
             "--candidate-id",
@@ -1441,6 +1519,8 @@ def test_codex_candidate_preserves_api_usage_and_checks_runtime_effort(
         "argv",
         [
             "run_agent_candidate",
+            "--agent",
+            "claude-code",
             "--task",
             str(SCRIPTS.parent / "tasks/drf-fastapi/drf-fastapi-001"),
             "--candidate-id",

@@ -1,0 +1,111 @@
+"""Explicit paid, tiny tool round-trip before admitting a native route to a matrix."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import secrets
+import sys
+from pathlib import Path
+
+from sanka_bench import agent_isolation, native_agent
+from sanka_bench.environment import isolated_environment
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--provider", required=True, choices=native_agent.ROUTES)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--actual-model-id")
+    parser.add_argument("--provider-variant", default="standard")
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args()
+    key = os.environ.get(native_agent.ROUTES[args.provider][1])
+    if not key:
+        parser.error("selected provider API key is missing")
+    root = args.out.resolve().parent / (args.out.stem + "-probe")
+    if args.out.exists() or args.out.with_suffix(".jsonl").exists() or root.exists():
+        parser.error("qualification already exists; preserve its evidence")
+    root.mkdir(parents=True)
+    workspace, artifacts, home = root / "workspace", root / "artifacts", root / "home"
+    for folder in (workspace, home, artifacts / "tools"):
+        folder.mkdir(parents=True)
+    nonce = secrets.token_hex(8)
+    prompt = f"Use exec to write exactly {nonce} into probe.txt. After the tool result, reply done."
+    env = isolated_environment(os.environ)
+    env.update(HOME=str(home), TMPDIR=str(home))
+
+    def execute(argv: list[str], *, timeout: float):
+        return agent_isolation.run(
+            argv,
+            workspace=workspace,
+            readable=[Path(sys.prefix), Path(sys.base_prefix)],
+            writable=[workspace, home],
+            env=env,
+            timeout=timeout,
+        )
+
+    runner = native_agent.Runner(
+        provider=args.provider,
+        model=args.model,
+        expected_model=args.actual_model_id or args.model,
+        effort="high",
+        key=key,
+        prompt=prompt,
+        workspace=workspace,
+        artifacts=artifacts,
+        execute=execute,
+        promote=lambda: {},
+        sanka=None,
+        target="",
+        max_turns=3,
+        wall_seconds=120,
+    )
+    outcome, stats = runner.run()
+    probe = workspace / "probe.txt"
+    checks = {
+        "tool_use": probe.is_file()
+        and not probe.is_symlink()
+        and probe.read_text().strip() == nonce,
+        "ordered_tool_results": stats["num_turns"] >= 2 and stats["work"]["tool_calls"] >= 1,
+        "terminal_event": stats["subtype"] == "native-completed_unverified",
+        "usage_accounting": stats["total_tokens"] is not None and stats["total_tokens"] > 0,
+    }
+    transcript = args.out.with_suffix(".jsonl")
+    transcript.write_text(outcome.stdout)
+
+    def digest(data: bytes) -> str:
+        return "sha256:" + hashlib.sha256(data).hexdigest()
+
+    evidence = {
+        "schema": "sanka-bench/native-route-qualification/v1",
+        "status": "qualified" if all(checks.values()) and not stats["is_error"] else "failed",
+        "requested_model_id": args.model,
+        "actual_model_id": args.actual_model_id or args.model,
+        "provider": args.provider,
+        "provider_variant": args.provider_variant,
+        "route_kind": "openai-responses" if args.provider == "openai" else "openai-chat",
+        "billing_mode": "api_key",
+        "gateway_profile": None,
+        "reasoning_effort": "high",
+        "native": {
+            "version": native_agent.version(),
+            "sha256": digest(Path(native_agent.__file__).read_bytes()),
+        },
+        "checks": checks,
+        "stats": stats,
+        "evidence": {
+            "prompt_sha256": digest(prompt.encode()),
+            "provider_sha256": digest(native_agent.ROUTES[args.provider][0].encode()),
+            "transcript_sha256": digest(transcript.read_bytes()),
+        },
+    }
+    args.out.write_text(json.dumps(evidence, indent=2) + "\n")
+    print(evidence["status"])
+    return 0 if evidence["status"] == "qualified" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

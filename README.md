@@ -1,5 +1,9 @@
 # Sanka Migration Bench
 
+The default agent is now the [Sanka native harness](docs/native-harness.md):
+direct provider APIs, controller-owned Sanka lifecycle, and the same independent
+benchmark tasks and grading. Legacy Claude Code/Codex adapters remain explicit options.
+
 Sanka Migration Bench (repository `sankaHQ/bench`, package `sanka-bench`) is a tool-neutral, repository-level
 benchmark for evaluating whether a software migration preserves behavior and
 actually reaches its declared target architecture.
