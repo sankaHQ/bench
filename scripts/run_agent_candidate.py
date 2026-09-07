@@ -840,13 +840,18 @@ def main() -> int:
         "--price-in",
         type=float,
         default=None,
-        help="USD per million input tokens, for computed cost (native: full rate incl. cache)",
+        help="USD per million input tokens (native: uncached upper rate including cache writes)",
     )
     parser.add_argument(
         "--price-out",
         type=float,
         default=None,
         help="USD per million output tokens, for computed cost",
+    )
+    parser.add_argument(
+        "--price-cached",
+        type=float,
+        help="native USD per million reported cache-read tokens; omitted uses price-in",
     )
     parser.add_argument("--max-turns", type=int, default=60)
     parser.add_argument(
@@ -943,6 +948,12 @@ def main() -> int:
             p is not None and math.isfinite(p) and p >= 0 for p in prices
         ):
             parser.error("supply both finite nonnegative --price-in and --price-out")
+        if args.price_cached is not None and (
+            not math.isfinite(args.price_cached)
+            or args.price_in is None
+            or not 0 <= args.price_cached <= args.price_in
+        ):
+            parser.error("--price-cached must be finite and between zero and --price-in")
         if args.max_agent_cost_usd is not None and args.price_in is None:
             parser.error("native cost cap requires explicit provider prices")
         if args.sanka_workflow not in {"availability-v1", "native-lifecycle-v1"}:
@@ -1258,6 +1269,7 @@ def main() -> int:
                     wall_seconds=args.wall_clock_seconds,
                     price_in=args.price_in,
                     price_out=args.price_out,
+                    price_cached=args.price_cached,
                     max_cost=args.max_agent_cost_usd,
                     max_output_tokens=args.max_output_tokens or native_agent.MAX_OUTPUT_TOKENS,
                     max_context_bytes=args.max_context_bytes or native_agent.MAX_CONTEXT_BYTES,

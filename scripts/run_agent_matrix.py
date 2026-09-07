@@ -478,6 +478,15 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
                 for name in ("price_in", "price_out")
             ):
                 raise ValueError("native cost cap requires finite provider prices")
+            cached = model.get("price_cached")
+            if cached is not None and (
+                type(cached) not in {int, float}
+                or not math.isfinite(cached)
+                or type(model.get("price_in")) not in {int, float}
+                or not math.isfinite(model["price_in"])
+                or not 0 <= cached <= model["price_in"]
+            ):
+                raise ValueError("price_cached must be finite and between zero and price_in")
         if harness == "codex":
             if (
                 model.get("provider") != "openai"

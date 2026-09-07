@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import subprocess
 import time
 import urllib.error
@@ -169,6 +170,7 @@ class Runner:
         wall_seconds: int,
         price_in: float | None = None,
         price_out: float | None = None,
+        price_cached: float | None = None,
         max_cost: float | None = None,
         expected_model: str | None = None,
         max_output_tokens: int = MAX_OUTPUT_TOKENS,
@@ -192,6 +194,14 @@ class Runner:
             price_out,
             max_cost,
         )
+        if price_cached is not None and (
+            type(price_cached) not in {int, float}
+            or not math.isfinite(price_cached)
+            or price_in is None
+            or not 0 <= price_cached <= price_in
+        ):
+            raise ValueError("price_cached must be finite and between zero and price_in")
+        self.price_cached = price_cached
         self.started = time.monotonic()
         self.deadline = self.started + wall_seconds
         self.events: list[dict[str, Any]] = []
@@ -461,10 +471,14 @@ class Runner:
     def cost(self) -> float | None:
         if not self.usage_complete or self.price_in is None or self.price_out is None:
             return None
-        # Conservative published-rate estimate: cached input charged at the full input rate.
+        # price_in must cover uncached input including any cache-write premium.
+        # Discount only cache reads actually reported; future requests reserve full input.
+        cached = self.usage["cache_read_input_tokens"]
+        discount = 0 if self.price_cached is None else cached * (self.price_in - self.price_cached)
         return (
             self.usage["input_tokens"] * self.price_in
             + self.usage["output_tokens"] * self.price_out
+            - discount
         ) / 1_000_000
 
     def request(self) -> dict[str, Any]:
@@ -569,7 +583,13 @@ class Runner:
             if value is None:
                 self.missing_details.add(name)
                 continue
-            if type(value) is not int or value < 0:
+            total = (
+                usage["input_tokens" if is_openai else "prompt_tokens"]
+                if name == "cache_read_input_tokens"
+                else usage["output_tokens" if is_openai else "completion_tokens"]
+            )
+            if type(value) is not int or not 0 <= value <= total:
+                self.usage_complete = False
                 raise ValueError("invalid token detail")
             self.usage[name] += value
         if response.get("model") != self.expected_model:
@@ -794,7 +814,9 @@ class Runner:
                 if self.usage_complete
                 else None,
                 "cost_usd": self.cost(),
-                "cost_basis": "provided-rates-uncached-upper-estimate"
+                "cost_basis": "provided-rates-cache-aware-upper-estimate"
+                if self.price_cached is not None
+                else "provided-rates-uncached-upper-estimate"
                 if self.price_in is not None
                 else "unpriced-provider-usage",
                 "work": {
