@@ -608,3 +608,35 @@ def test_model_verifier_protocol_failure_stops_as_infrastructure(tmp_path, monke
     assert stats["is_error"]
     assert stats["failure_category"] == "infrastructure_failure"
     assert stats["num_turns"] == 1
+
+
+@pytest.mark.parametrize("provider", ["openai", "fireworks"])
+def test_cache_discount_is_observed_only_and_future_reservation_stays_full(
+    tmp_path, monkeypatch, provider
+):
+    run = runner(tmp_path, provider=provider, price_in=1, price_out=2, price_cached=0.1)
+    run.receive(response(provider))
+    assert run.cost() == pytest.approx((60 + 4 + 40) / 1e6)
+    missing = response(provider)
+    missing["usage"].pop(
+        "input_tokens_details" if provider == "openai" else "prompt_tokens_details"
+    )
+    run.receive(missing)
+    assert run.cost() == pytest.approx((160 + 4 + 80) / 1e6)
+    run.max_cost = run.cost() + run.max_output_tokens * 2 / 1e6
+    monkeypatch.setattr(native, "post", lambda *a: pytest.fail("must reserve uncached input"))
+    with pytest.raises(native.BudgetReached, match="cost_reservation"):
+        run.request()
+    invalid = response(provider)
+    invalid["usage"]["input_tokens_details" if provider == "openai" else "prompt_tokens_details"][
+        "cached_tokens"
+    ] = 101
+    with pytest.raises(ValueError, match="invalid token detail"):
+        run.receive(invalid)
+    assert run.cost() is None
+
+
+@pytest.mark.parametrize("price", [-1, float("nan"), float("inf"), 2, True])
+def test_cached_price_is_bounded(tmp_path, price):
+    with pytest.raises(ValueError, match="price_cached"):
+        runner(tmp_path, price_in=1, price_out=1, price_cached=price)

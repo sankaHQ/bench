@@ -76,7 +76,11 @@ the unchanged independent evaluator still grades the frozen candidate.
 - Usage comes from provider responses. Cached input is a subset of input,
   not added twice. Missing details or ambiguous usage remain null. No prices
   are guessed. With explicit `--price-in` and `--price-out` (USD/million), cost
-  is a conservative estimate charging cached input at the full input rate.
+  is a conservative estimate. Optional `--price-cached` (`price_cached` on the
+  manifest model) discounts only cache reads reported by completed requests.
+  `price_in` must cover the highest uncached rate, including cache-write premiums;
+  use the highest applicable context tier. Missing cache details retain that upper
+  rate. Omit `price_cached` to keep charging all input at `price_in`.
   `--max-agent-cost-usd` also reserves a conservative allowance before each
   request. This is a local estimated-cost limit, not a provider billing guarantee.
 

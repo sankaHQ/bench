@@ -209,6 +209,13 @@ def test_native_matrix_pins_route_effort_and_runner(tmp_path, provider, route):
     path.write_text(json.dumps(evidence))
     model["qualification_sha256"] = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
     validate_official_manifest(value, tmp_path)
+    model.update(price_in=1, price_out=2, price_cached=0.1)
+    validate_official_manifest(value, tmp_path)
+    for invalid in (-1, float("nan"), float("inf"), True, 2):
+        model["price_cached"] = invalid
+        with pytest.raises(ValueError, match="price_cached"):
+            validate_official_manifest(value, tmp_path)
+    model["price_cached"] = 0.1
     before = cell_input_digest(value, task="drf-fastapi-001", model=model, config="alone", sample=1)
     value["toolchain"]["native_bin_sha256"] = "sha256:" + "8" * 64
     assert (

@@ -566,6 +566,7 @@ def test_native_cell_needs_no_agent_binary_and_strips_other_provider_keys(driver
         reasoning_effort="high",
         price_in=0.1,
         price_out=0.2,
+        price_cached=0.01,
     )
     manifest["execution"]["sanka_workflow"] = "native-lifecycle-v1"
     manifest["execution"]["max_output_tokens"] = 32768
@@ -587,5 +588,6 @@ def test_native_cell_needs_no_agent_binary_and_strips_other_provider_keys(driver
     assert "--agent-bin" not in command
     assert command[command.index("--agent") + 1] == "sanka-native"
     assert command[command.index("--price-in") + 1] == "0.1"
+    assert command[command.index("--price-cached") + 1] == "0.01"
     assert command[command.index("--max-output-tokens") + 1] == "32768"
     assert command[command.index("--max-context-bytes") + 1] == "512000"

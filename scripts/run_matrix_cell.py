@@ -498,7 +498,7 @@ def generation_command(
         for name in ("max_output_tokens", "max_context_bytes"):
             if manifest["execution"].get(name) is not None:
                 command.extend(["--" + name.replace("_", "-"), str(manifest["execution"][name])])
-        for name in ("price_in", "price_out"):
+        for name in ("price_in", "price_out", "price_cached"):
             if model.get(name) is not None:
                 command.extend(["--" + name.replace("_", "-"), str(model[name])])
     command.extend(
