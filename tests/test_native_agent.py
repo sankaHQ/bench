@@ -208,6 +208,23 @@ def test_repair_rechecks_without_regeneration_and_preserves_test_failure(tmp_pat
     assert stats["num_turns"] == 2  # no final summary turn
 
 
+def test_json_seed_is_recoverable_tool_error_before_cli_execution(tmp_path):
+    def execute(argv, **kw):
+        result = cli_response(argv)
+        result.stdout += "\nok=true"
+        return result
+
+    run = runner(tmp_path, sanka=Path("sanka"), execute=execute)
+    (run.workspace / "seed.json").write_text('[{"deleted": false}]')
+    result = run.dispatch({"name": "verify", "arguments": '{"seed":"seed.json"}'})
+    assert result.startswith("tool error:") and "Python" in result
+    assert not run.events and run.seed is None
+    (run.workspace / "seed.py").write_text("# Python seed script")
+    result = run.dispatch({"name": "verify", "arguments": '{"seed":"seed.py"}'})
+    assert not result.startswith("tool error:")
+    assert run.seed == "seed.py"
+
+
 def test_verify_warning_explains_rejection_and_seeded_tool_rechecks(tmp_path):
     commands = []
 
