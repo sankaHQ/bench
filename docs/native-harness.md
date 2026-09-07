@@ -16,7 +16,9 @@ and retains every command result. Generated files stay under `.sanka` until
 the scaffold test finishes, so they do not invalidate the reviewed source
 fingerprint. The existing add-only promotion helper installs them afterward.
 FastAPI uses the extension's existing benchmark projection; Flask already
-generates the required entrypoint.
+generates the required entrypoint. Planning selects the existing `pip` option,
+so generated-app tests can use Python's own virtualenv support without finding
+a globally installed package manager. Home and temporary paths stay isolated.
 
 If public verification succeeds without warnings, the run ends without a
 model request. Otherwise, the model receives the task contract and lifecycle

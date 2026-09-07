@@ -239,7 +239,7 @@ class Runner:
                     "--generation",
                     "minimal",
                     "--package-manager",
-                    "uv",
+                    "pip",
                     "--output",
                     f".sanka/output/{self.target}",
                 ],

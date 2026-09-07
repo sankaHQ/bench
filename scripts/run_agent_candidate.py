@@ -1203,14 +1203,6 @@ def main() -> int:
                 )
                 tool_env["HOME"] = str(claude_config)
                 tool_env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + os.defpath
-                if mode != "alone" and (uv := shutil.which("uv")):
-                    # Expose only the existing package manager needed by sanka test.
-                    uv_path = Path(uv).resolve()
-                    tool_bin = claude_config / "bin"
-                    tool_bin.mkdir()
-                    (tool_bin / "uv").symlink_to(uv_path)
-                    readable.append(uv_path)
-                    tool_env["PATH"] = str(tool_bin) + os.pathsep + tool_env["PATH"]
 
                 def execute_native(
                     argv: list[str], *, timeout: float

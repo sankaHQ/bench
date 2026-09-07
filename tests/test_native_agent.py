@@ -139,6 +139,7 @@ def test_full_lifecycle_requires_no_model_call_when_verified(tmp_path, monkeypat
     _, stats = run.run()
     assert [c[1] for c in commands] == ["scan", "plan", "apply", "test", "verify"]
     assert commands[2][commands[2].index("--plan-hash") + 1] == "sha256:reviewed"
+    assert commands[1][commands[1].index("--package-manager") + 1] == "pip"
     assert ("--bench-candidate" in commands[2]) is (target == "fastapi")
     assert "--output" not in commands[3]  # test must use the reviewed output configuration
     assert stats["verified"] and stats["num_turns"] == 0
