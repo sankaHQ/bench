@@ -480,6 +480,21 @@ def test_verification_failure_categories(tmp_path, data, category):
     assert run.verified is (category is None)
 
 
+@pytest.mark.parametrize("details", [None, {}, {"schema": "sanka-verify-replay/v1", "ok": True}])
+def test_invalid_replay_error_still_stops_as_infrastructure(tmp_path, details):
+    error = {"code": "SANKA_EXTENSION_REPLAY_MISMATCH", "details": details}
+    run = runner(
+        tmp_path,
+        sanka=Path("sanka"),
+        execute=lambda argv, **kw: subprocess.CompletedProcess(
+            argv, 1, "sanka-compact/v1 verify error failed\nerror=" + json.dumps(error), ""
+        ),
+    )
+    with pytest.raises(RuntimeError, match="lifecycle protocol"):
+        run.verify(None)
+    assert run.stages["verify"]["failure_category"] == "infrastructure_failure"
+
+
 def test_verification_timeout_is_infrastructure_failure(tmp_path):
     def timeout(argv, **kw):
         raise subprocess.TimeoutExpired(argv, 1, output="partial report")
@@ -489,6 +504,33 @@ def test_verification_timeout_is_infrastructure_failure(tmp_path):
         run.verify(None)
     assert run.stages["verify"]["failure_category"] == "infrastructure_failure"
     assert run.events[-2]["timed_out"]
+
+
+@pytest.mark.parametrize("source_only", [False, True])
+def test_cli_replay_error_details_reach_verification_handoff(tmp_path, source_only):
+    details = {
+        "schema": "sanka-verify-replay/v1",
+        "ok": False,
+        "summary": {"source_expectation_mismatches" if source_only else "status_mismatches": 1},
+        "failures": [{"id": "probe", "message": "status mismatch"}],
+        "coverage_issues": [{"code": "authentication_coverage", "scenario_ids": ["probe"]}],
+    }
+    error = {"code": "SANKA_EXTENSION_REPLAY_MISMATCH", "details": details}
+
+    def execute(argv, **kw):
+        return subprocess.CompletedProcess(
+            argv, 1, "sanka-compact/v1 verify error failed\nerror=" + json.dumps(error), ""
+        )
+
+    run = runner(tmp_path, sanka=Path("sanka"), execute=execute)
+    summary = run.verify(None)
+    stage = run.stages["verify"]
+    assert stage["failure_category"] == (
+        "coverage_incomplete" if source_only else "candidate_failure"
+    )
+    assert stage["data"]["failures"] == details["failures"]
+    assert "status mismatch" in summary
+    assert not run.verified
 
 
 def test_provider_phase_and_usage_are_recorded(tmp_path, monkeypatch):

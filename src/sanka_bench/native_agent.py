@@ -125,6 +125,23 @@ def compact(text: str, command: str) -> dict[str, Any]:
         if not sep or key in data:
             raise ValueError("invalid or duplicate compact field")
         data[key] = json.loads(value)
+    error = data.get("error")
+    if (
+        command == "verify"
+        and isinstance(error, dict)
+        and error.get("code") == ("SANKA_EXTENSION_REPLAY_MISMATCH")
+    ):
+        details = error.get("details")
+        if (
+            not isinstance(details, dict)
+            or details.get("schema") != "sanka-verify-replay/v1"
+            or details.get("ok") is not False
+        ):
+            raise ValueError("invalid replay mismatch details")
+        # Failed CLI replays wrap the same verification report in error.details.
+        for key in ("ok", "summary", "failures", "warnings", "coverage_issues"):
+            if key in details:
+                data[key] = details[key]
     return data
 
 
