@@ -263,6 +263,8 @@ def cell_input_digest(
     toolchain_fields = (
         "claude_version",
         "claude_bin_sha256",
+        "native_version",
+        "native_bin_sha256",
         "codex_version",
         "codex_bin_sha256",
         "agent_runner_sha256",
@@ -402,7 +404,12 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
         raise ValueError("official v2 manifest container engine must be docker or podman")
     workflow = manifest["execution"].get("sanka_workflow", "availability-v1")
     threshold = manifest["execution"].get("sanka_readiness_threshold", 0.5)
-    if workflow not in {"availability-v1", "artifacts-first-v1", "artifacts-first-v2"}:
+    if workflow not in {
+        "availability-v1",
+        "artifacts-first-v1",
+        "artifacts-first-v2",
+        "native-lifecycle-v1",
+    }:
         raise ValueError("unknown Sanka workflow")
     if (
         isinstance(threshold, bool)
@@ -427,9 +434,11 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
     root = root.resolve()
     for model in manifest["models"]:
         harness = model.get("harness")
-        if harness not in {"claude-code", "codex"}:
-            raise ValueError("official v2 matrices require Claude Code or Codex")
-        agent_tool = "claude" if harness == "claude-code" else "codex"
+        if workflow == "native-lifecycle-v1" and harness != "sanka-native":
+            raise ValueError("native-lifecycle-v1 requires the native harness")
+        if harness not in {"claude-code", "codex", "sanka-native"}:
+            raise ValueError("official v2 matrices require a supported pinned harness")
+        agent_tool = {"claude-code": "claude", "codex": "codex", "sanka-native": "native"}[harness]
         agent_version = toolchain.get(f"{agent_tool}_version")
         agent_sha = toolchain.get(f"{agent_tool}_bin_sha256")
         if (
@@ -438,6 +447,27 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
             or re.fullmatch(r"sha256:[0-9a-f]{64}", str(agent_sha or "")) is None
         ):
             raise ValueError(f"official v2 manifest requires {agent_tool} version and binary pins")
+        if harness == "sanka-native":
+            expected_route = {"openai": "openai-responses", "fireworks": "openai-chat"}.get(
+                model.get("provider")
+            )
+            if (
+                expected_route is None
+                or model.get("route_kind") != expected_route
+                or model.get("billing_mode") != "api_key"
+                or model.get("gateway_profile") is not None
+                or model.get("reasoning_effort") != "high"
+            ):
+                raise ValueError("native matrices require direct API billing and high reasoning")
+            if manifest["execution"].get("sanka_workflow") != "native-lifecycle-v1":
+                raise ValueError("native matrices require native-lifecycle-v1")
+            if cost_limit is not None and any(
+                type(model.get(name)) not in {int, float}
+                or not math.isfinite(model[name])
+                or model[name] < 0
+                for name in ("price_in", "price_out")
+            ):
+                raise ValueError("native cost cap requires finite provider prices")
         if harness == "codex":
             if (
                 model.get("provider") != "openai"
@@ -460,7 +490,7 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
         route_kind = model.get("route_kind")
         billing_mode = model.get("billing_mode")
         gateway_profile = model.get("gateway_profile")
-        if route_kind == "openai-responses" and harness == "codex":
+        if harness == "sanka-native" or (route_kind == "openai-responses" and harness == "codex"):
             pass
         elif route_kind == "anthropic-native":
             if billing_mode != "subscription" or gateway_profile is not None:
@@ -486,7 +516,12 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
         ):
             raise ValueError("qualification record is not qualified")
         checks = evidence.get("checks")
-        required_checks = ("tool_use", "streaming", "terminal_event", "usage_accounting")
+        required_checks = (
+            "tool_use",
+            "terminal_event",
+            "usage_accounting",
+            "ordered_tool_results" if harness == "sanka-native" else "streaming",
+        )
         if not isinstance(checks, dict) or any(
             checks.get(name) is not True for name in required_checks
         ):
@@ -511,6 +546,11 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
             or qualification_digest(transcript) != hashes["transcript_sha256"]
         ):
             raise ValueError("qualification transcript digest does not match its evidence")
+        if (
+            harness == "sanka-native"
+            and evidence.get("reasoning_effort") != model["reasoning_effort"]
+        ):
+            raise ValueError("qualification reasoning effort does not match the manifest")
         if harness == "codex":
             if evidence.get("reasoning_effort") != model["reasoning_effort"]:
                 raise ValueError("qualification reasoning effort does not match the manifest")

@@ -35,6 +35,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from sanka_bench import native_agent
 from sanka_bench.environment import isolated_environment
 
 ALLOWED_KEYS = {
@@ -205,6 +206,13 @@ def resolve_paths(manifest_path: Path, manifest: dict[str, Any], cell: Cell) -> 
 
 def route_environment(base: dict[str, str], cell: Cell) -> dict[str, str]:
     env = dict(base)
+    if cell.agent == "sanka-native":
+        key = native_agent.ROUTES[cell.provider][1]
+        for name in ALLOWED_KEYS - {key}:
+            env.pop(name, None)
+        if not env.get(key):
+            raise ValueError("native route requires " + key)
+        return env
     if cell.route_kind == "anthropic-native":
         for name in ALLOWED_KEYS:
             env.pop(name, None)
@@ -260,8 +268,12 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
     needs_env = not (cell.route_kind == "anthropic-native" and cell.billing_mode == "subscription")
     if needs_env:
         tools["env"] = _armed_path(manifest, "env_path")
-    agent_tool = "claude" if cell.agent == "claude-code" else "codex"
-    tools[agent_tool] = _armed_path(manifest, f"{agent_tool}_bin")
+    agent_tool = {"claude-code": "claude", "codex": "codex", "sanka-native": "native"}[cell.agent]
+    tools[agent_tool] = (
+        paths.worktree / "src/sanka_bench/native_agent.py"
+        if cell.agent == "sanka-native"
+        else _armed_path(manifest, f"{agent_tool}_bin")
+    )
     if cell.uses_sanka:
         tools["sanka"] = _armed_path(manifest, "sanka_bin")
     required = [task / "source", task / "public-tests" / "scenarios.json", python, bench]
@@ -291,7 +303,9 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
                 f"expected {expected_claude_digest}, got {actual_claude_digest}"
             )
         version = subprocess.run(
-            [str(tools[agent_tool]), "--version"],
+            [str(python), str(tools[agent_tool]), "--version"]
+            if cell.agent == "sanka-native"
+            else [str(tools[agent_tool]), "--version"],
             capture_output=True,
             text=True,
             check=False,
@@ -454,8 +468,6 @@ def generation_command(
         cell.candidate_id,
         "--agent",
         cell.agent,
-        "--agent-bin",
-        str(tools["claude"] if cell.agent == "claude-code" else tools["codex"]),
         "--out",
         str(paths.candidate),
         "--sandbox",
@@ -477,6 +489,15 @@ def generation_command(
         "--provider",
         cell.provider,
     ]
+    if cell.agent != "sanka-native":
+        command.extend(
+            ["--agent-bin", str(tools["claude"] if cell.agent == "claude-code" else tools["codex"])]
+        )
+    else:
+        model = next(m for m in manifest["models"] if m["slug"] == cell.model_slug)
+        for name in ("price_in", "price_out"):
+            if model.get(name) is not None:
+                command.extend(["--" + name.replace("_", "-"), str(model[name])])
     command.extend(
         [
             "--sanka-workflow",
@@ -607,7 +628,7 @@ def run_generation(
     environment = route_environment(environment, cell)
     required_key = (
         {"openai": "OPENAI_API_KEY", "fireworks": "FIREWORKS_API_KEY"}.get(cell.provider)
-        if cell.agent == "codex"
+        if cell.agent in {"codex", "sanka-native"}
         else None
     )
     if required_key and not environment.get(required_key):

@@ -553,3 +553,35 @@ def test_codex_openai_route_only_inherits_platform_key_and_explicit_effort(
     command = driver.generation_command(manifest, cell, paths, tools, attempt=1, prior_failure=None)  # type: ignore[attr-defined]
     assert command[command.index("--reasoning-effort") + 1] == "high"
     assert "--max-budget-usd" not in command
+
+
+def test_native_cell_needs_no_agent_binary_and_strips_other_provider_keys(driver, tmp_path):
+    manifest = _manifest(samples=1)
+    model = manifest["models"][1]
+    model.update(
+        agent="sanka-native",
+        provider="fireworks",
+        route_kind="openai-chat",
+        billing_mode="api_key",
+        reasoning_effort="high",
+        price_in=0.1,
+        price_out=0.2,
+    )
+    manifest["execution"]["sanka_workflow"] = "native-lifecycle-v1"
+    cell = driver.resolve_cell(manifest, "001", "gpt56sol", "alone", 1)
+    env = driver.route_environment(
+        {"FIREWORKS_API_KEY": "selected", "OPENAI_API_KEY": "other"}, cell
+    )
+    assert env == {"FIREWORKS_API_KEY": "selected"}
+    paths = driver.resolve_paths(tmp_path / "run-manifest.json", manifest, cell)
+    command = driver.generation_command(
+        manifest,
+        cell,
+        paths,
+        {"python": Path("python"), "agent_runner": Path("runner")},
+        attempt=1,
+        prior_failure=None,
+    )
+    assert "--agent-bin" not in command
+    assert command[command.index("--agent") + 1] == "sanka-native"
+    assert command[command.index("--price-in") + 1] == "0.1"
