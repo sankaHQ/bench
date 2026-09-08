@@ -902,6 +902,11 @@ def main() -> int:
         args.model = "claude-sonnet-5"
     if args.provider is None:
         args.provider = "anthropic" if args.agent == "claude-code" else "openai"
+    if args.agent in {"codex", "sanka-native"} and args.billing_mode not in {"unknown", "api_key"}:
+        parser.error(
+            "this generation adapter requires API-key billing; sanka-bench login stores a "
+            "subscription session but subscription generation is not yet supported"
+        )
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.provider_variant):
         print(
             "--provider-variant must be a slug containing only letters, digits, '.', '_' or '-'",

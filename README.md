@@ -4,6 +4,34 @@ The default agent is now the [Sanka native harness](docs/native-harness.md):
 direct provider APIs, controller-owned Sanka lifecycle, and the same independent
 benchmark tasks and grading. Legacy Claude Code/Codex adapters remain explicit options.
 
+## Subscription device login
+
+Install the [Codex CLI](https://learn.chatgpt.com/docs/cli), then run:
+
+```bash
+sanka-bench login --device-auth
+sanka-bench login status
+sanka-bench logout
+```
+
+`sanka-bench login` also defaults to device authentication. Open the verification
+URL printed by Codex, sign in with your ChatGPT subscription account, and enter
+the one-time code. Device login must be enabled in your ChatGPT account or
+workspace; see [OpenAI authentication](https://learn.chatgpt.com/docs/auth).
+Ctrl-C cancels the pending login. Status and logout operate on Sanka Bench's
+session, not your regular Codex login.
+
+Codex manages login and token refresh. Credentials stay in the private
+`~/.sanka-bench/codex/` directory, outside repositories and benchmark artifacts.
+Treat that directory like a password; do not commit or share it. Sanka Bench
+does not inherit API keys or your existing `CODEX_HOME` for these commands.
+
+This command stores a subscription session; **subscription-backed benchmark
+generation is not yet implemented**. The native harness and current Codex
+generation adapter still require API keys and reject `--billing-mode subscription`
+instead of silently charging the API. Login does not establish availability of
+a particular model or change the billing of an existing run.
+
 Sanka Migration Bench (repository `sankaHQ/bench`, package `sanka-bench`) is a tool-neutral, repository-level
 benchmark for evaluating whether a software migration preserves behavior and
 actually reaches its declared target architecture.

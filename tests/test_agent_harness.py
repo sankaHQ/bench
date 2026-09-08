@@ -13,6 +13,36 @@ import pytest
 from sanka_bench.environment import isolated_environment
 from sanka_bench.schema import load_and_validate
 
+
+@pytest.mark.parametrize("agent", ["sanka-native", "codex"])
+def test_api_adapters_reject_subscription_billing_before_starting(
+    harness, monkeypatch, agent, capsys
+):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_agent_candidate",
+            "--task",
+            "unused",
+            "--candidate-id",
+            "auth-check",
+            "--out",
+            "unused-output",
+            "--agent",
+            agent,
+            "--model",
+            "gpt-5.6-luna",
+            "--billing-mode",
+            "subscription",
+        ],
+    )
+    with pytest.raises(SystemExit) as error:
+        harness.main()
+    assert error.value.code == 2
+    assert "subscription generation is not yet supported" in capsys.readouterr().err
+
+
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
 

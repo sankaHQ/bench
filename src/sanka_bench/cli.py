@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from sanka_bench.auth import run_auth
 from sanka_bench.docker import DockerEvaluationError, evaluate_docker, repository_root
 from sanka_bench.evaluator import EvaluationError, evaluate_local
 from sanka_bench.report import ReportError, write_report
@@ -17,6 +18,15 @@ from sanka_bench.schema import SchemaError, load_and_validate, load_schema
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sanka-bench")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    login = commands.add_parser(
+        "login", help="sign in to ChatGPT through Codex device authentication"
+    )
+    login.add_argument("action", nargs="?", choices=("status",))
+    login.add_argument(
+        "--device-auth", action="store_true", help="use device authentication (default)"
+    )
+    commands.add_parser("logout", help="remove the Sanka Bench subscription login")
 
     validate = commands.add_parser("validate", help="validate all task and candidate manifests")
     validate.add_argument("--root", type=Path, default=repository_root())
@@ -53,6 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command in {"login", "logout"}:
+            return run_auth((args.action or "login") if args.command == "login" else "logout")
         if args.command == "validate":
             return _validate(args.root)
         if args.command == "report":
