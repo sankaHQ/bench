@@ -179,7 +179,12 @@ class Subscription:
                         {
                             "type": "function",
                             "name": "bench_" + spec["name"],
-                            "description": spec["description"],
+                            "description": (
+                                "Runs in the harness-owned benchmark workspace. "
+                                "bench_exec can write files there even though the Codex host "
+                                "filesystem is read-only. "
+                                + spec["description"]
+                            ),
                             "inputSchema": spec["parameters"],
                         }
                         for spec in tools(runner.sanka is not None)
