@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -53,6 +54,7 @@ COORDINATOR_ENV_KEYS = {
     "SANKA_BENCH_TIMING_METHODOLOGY",
     "SANKA_BENCH_WAVE_CONCURRENCY",
     "SANKA_BENCH_WAVE_ID",
+    "SANKA_BENCH_CELL_COST_CAP_USD",
 }
 OFFICIAL_MARKETPLACE = "https://github.com/sankaHQ/extensions.git"
 DRF_EXTENSION_DISTRIBUTION = "sanka-extension-drf-to-fastapi"
@@ -207,6 +209,12 @@ def resolve_paths(manifest_path: Path, manifest: dict[str, Any], cell: Cell) -> 
 def route_environment(base: dict[str, str], cell: Cell) -> dict[str, str]:
     env = dict(base)
     if cell.agent == "sanka-native":
+        if cell.billing_mode == "subscription":
+            if cell.provider != "openai" or cell.route_kind != "codex-managed-subscription":
+                raise ValueError("invalid subscription route")
+            for name in ALLOWED_KEYS:
+                env.pop(name, None)
+            return env
         key = native_agent.ROUTES[cell.provider][1]
         for name in ALLOWED_KEYS - {key}:
             env.pop(name, None)
@@ -265,7 +273,7 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
         "bench": bench,
         "agent_runner": agent_runner,
     }
-    needs_env = not (cell.route_kind == "anthropic-native" and cell.billing_mode == "subscription")
+    needs_env = cell.billing_mode != "subscription"
     if needs_env:
         tools["env"] = _armed_path(manifest, "env_path")
     agent_tool = {"claude-code": "claude", "codex": "codex", "sanka-native": "native"}[cell.agent]
@@ -274,6 +282,11 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
         if cell.agent == "sanka-native"
         else _armed_path(manifest, f"{agent_tool}_bin")
     )
+    if cell.billing_mode == "subscription" and cell.agent == "sanka-native":
+        tools["subscription"] = _armed_path(manifest, "subscription_bin")
+        actual = "sha256:" + hashlib.sha256(tools["subscription"].read_bytes()).hexdigest()
+        if actual != manifest["toolchain"].get("subscription_bin_sha256"):
+            raise ValueError("subscription binary digest mismatch")
     if cell.uses_sanka:
         tools["sanka"] = _armed_path(manifest, "sanka_bin")
     required = [task / "source", task / "public-tests" / "scenarios.json", python, bench]
@@ -509,8 +522,14 @@ def generation_command(
             str(manifest["execution"].get("sanka_readiness_threshold", 0.5)),
         ]
     )
+    if cell.billing_mode == "subscription" and cell.agent == "sanka-native":
+        command.extend(["--subscription-bin", str(tools["subscription"])])
     if manifest["execution"].get("max_agent_cost_usd") is not None:
-        command.extend(["--max-agent-cost-usd", str(manifest["execution"]["max_agent_cost_usd"])])
+        cap = float(manifest["execution"]["max_agent_cost_usd"])
+        override = float(os.environ.get("SANKA_BENCH_CELL_COST_CAP_USD", cap))
+        if not math.isfinite(override) or not 0 < override <= cap:
+            raise ValueError("cell cost cap must be positive and cannot exceed the manifest cap")
+        command.extend(["--max-agent-cost-usd", str(override)])
     if cell.reasoning_effort is not None:
         command.extend(["--reasoning-effort", cell.reasoning_effort])
     if cell.gateway_profile is not None:
@@ -631,7 +650,7 @@ def run_generation(
     environment = route_environment(environment, cell)
     required_key = (
         {"openai": "OPENAI_API_KEY", "fireworks": "FIREWORKS_API_KEY"}.get(cell.provider)
-        if cell.agent in {"codex", "sanka-native"}
+        if cell.agent in {"codex", "sanka-native"} and cell.billing_mode != "subscription"
         else None
     )
     if required_key and not environment.get(required_key):

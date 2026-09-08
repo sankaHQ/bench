@@ -175,6 +175,7 @@ class Runner:
         expected_model: str | None = None,
         max_output_tokens: int = MAX_OUTPUT_TOKENS,
         max_context_bytes: int = MAX_CONTEXT_BYTES,
+        exchange: Callable[[Runner], dict[str, Any]] | None = None,
     ) -> None:
         for name, value in (
             ("max_output_tokens", max_output_tokens),
@@ -182,6 +183,7 @@ class Runner:
         ):
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
+        self.exchange = exchange
         self.max_output_tokens = max_output_tokens
         self.max_context_bytes = max_context_bytes
         self.provider, self.model, self.effort, self.key = provider, model, effort, key
@@ -509,7 +511,11 @@ class Runner:
             request_status = "failed"
             request_duration: float | None = None
             try:
-                result = post(ROUTES[self.provider][0], self.key, payload, timeout)
+                result = (
+                    self.exchange(self)
+                    if self.exchange
+                    else post(ROUTES[self.provider][0], self.key, payload, timeout)
+                )
                 self.turns += 1
                 request_status = "received"
                 return result
@@ -530,6 +536,10 @@ class Runner:
                 self.retries += 1
                 self.event("provider_retry", status=429, delay=delay)
                 time.sleep(delay)
+            except RuntimeError:
+                if self.exchange:
+                    self.usage_complete = False
+                raise
             except TimeoutError:
                 request_status = "provider_timeout"
                 self.usage_complete = False  # The in-flight response may still be billed.
@@ -542,6 +552,8 @@ class Runner:
                 self.usage_complete = False
                 raise
             finally:
+                if self.exchange and request_status != "received":
+                    self.usage_complete = False
                 self.event(
                     "request_end",
                     number=self.requests,
@@ -814,7 +826,9 @@ class Runner:
                 if self.usage_complete
                 else None,
                 "cost_usd": self.cost(),
-                "cost_basis": "provided-rates-cache-aware-upper-estimate"
+                "cost_basis": "subscription-no-marginal-cost"
+                if self.exchange
+                else "provided-rates-cache-aware-upper-estimate"
                 if self.price_cached is not None
                 else "provided-rates-uncached-upper-estimate"
                 if self.price_in is not None

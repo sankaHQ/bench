@@ -591,3 +591,36 @@ def test_native_cell_needs_no_agent_binary_and_strips_other_provider_keys(driver
     assert command[command.index("--price-cached") + 1] == "0.01"
     assert command[command.index("--max-output-tokens") + 1] == "32768"
     assert command[command.index("--max-context-bytes") + 1] == "512000"
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "31", "nan", "inf"])
+def test_cell_budget_override_cannot_raise_or_disable_cap(driver, tmp_path, monkeypatch, value):
+    manifest = _manifest(samples=1)
+    manifest["execution"]["max_agent_cost_usd"] = 30
+    cell = driver.resolve_cell(manifest, "001", "sonnet5", "alone", 1)
+    paths = driver.resolve_paths(tmp_path / "run-manifest.json", manifest, cell)
+    monkeypatch.setenv("SANKA_BENCH_CELL_COST_CAP_USD", value)
+    with pytest.raises(ValueError, match="cell cost cap"):
+        driver.generation_command(
+            manifest,
+            cell,
+            paths,
+            {"python": Path("python"), "agent_runner": Path("runner"), "claude": Path("claude")},
+            attempt=1,
+            prior_failure=None,
+        )
+
+
+def test_native_subscription_environment_has_no_api_keys(driver):
+    manifest = _manifest(samples=1)
+    manifest["models"][1].update(
+        agent="sanka-native",
+        provider="openai",
+        route_kind="codex-managed-subscription",
+        billing_mode="subscription",
+    )
+    cell = driver.resolve_cell(manifest, "001", "gpt56sol", "alone", 1)
+    env = driver.route_environment(
+        {"OPENAI_API_KEY": "secret", "FIREWORKS_API_KEY": "other", "PATH": "/bin"}, cell
+    )
+    assert env == {"PATH": "/bin"}
