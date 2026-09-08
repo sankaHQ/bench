@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -77,3 +79,45 @@ def test_device_login_can_be_cancelled(tmp_path, monkeypatch):
 
     monkeypatch.setattr(auth.subprocess, "run", cancel)
     assert main(["login"]) == 130
+
+
+@pytest.mark.parametrize("action", ["login", "status", "logout"])
+def test_auth_lock_excludes_other_processes_and_releases_after_failure(
+    tmp_path, monkeypatch, action
+):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(auth.shutil, "which", lambda _: "/bin/codex")
+    run = subprocess.run
+    lock_path = tmp_path / ".sanka-bench" / "codex" / "session.lock"
+    probe = (
+        "import fcntl, sys; "
+        "f = open(sys.argv[1], 'r+'); "
+        "fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)"
+    )
+
+    def busy(*args, **kwargs):
+        assert kwargs["pass_fds"]
+        result = run([sys.executable, "-c", probe, str(lock_path)], capture_output=True)
+        assert result.returncode != 0
+        assert b"BlockingIOError" in result.stderr
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(auth.subprocess, "run", busy)
+    assert auth.run_auth(action) == 130
+    assert run([sys.executable, "-c", probe, str(lock_path)], capture_output=True).returncode == 0
+
+
+def test_concurrent_logout_does_not_launch_codex(tmp_path, monkeypatch):
+    import fcntl
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(auth.shutil, "which", lambda _: "/bin/codex")
+    home = tmp_path / ".sanka-bench" / "codex"
+    home.mkdir(parents=True)
+    with (home / "session.lock").open("w") as owner:
+        fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        monkeypatch.setattr(
+            auth.subprocess, "run", lambda *_a, **_k: pytest.fail("must not launch")
+        )
+        with pytest.raises(ValueError, match="session is busy"):
+            auth.run_auth("logout")

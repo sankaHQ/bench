@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess
 from pathlib import Path
 
@@ -41,18 +42,34 @@ def run_auth(action: str) -> int:
             flush=True,
         )
     try:
-        return subprocess.run(
-            [
-                executable,
-                "-c",
-                'forced_login_method="chatgpt"',
-                "-c",
-                'cli_auth_credentials_store="file"',
-                *command,
-            ],
-            cwd=home,
-            env=env,
-            check=False,
-        ).returncode
+        # ponytail: one account-wide lock; parallel inference needs one managed auth owner.
+        import fcntl
+
+        fd = os.open(home / "session.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "r+") as lock:
+            if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
+                raise ValueError("subscription session lock must be a regular file")
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise ValueError(
+                    "Sanka Bench subscription session is busy; retry after the active "
+                    "login, status, or logout command finishes"
+                ) from exc
+            return subprocess.run(
+                [
+                    executable,
+                    "-c",
+                    'forced_login_method="chatgpt"',
+                    "-c",
+                    'cli_auth_credentials_store="file"',
+                    *command,
+                ],
+                cwd=home,
+                env=env,
+                check=False,
+                # Keep ownership if the parent dies while Codex still writes credentials.
+                pass_fds=(lock.fileno(),),
+            ).returncode
     except KeyboardInterrupt:
         return 130

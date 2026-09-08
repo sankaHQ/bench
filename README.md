@@ -25,12 +25,22 @@ Codex manages login and token refresh. Credentials stay in the private
 `~/.sanka-bench/codex/` directory, outside repositories and benchmark artifacts.
 Treat that directory like a password; do not commit or share it. Sanka Bench
 does not inherit API keys or your existing `CODEX_HOME` for these commands.
+Login, status, and logout take an exclusive process lock: a competing command
+fails with `session is busy` instead of changing credentials concurrently.
+The lock is released when the owning processes exit; do not delete its file.
 
 This command stores a subscription session; **subscription-backed benchmark
 generation is not yet implemented**. The native harness and current Codex
 generation adapter still require API keys and reject `--billing-mode subscription`
 instead of silently charging the API. Login does not establish availability of
 a particular model or change the billing of an existing run.
+
+Parallel subscription generation remains blocked. Before enabling it, the harness
+must use one Codex-managed authentication owner for concurrent workers, rather than
+copying refresh tokens into each sandbox or sharing credentials between independent
+refreshing processes. Qualification must cover concurrent expiry, failed refresh,
+account revocation, cancellation, and no fallback to API billing. The login command
+tests alone do not qualify subscription inference.
 
 Sanka Migration Bench (repository `sankaHQ/bench`, package `sanka-bench`) is a tool-neutral, repository-level
 benchmark for evaluating whether a software migration preserves behavior and
