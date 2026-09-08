@@ -320,12 +320,16 @@ class Runner:
         failure_category = None if ok else "infrastructure_failure"
         if stage == "verify":
             # Coverage is separate from parity: matching all-404 responses is not proof.
-            if (
-                data.get("error", {}).get("code") == "SANKA_EXTENSION_REPLAY_INVALID"
-                and data.get("error", {})
-                .get("message", "")
-                .startswith("candidate entrypoint not found: ")
-                and not (self.workspace / "target_app.py").exists()
+            if data.get("error", {}).get("code") == "SANKA_EXTENSION_REPLAY_INVALID" and (
+                (
+                    data["error"].get("message", "").startswith("candidate entrypoint not found: ")
+                    and not (self.workspace / "target_app.py").exists()
+                )
+                or (
+                    data["error"].get("message", "").startswith("candidate[")
+                    and "] process failed: " in data["error"]["message"]
+                    and str(self.workspace / "target_app.py") in data["error"]["message"]
+                )
             ):
                 failure_category = "candidate_failure"
             elif data.get("ok") is False:

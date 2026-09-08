@@ -196,7 +196,7 @@ def test_readiness_refusal_hands_missing_candidate_to_model(tmp_path, monkeypatc
             return subprocess.CompletedProcess(
                 argv,
                 1,
-                'sanka-compact/v1 verify error failed\n'
+                "sanka-compact/v1 verify error failed\n"
                 'error={"code":"SANKA_EXTENSION_REPLAY_INVALID",'
                 '"message":"candidate entrypoint not found: target_app.py"}',
                 "",
@@ -687,3 +687,34 @@ def test_cache_discount_is_observed_only_and_future_reservation_stays_full(
 def test_cached_price_is_bounded(tmp_path, price):
     with pytest.raises(ValueError, match="price_cached"):
         runner(tmp_path, price_in=1, price_out=1, price_cached=price)
+
+
+@pytest.mark.parametrize(
+    "side,has_candidate_frame,expected",
+    [
+        ("candidate", True, "candidate_failure"),
+        ("source", True, "infrastructure_failure"),
+        ("candidate", False, "infrastructure_failure"),
+    ],
+)
+def test_replay_candidate_exception_is_not_infrastructure(
+    tmp_path, side, has_candidate_frame, expected
+):
+    message = f"{side}[list-anonymous-open] process failed: "
+    if has_candidate_frame:
+        message += str(tmp_path / "workspace/target_app.py") + ":171\n"
+    message += "django.core.exceptions.SynchronousOnlyOperation: async context"
+
+    def execute(argv, **kw):
+        error = {"code": "SANKA_EXTENSION_REPLAY_INVALID", "message": message}
+        return subprocess.CompletedProcess(
+            argv, 1, "sanka-compact/v1 verify error failed\nerror=" + json.dumps(error), ""
+        )
+
+    run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    if expected == "infrastructure_failure":
+        with pytest.raises(RuntimeError, match="verification infrastructure failed"):
+            run.lifecycle("verify", [])
+    else:
+        run.lifecycle("verify", [])
+    assert run.stages["verify"]["failure_category"] == expected
