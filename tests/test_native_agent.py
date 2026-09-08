@@ -558,6 +558,18 @@ def test_verification_timeout_is_infrastructure_failure(tmp_path):
     assert run.events[-2]["timed_out"]
 
 
+def test_verification_timeout_at_global_deadline_is_budget_outcome(tmp_path, monkeypatch):
+    def timeout(argv, **kw):
+        run.deadline = 0
+        raise subprocess.TimeoutExpired(argv, kw["timeout"], output="partial report")
+
+    run = runner(tmp_path, sanka=Path("sanka"), execute=timeout)
+    monkeypatch.setattr(run, "bootstrap", lambda: run.verify(None))
+    _, stats = run.run()
+    assert stats["result"] == "wall_clock" and not stats["is_error"]
+    assert (run.artifacts / "tools/0001.txt").read_text() == "partial report"
+
+
 @pytest.mark.parametrize("source_only", [False, True])
 def test_cli_replay_error_details_reach_verification_handoff(tmp_path, source_only):
     details = {

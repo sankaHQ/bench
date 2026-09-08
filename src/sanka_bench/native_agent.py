@@ -280,6 +280,8 @@ class Runner:
             output_bytes=len(raw.encode()),
         )
         body = raw
+        if timed_out:
+            self.remaining()  # Preserve overall wall-budget exhaustion before parsing output.
         if len(raw) > MAX_TOOL_OUTPUT:
             body = raw[: MAX_TOOL_OUTPUT // 2] + "\n[truncated]\n" + raw[-MAX_TOOL_OUTPUT // 2 :]
         return outcome, f"exit={outcome.returncode} output={path}\n{body}"
