@@ -4,6 +4,71 @@ The default agent is now the [Sanka native harness](docs/native-harness.md):
 direct provider APIs, controller-owned Sanka lifecycle, and the same independent
 benchmark tasks and grading. Legacy Claude Code/Codex adapters remain explicit options.
 
+## Provider login
+
+> **Experimental — DWYOR (Do With Your Own Risk).** Sanka Bench's login
+> integration is unofficial and is not endorsed by OpenAI or Anthropic. It
+> delegates sign-in to their official CLIs; it does not provide a provider-approved
+> subscription API for the native harness. Authentication behavior and provider
+> terms may change. You are responsible for your account, usage limits, and
+> compliance with the applicable provider terms. Subscription-backed benchmark
+> generation, including parallel execution and refresh recovery, is not yet supported.
+
+Install the [Codex CLI](https://learn.chatgpt.com/docs/cli), then run:
+
+```bash
+sanka-bench login --provider chatgpt --device-auth
+sanka-bench login status --provider chatgpt
+sanka-bench logout --provider chatgpt
+
+# Requires the official Claude Code CLI; opens its browser login flow.
+sanka-bench login --provider claude
+sanka-bench login status --provider claude
+sanka-bench logout --provider claude
+```
+
+`sanka-bench login` also defaults to device authentication. Open the verification
+URL printed by Codex, sign in with your ChatGPT subscription account, and enter
+the one-time code. Device login must be enabled in your ChatGPT account or
+workspace; see [OpenAI authentication](https://learn.chatgpt.com/docs/auth).
+Ctrl-C cancels the pending login. Status and logout operate on Sanka Bench's
+session, not your regular Codex login.
+
+ChatGPT is the default provider. Codex manages its login and token refresh. Credentials stay in the private
+`~/.sanka-bench/codex/` directory, outside repositories and benchmark artifacts.
+Treat that directory like a password; do not commit or share it. Sanka Bench
+does not inherit API keys or your existing `CODEX_HOME` for these commands.
+Login, status, and logout take an exclusive process lock: a competing command
+fails with `session is busy` instead of changing credentials concurrently.
+The lock is released when the owning processes exit; do not delete its file.
+
+This command stores a subscription session; **subscription-backed benchmark
+generation is not yet implemented**. The native harness and current Codex
+generation adapter still require API keys and reject `--billing-mode subscription`
+instead of silently charging the API. Login does not establish availability of
+a particular model or change the billing of an existing run.
+
+For Claude, Bench launches the unmodified `claude auth login --claudeai` command
+with a private `~/.sanka-bench/claude/` configuration directory. Claude Code owns
+credential storage (including its macOS Keychain), browser authentication, and
+refresh; Bench does not read or export its tokens. `--device-auth` is ChatGPT-only.
+Inherited Anthropic API keys, bearer tokens, and OAuth overrides are removed.
+Each provider has its own command lock, so logging out of one does not invoke the
+other provider's CLI. These locks coordinate Bench commands, not independently
+started vendor CLIs.
+
+Claude login is for the official Claude Code application. It does not authorize
+using subscription tokens in the Sanka-native HTTP adapter, and this new login
+store is not yet wired to benchmark generation. See
+[Anthropic authentication boundaries](https://code.claude.com/docs/en/legal-and-compliance).
+
+Parallel subscription generation remains blocked. Before enabling it, the harness
+must use one Codex-managed authentication owner for concurrent workers, rather than
+copying refresh tokens into each sandbox or sharing credentials between independent
+refreshing processes. Qualification must cover concurrent expiry, failed refresh,
+account revocation, cancellation, and no fallback to API billing. The login command
+tests alone do not qualify subscription inference.
+
 Sanka Migration Bench (repository `sankaHQ/bench`, package `sanka-bench`) is a tool-neutral, repository-level
 benchmark for evaluating whether a software migration preserves behavior and
 actually reaches its declared target architecture.

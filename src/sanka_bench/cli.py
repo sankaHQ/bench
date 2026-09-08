@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from sanka_bench.auth import run_auth
 from sanka_bench.docker import DockerEvaluationError, evaluate_docker, repository_root
 from sanka_bench.evaluator import EvaluationError, evaluate_local
 from sanka_bench.report import ReportError, write_report
@@ -17,6 +18,17 @@ from sanka_bench.schema import SchemaError, load_and_validate, load_schema
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sanka-bench")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    login = commands.add_parser("login", help="sign in through the official ChatGPT or Claude CLI")
+    login.add_argument("action", nargs="?", choices=("status",))
+    login.add_argument(
+        "--device-auth",
+        action="store_true",
+        help="use ChatGPT device authentication (not supported by Claude)",
+    )
+    logout = commands.add_parser("logout", help="remove the selected provider login")
+    for auth_command in (login, logout):
+        auth_command.add_argument("--provider", choices=("chatgpt", "claude"), default="chatgpt")
 
     validate = commands.add_parser("validate", help="validate all task and candidate manifests")
     validate.add_argument("--root", type=Path, default=repository_root())
@@ -53,6 +65,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command in {"login", "logout"}:
+            if args.command == "login" and args.device_auth and args.provider == "claude":
+                raise ValueError("Claude uses browser login; omit --device-auth")
+            return run_auth(
+                (args.action or "login") if args.command == "login" else "logout", args.provider
+            )
         if args.command == "validate":
             return _validate(args.root)
         if args.command == "report":
