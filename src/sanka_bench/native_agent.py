@@ -758,7 +758,9 @@ class Runner:
                     calls = self.receive(self.request())
                     if not calls:
                         if self.sanka and not self.verified:
-                            summary = self.verify(self.seed)
+                            summary = self.dispatch(
+                                {"name": "verify", "arguments": json.dumps({"seed": self.seed})}
+                            )
                             if not self.verified:
                                 self.repairs += 1
                                 failure_key = self.verification_failure_key()

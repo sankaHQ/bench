@@ -718,3 +718,22 @@ def test_replay_candidate_exception_is_not_infrastructure(
     else:
         run.lifecycle("verify", [])
     assert run.stages["verify"]["failure_category"] == expected
+
+
+def test_removed_seed_at_finalization_is_recoverable(tmp_path, monkeypatch):
+    run = runner(tmp_path, sanka=Path("sanka"))
+    run.seed = "removed_seed.py"
+    monkeypatch.setattr(run, "bootstrap", lambda: "previous verification")
+    requests = []
+
+    def request():
+        requests.append(1)
+        return response()
+
+    monkeypatch.setattr(run, "request", request)
+    _, stats = run.run()
+    assert not stats["is_error"] and not stats["verified"]
+    assert stats["result"] == "verification_failed" and len(requests) == 2
+    assert any(
+        "seed must be an existing workspace file" in row.get("content", "") for row in run.history
+    )
