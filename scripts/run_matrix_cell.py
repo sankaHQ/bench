@@ -524,8 +524,11 @@ def generation_command(
     )
     if cell.billing_mode == "subscription" and cell.agent == "sanka-native":
         command.extend(["--subscription-bin", str(tools["subscription"])])
-    if manifest["execution"].get("max_agent_cost_usd") is not None:
-        cap = float(manifest["execution"]["max_agent_cost_usd"])
+    model_budget = next(m for m in manifest["models"] if m["slug"] == cell.model_slug).get(
+        "max_agent_cost_usd", manifest["execution"].get("max_agent_cost_usd")
+    )
+    if model_budget is not None:
+        cap = float(model_budget)
         override = float(os.environ.get("SANKA_BENCH_CELL_COST_CAP_USD", cap))
         if not math.isfinite(override) or not 0 < override <= cap:
             raise ValueError("cell cost cap must be positive and cannot exceed the manifest cap")
