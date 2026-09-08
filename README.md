@@ -6,6 +6,14 @@ benchmark tasks and grading. Legacy Claude Code/Codex adapters remain explicit o
 
 ## Provider login
 
+> **Experimental — DWYOR (Do With Your Own Risk).** Sanka Bench's login
+> integration is unofficial and is not endorsed by OpenAI or Anthropic. It
+> delegates sign-in to their official CLIs; it does not provide a provider-approved
+> subscription API for the native harness. Authentication behavior and provider
+> terms may change. You are responsible for your account, usage limits, and
+> compliance with the applicable provider terms. Subscription-backed benchmark
+> generation, including parallel execution and refresh recovery, is not yet supported.
+
 Install the [Codex CLI](https://learn.chatgpt.com/docs/cli), then run:
 
 ```bash
