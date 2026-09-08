@@ -318,7 +318,15 @@ class Runner:
         failure_category = None if ok else "infrastructure_failure"
         if stage == "verify":
             # Coverage is separate from parity: matching all-404 responses is not proof.
-            if data.get("ok") is False:
+            if (
+                data.get("error", {}).get("code") == "SANKA_EXTENSION_REPLAY_INVALID"
+                and data.get("error", {})
+                .get("message", "")
+                .startswith("candidate entrypoint not found: ")
+                and not (self.workspace / "target_app.py").exists()
+            ):
+                failure_category = "candidate_failure"
+            elif data.get("ok") is False:
                 counts = data.get("summary", {})
                 source_only = counts.get("source_expectation_mismatches", 0) > 0 and not any(
                     counts.get(key, 0)
@@ -405,6 +413,15 @@ class Runner:
             ],
         )
         summaries.append(summary)
+        if (
+            not self.stages["apply"]["ok"]
+            and self.stages["apply"]["data"].get("error", {}).get("code")
+            == "SANKA_EXTENSION_READINESS"
+        ):
+            summaries.append(
+                "Readiness blocked generation. Implement the missing target, then verify."
+            )
+            return "\n".join(summaries)
         if self.stages["apply"]["ok"]:
             # Test the generated tree before promoting it: promotion changes the source hash.
             _, summary = self.lifecycle("test", [".", "--to", self.target])

@@ -180,6 +180,41 @@ def test_full_lifecycle_requires_no_model_call_when_verified(tmp_path, monkeypat
     assert stats["work"]["tool_calls"] == 0
 
 
+def test_readiness_refusal_hands_missing_candidate_to_model(tmp_path, monkeypatch):
+    commands = []
+
+    def execute(argv, **kw):
+        commands.append(argv[1])
+        if argv[1] == "apply":
+            return subprocess.CompletedProcess(
+                argv,
+                1,
+                'sanka-compact/v1 apply error failed\nerror={"code":"SANKA_EXTENSION_READINESS"}',
+                "",
+            )
+        if argv[1] == "verify":
+            return subprocess.CompletedProcess(
+                argv,
+                1,
+                'sanka-compact/v1 verify error failed\n'
+                'error={"code":"SANKA_EXTENSION_REPLAY_INVALID",'
+                '"message":"candidate entrypoint not found: target_app.py"}',
+                "",
+            )
+        return cli_response(argv)
+
+    requests = []
+    monkeypatch.setattr(native, "post", lambda *args: requests.append(args) or response())
+    run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    _, stats = run.run()
+    assert commands[:3] == ["scan", "plan", "apply"]
+    assert "test" not in commands
+    assert requests  # No target generated; the model still gets its attempt.
+    assert not stats["is_error"] and not stats["verified"]
+    assert stats["result"] == "verification_failed"
+    assert stats["failure_category"] == "candidate_failure"
+
+
 def test_repair_rechecks_without_regeneration_and_preserves_test_failure(tmp_path, monkeypatch):
     commands = []
 
