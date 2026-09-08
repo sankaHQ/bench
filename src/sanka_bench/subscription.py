@@ -33,6 +33,7 @@ class Subscription:
         self.sequence = 0
         self.thread_id: str | None = None
         self.cursor = 0
+        self.confirmed_settings: tuple[str, str] | None = None
         self.total: dict[str, int] = {}
 
     def __enter__(self) -> Subscription:
@@ -207,7 +208,6 @@ class Subscription:
         )
         before = dict(self.total)
         responses = 0
-        settings_seen = False
         while True:
             event = self.next()
             method, params = event.get("method"), event.get("params", {})
@@ -216,7 +216,7 @@ class Subscription:
                 settings = params["threadSettings"]
                 if settings["model"] != runner.model or settings["effort"] != runner.effort:
                     raise ValueError("subscription changed model or reasoning effort")
-                settings_seen = True
+                self.confirmed_settings = (settings["model"], settings["effort"])
             elif method == "item/tool/call":
                 if params["threadId"] != self.thread_id:
                     raise ValueError("subscription tool call crossed thread boundary")
@@ -244,7 +244,11 @@ class Subscription:
                     responses += 1
                     self.total = total
             elif method == "turn/completed":
-                if params["turn"]["status"] != "completed" or not settings_seen or not responses:
+                if (
+                    params["turn"]["status"] != "completed"
+                    or self.confirmed_settings != (runner.model, runner.effort)
+                    or not responses
+                ):
                     runner.usage_complete = False
                     raise RuntimeError("subscription turn failed or omitted evidence")
                 break

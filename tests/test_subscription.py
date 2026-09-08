@@ -94,3 +94,40 @@ def test_subscription_dispatches_only_to_native_runner_and_reconciles_usage():
         "input_tokens_details": {"cached_tokens": 30},
         "output_tokens_details": {"reasoning_tokens": 3},
     }
+    # Unchanged thread settings are not re-emitted on a repair turn.
+    followup = [
+        {
+            "method": "thread/tokenUsage/updated",
+            "params": {
+                "tokenUsage": {
+                    "total": {
+                        "inputTokens": 350,
+                        "outputTokens": 40,
+                        "cachedInputTokens": 60,
+                        "reasoningOutputTokens": 10,
+                    }
+                }
+            },
+        },
+        {"method": "turn/completed", "params": {"turn": {"status": "completed"}}},
+    ]
+    events = iter(followup)
+    result = managed(runner)
+    assert result["usage"]["input_tokens"] == 50
+    assert result["usage"]["output_tokens"] == 10
+    managed.confirmed_settings = None
+    events = iter(followup)
+    with pytest.raises(RuntimeError, match="omitted evidence"):
+        managed(runner)
+    events = iter(
+        [
+            {
+                "method": "thread/settings/updated",
+                "params": {
+                    "threadSettings": {"model": "unexpected", "effort": "high"},
+                },
+            }
+        ]
+    )
+    with pytest.raises(ValueError, match="changed model"):
+        managed(runner)
