@@ -107,12 +107,13 @@ def test_auth_lock_excludes_other_processes_and_releases_after_failure(
     assert run([sys.executable, "-c", probe, str(lock_path)], capture_output=True).returncode == 0
 
 
-def test_concurrent_logout_does_not_launch_codex(tmp_path, monkeypatch):
+@pytest.mark.parametrize("provider,binary", [("chatgpt", "codex"), ("claude", "claude")])
+def test_concurrent_logout_does_not_launch_codex(tmp_path, monkeypatch, provider, binary):
     import fcntl
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setattr(auth.shutil, "which", lambda _: "/bin/codex")
-    home = tmp_path / ".sanka-bench" / "codex"
+    home = tmp_path / ".sanka-bench" / binary
     home.mkdir(parents=True)
     with (home / "session.lock").open("w") as owner:
         fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -120,4 +121,46 @@ def test_concurrent_logout_does_not_launch_codex(tmp_path, monkeypatch):
             auth.subprocess, "run", lambda *_a, **_k: pytest.fail("must not launch")
         )
         with pytest.raises(ValueError, match="session is busy"):
-            auth.run_auth("logout")
+            auth.run_auth("logout", provider)
+
+
+@pytest.mark.parametrize(
+    ("argv", "suffix"),
+    [
+        (["login"], ["auth", "login", "--claudeai"]),
+        (["login", "status"], ["auth", "status", "--text"]),
+        (["logout"], ["auth", "logout"]),
+    ],
+)
+def test_claude_login_delegates_without_inheriting_credentials(tmp_path, monkeypatch, argv, suffix):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(auth.shutil, "which", lambda name: f"/bin/{name}")
+    for name in (
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+        "CLAUDE_CONFIG_DIR",
+        "CODEX_HOME",
+    ):
+        monkeypatch.setenv(name, "do-not-forward")
+
+    def run(command, **kwargs):
+        assert command == ["/bin/claude", *suffix]
+        home = tmp_path / ".sanka-bench" / "claude"
+        assert kwargs["cwd"] == home
+        assert kwargs["env"]["CLAUDE_CONFIG_DIR"] == str(home)
+        assert "do-not-forward" not in kwargs["env"].values()
+        assert "CODEX_HOME" not in kwargs["env"]
+        assert kwargs["pass_fds"]
+        assert home.stat().st_mode & 0o777 == 0o700
+        return SimpleNamespace(returncode=7)
+
+    monkeypatch.setattr(auth.subprocess, "run", run)
+    assert main([*argv, "--provider", "claude"]) == 7
+
+
+def test_claude_device_auth_rejected_before_launch(monkeypatch, capsys):
+    monkeypatch.setattr(auth.subprocess, "run", lambda *_a, **_k: pytest.fail("must not launch"))
+    assert main(["login", "--provider", "claude", "--device-auth"]) == 2
+    assert "omit --device-auth" in capsys.readouterr().out

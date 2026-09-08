@@ -1,4 +1,4 @@
-"""Device authentication owned by Codex, isolated from benchmark artifacts."""
+"""Authentication delegated to official provider CLIs, outside benchmark artifacts."""
 
 from __future__ import annotations
 
@@ -11,20 +11,33 @@ from pathlib import Path
 from sanka_bench.environment import isolated_environment
 
 
-def run_auth(action: str) -> int:
-    commands = {
-        "login": ["login", "--device-auth"],
-        "status": ["login", "status"],
-        "logout": ["logout"],
-    }
+def run_auth(action: str, provider: str = "chatgpt") -> int:
+    if provider not in {"chatgpt", "claude"}:
+        raise ValueError(f"unsupported login provider: {provider}")
+    if provider == "chatgpt":
+        binary = "codex"
+        commands = {
+            "login": ["login", "--device-auth"],
+            "status": ["login", "status"],
+            "logout": ["logout"],
+        }
+        options = ["-c", 'forced_login_method="chatgpt"', "-c", 'cli_auth_credentials_store="file"']
+        install_url = "https://learn.chatgpt.com/docs/cli"
+    else:
+        binary = "claude"
+        commands = {
+            "login": ["auth", "login", "--claudeai"],
+            "status": ["auth", "status", "--text"],
+            "logout": ["auth", "logout"],
+        }
+        options = []
+        install_url = "https://code.claude.com/docs/en/setup"
     command = commands[action]
-    executable = shutil.which("codex")
+    executable = shutil.which(binary)
     if executable is None:
-        raise ValueError(
-            "Codex CLI is required; install it from https://learn.chatgpt.com/docs/cli"
-        )
+        raise ValueError(f"{binary.title()} CLI is required; install it from {install_url}")
 
-    home = Path.home() / ".sanka-bench" / "codex"
+    home = Path.home() / ".sanka-bench" / binary
     for directory in (home.parent, home):
         if directory.is_symlink():
             raise ValueError(f"refusing symlinked credential directory: {directory}")
@@ -33,12 +46,12 @@ def run_auth(action: str) -> int:
     env = isolated_environment(os.environ, ("CODEX_CA_CERTIFICATE",))
     # The npm Codex launcher needs the user's Node executable on PATH.
     env["PATH"] = os.environ.get("PATH", os.defpath)
-    env["CODEX_HOME"] = str(home)
+    env["CODEX_HOME" if provider == "chatgpt" else "CLAUDE_CONFIG_DIR"] = str(home)
     print(f"Sanka Bench subscription credentials: {home}", flush=True)
     if action == "login":
         print(
-            "Complete the device login below. This stores a subscription session; "
-            "the current benchmark generation adapters still require API keys.",
+            f"Complete the {provider} login in the official CLI below. "
+            "This does not enable subscription generation in the native harness.",
             flush=True,
         )
     try:
@@ -59,10 +72,7 @@ def run_auth(action: str) -> int:
             return subprocess.run(
                 [
                     executable,
-                    "-c",
-                    'forced_login_method="chatgpt"',
-                    "-c",
-                    'cli_auth_credentials_store="file"',
+                    *options,
                     *command,
                 ],
                 cwd=home,
