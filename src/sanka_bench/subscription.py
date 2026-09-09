@@ -23,6 +23,15 @@ from typing import Any
 from sanka_bench.environment import isolated_environment
 from sanka_bench.native_agent import Runner, tools
 
+# Codex's model defaults require apply_patch, which this harness does not expose.
+BASE_INSTRUCTIONS = (
+    "You are completing a coding task through harness-provided tools. "
+    "Use bench_exec to read, create, and edit files in the benchmark workspace "
+    "using shell commands or Python. Only the advertised bench_* tools are available; "
+    "do not assume host tools or an apply_patch executable exist. "
+    "Follow the task and tool contracts, then report what you implemented and verified."
+)
+
 
 class Subscription:
     def __init__(self, deadline: float, executable: str | None = None) -> None:
@@ -175,6 +184,7 @@ class Subscription:
                     "environments": [],
                     "ephemeral": True,
                     "approvalPolicy": "never",
+                    "baseInstructions": BASE_INSTRUCTIONS,
                     "dynamicTools": [
                         {
                             "type": "function",

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from sanka_bench.subscription import Subscription
+from sanka_bench.subscription import BASE_INSTRUCTIONS, Subscription
 
 
 def test_subscription_blocks_concurrent_owner_before_launch(tmp_path, monkeypatch):
@@ -33,7 +33,13 @@ def test_subscription_rejects_ambient_tools_and_errors(event):
 
 def test_subscription_dispatches_only_to_native_runner_and_reconciles_usage():
     managed = Subscription(time.monotonic() + 1)
-    managed.thread_id = "owned"
+    starts = []
+
+    def start(method, params):
+        starts.append((method, params))
+        return {"model": "test", "thread": {"id": "owned"}, "runtimeWorkspaceRoots": []}
+
+    managed.rpc = start
     managed.total = {
         "inputTokens": 100,
         "outputTokens": 10,
@@ -86,6 +92,9 @@ def test_subscription_dispatches_only_to_native_runner_and_reconciles_usage():
         dispatch=lambda call: calls.append(call) or "ok",
     )
     result = managed(runner)
+    assert starts[0][0] == "thread/start"
+    assert starts[0][1]["baseInstructions"] == BASE_INSTRUCTIONS
+    assert "using shell commands or Python" in starts[0][1]["baseInstructions"]
     assert calls == [{"call_id": "call", "name": "exec", "arguments": '{"command": "printf ok"}'}]
     assert sent[-1]["result"]["contentItems"] == [{"type": "inputText", "text": "ok"}]
     assert result["usage"] == {
