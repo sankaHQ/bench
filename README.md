@@ -49,13 +49,21 @@ with built-in environments and ambient plugins disabled. Only the benchmark's
 sandboxed tools can access task files. Each cell gets a fresh ephemeral conversation;
 credentials remain outside cell artifacts. The coordinator pins the Codex binary.
 API keys are stripped, and authentication failures do not fall back to API billing.
+The harness supplies its own base instructions so model defaults cannot require
+unavailable editing tools such as `apply_patch`. File edits use the advertised
+`bench_exec` tool and ordinary shell commands or Python in the isolated workspace.
 
 One subscription cell holds the account lock for its full lifetime. Run different
 API providers alongside it; do not start independent concurrent GPT workers.
-Codex adds its own instructions and manages context/output limits, so this transport
+Codex still adds environment context and manages context/output limits, so this transport
 is reported separately from direct API runs. Tool count and wall-time limits remain
-harness-enforced. Token usage includes Codex overhead; subscription dollar cost is
-null rather than an invented API price. Native response/context byte settings do
+harness-enforced. Token usage includes Codex overhead; actual subscription cost
+stays null. Native stats also contain `api_equivalent`, priced from saved response
+usage at OpenAI Standard API rates (source and check date included). Interrupted
+turns retain an observed cost lower bound; unreported tokens are not extrapolated.
+Cache reads/writes are input subsets, and reasoning is included in output. The
+estimate applies long-context pricing per response and is not a subscription invoice.
+Rates must be rechecked before future campaigns. Native response/context byte settings do
 not impose equivalent limits inside Codex's managed model loop.
 
 For Claude, Bench launches the unmodified `claude auth login --claudeai` command

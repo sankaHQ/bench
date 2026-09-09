@@ -180,6 +180,41 @@ def test_full_lifecycle_requires_no_model_call_when_verified(tmp_path, monkeypat
     assert stats["work"]["tool_calls"] == 0
 
 
+def test_readiness_refusal_hands_missing_candidate_to_model(tmp_path, monkeypatch):
+    commands = []
+
+    def execute(argv, **kw):
+        commands.append(argv[1])
+        if argv[1] == "apply":
+            return subprocess.CompletedProcess(
+                argv,
+                1,
+                'sanka-compact/v1 apply error failed\nerror={"code":"SANKA_EXTENSION_READINESS"}',
+                "",
+            )
+        if argv[1] == "verify":
+            return subprocess.CompletedProcess(
+                argv,
+                1,
+                "sanka-compact/v1 verify error failed\n"
+                'error={"code":"SANKA_EXTENSION_REPLAY_INVALID",'
+                '"message":"candidate entrypoint not found: target_app.py"}',
+                "",
+            )
+        return cli_response(argv)
+
+    requests = []
+    monkeypatch.setattr(native, "post", lambda *args: requests.append(args) or response())
+    run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    _, stats = run.run()
+    assert commands[:3] == ["scan", "plan", "apply"]
+    assert "test" not in commands
+    assert requests  # No target generated; the model still gets its attempt.
+    assert not stats["is_error"] and not stats["verified"]
+    assert stats["result"] == "verification_failed"
+    assert stats["failure_category"] == "candidate_failure"
+
+
 def test_repair_rechecks_without_regeneration_and_preserves_test_failure(tmp_path, monkeypatch):
     commands = []
 
@@ -326,20 +361,28 @@ def test_full_tool_output_survives_context_truncation(tmp_path):
 
 
 @pytest.mark.parametrize("deadline_expired", [False, True])
-def test_timeout_preserves_billing_and_classifies_deadline(tmp_path, monkeypatch, deadline_expired):
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_timeout_preserves_billing_and_classifies_deadline(
+    tmp_path, monkeypatch, deadline_expired, wrapped
+):
     run = runner(tmp_path, price_in=1, price_out=1)
 
     def post(*args):
         if deadline_expired:
             run.deadline = 0
-        raise TimeoutError("response lost")
+        error = TimeoutError("response lost")
+        raise urllib.error.URLError(error) if wrapped else error
 
     monkeypatch.setattr(native, "post", post)
     outcome, stats = run.run()
     assert stats["is_error"] is not deadline_expired
     assert outcome.returncode == (0 if deadline_expired else 1)
     assert stats["result"] == (
-        "wall_clock" if deadline_expired else "provider_or_runner_error:TimeoutError"
+        "wall_clock"
+        if deadline_expired
+        else "provider_or_runner_error:URLError"
+        if wrapped
+        else "provider_or_runner_error:TimeoutError"
     )
     assert stats["cost_usd"] is None and stats["total_tokens"] is None
     assert stats["work"]["provider_api_requests"] == 1
@@ -523,6 +566,18 @@ def test_verification_timeout_is_infrastructure_failure(tmp_path):
     assert run.events[-2]["timed_out"]
 
 
+def test_verification_timeout_at_global_deadline_is_budget_outcome(tmp_path, monkeypatch):
+    def timeout(argv, **kw):
+        run.deadline = 0
+        raise subprocess.TimeoutExpired(argv, kw["timeout"], output="partial report")
+
+    run = runner(tmp_path, sanka=Path("sanka"), execute=timeout)
+    monkeypatch.setattr(run, "bootstrap", lambda: run.verify(None))
+    _, stats = run.run()
+    assert stats["result"] == "wall_clock" and not stats["is_error"]
+    assert (run.artifacts / "tools/0001.txt").read_text() == "partial report"
+
+
 @pytest.mark.parametrize("source_only", [False, True])
 def test_cli_replay_error_details_reach_verification_handoff(tmp_path, source_only):
     details = {
@@ -640,3 +695,94 @@ def test_cache_discount_is_observed_only_and_future_reservation_stays_full(
 def test_cached_price_is_bounded(tmp_path, price):
     with pytest.raises(ValueError, match="price_cached"):
         runner(tmp_path, price_in=1, price_out=1, price_cached=price)
+
+
+@pytest.mark.parametrize(
+    "side,has_candidate_frame,expected",
+    [
+        ("candidate", True, "candidate_failure"),
+        ("source", True, "infrastructure_failure"),
+        ("candidate", False, "infrastructure_failure"),
+    ],
+)
+def test_replay_candidate_exception_is_not_infrastructure(
+    tmp_path, side, has_candidate_frame, expected
+):
+    message = f"{side}[list-anonymous-open] process failed: "
+    if has_candidate_frame:
+        message += str(tmp_path / "workspace/target_app.py") + ":171\n"
+    message += "django.core.exceptions.SynchronousOnlyOperation: async context"
+
+    def execute(argv, **kw):
+        error = {"code": "SANKA_EXTENSION_REPLAY_INVALID", "message": message}
+        return subprocess.CompletedProcess(
+            argv, 1, "sanka-compact/v1 verify error failed\nerror=" + json.dumps(error), ""
+        )
+
+    run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    if expected == "infrastructure_failure":
+        with pytest.raises(RuntimeError, match="verification infrastructure failed"):
+            run.lifecycle("verify", [])
+    else:
+        run.lifecycle("verify", [])
+    assert run.stages["verify"]["failure_category"] == expected
+
+
+def test_removed_seed_at_finalization_is_recoverable(tmp_path, monkeypatch):
+    run = runner(tmp_path, sanka=Path("sanka"))
+    run.seed = "removed_seed.py"
+    monkeypatch.setattr(run, "bootstrap", lambda: "previous verification")
+    requests = []
+
+    def request():
+        requests.append(1)
+        return response()
+
+    monkeypatch.setattr(run, "request", request)
+    _, stats = run.run()
+    assert not stats["is_error"] and not stats["verified"]
+    assert stats["result"] == "verification_failed" and len(requests) == 2
+    assert any(
+        "seed must be an existing workspace file" in row.get("content", "") for row in run.history
+    )
+
+
+def test_seed_media_configuration_error_is_repairable(tmp_path):
+    def execute(argv, **kw):
+        error = {
+            "code": "SANKA_EXTENSION_REPLAY_INVALID",
+            "message": "prepare process failed: seed changed MEDIA_ROOT; "
+            "write seed files under settings.MEDIA_ROOT",
+        }
+        return subprocess.CompletedProcess(
+            argv, 1, "sanka-compact/v1 verify error failed\nerror=" + json.dumps(error), ""
+        )
+
+    run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    run.lifecycle("verify", [])
+    assert run.stages["verify"]["failure_category"] == "coverage_incomplete"
+
+
+def test_interrupted_subscription_keeps_observed_api_cost(tmp_path):
+    def exchange(run):
+        usage = {
+            "inputTokens": 100,
+            "cachedInputTokens": 40,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 20,
+        }
+        run.event(
+            "subscription_event",
+            event={
+                "method": "thread/tokenUsage/updated",
+                "params": {"threadId": "test", "tokenUsage": {"total": usage, "last": usage}},
+            },
+        )
+        raise native.BudgetReached("tool_calls")
+
+    run = runner(tmp_path, exchange=exchange)
+    run.model = "gpt-5.6-luna"
+    _, stats = run.run()
+    assert stats["api_equivalent"]["cost_status"] == "lower_bound"
+    assert stats["api_equivalent"]["estimated_api_cost_usd"] == pytest.approx(0.0000368)
+    assert stats["cost_usd"] is None and stats["total_tokens"] is None

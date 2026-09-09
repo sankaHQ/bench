@@ -23,6 +23,15 @@ from typing import Any
 from sanka_bench.environment import isolated_environment
 from sanka_bench.native_agent import Runner, tools
 
+# Codex's model defaults require apply_patch, which this harness does not expose.
+BASE_INSTRUCTIONS = (
+    "You are completing a coding task through harness-provided tools. "
+    "Use bench_exec to read, create, and edit files in the benchmark workspace "
+    "using shell commands or Python. Only the advertised bench_* tools are available; "
+    "do not assume host tools or an apply_patch executable exist. "
+    "Follow the task and tool contracts, then report what you implemented and verified."
+)
+
 
 class Subscription:
     def __init__(self, deadline: float, executable: str | None = None) -> None:
@@ -33,6 +42,7 @@ class Subscription:
         self.sequence = 0
         self.thread_id: str | None = None
         self.cursor = 0
+        self.confirmed_settings: tuple[str, str] | None = None
         self.total: dict[str, int] = {}
 
     def __enter__(self) -> Subscription:
@@ -174,11 +184,16 @@ class Subscription:
                     "environments": [],
                     "ephemeral": True,
                     "approvalPolicy": "never",
+                    "baseInstructions": BASE_INSTRUCTIONS,
                     "dynamicTools": [
                         {
                             "type": "function",
                             "name": "bench_" + spec["name"],
-                            "description": spec["description"],
+                            "description": (
+                                "Runs in the harness-owned benchmark workspace. "
+                                "bench_exec can write files there even though the Codex host "
+                                "filesystem is read-only. " + spec["description"]
+                            ),
                             "inputSchema": spec["parameters"],
                         }
                         for spec in tools(runner.sanka is not None)
@@ -207,7 +222,6 @@ class Subscription:
         )
         before = dict(self.total)
         responses = 0
-        settings_seen = False
         while True:
             event = self.next()
             method, params = event.get("method"), event.get("params", {})
@@ -216,7 +230,7 @@ class Subscription:
                 settings = params["threadSettings"]
                 if settings["model"] != runner.model or settings["effort"] != runner.effort:
                     raise ValueError("subscription changed model or reasoning effort")
-                settings_seen = True
+                self.confirmed_settings = (settings["model"], settings["effort"])
             elif method == "item/tool/call":
                 if params["threadId"] != self.thread_id:
                     raise ValueError("subscription tool call crossed thread boundary")
@@ -244,7 +258,11 @@ class Subscription:
                     responses += 1
                     self.total = total
             elif method == "turn/completed":
-                if params["turn"]["status"] != "completed" or not settings_seen or not responses:
+                if (
+                    params["turn"]["status"] != "completed"
+                    or self.confirmed_settings != (runner.model, runner.effort)
+                    or not responses
+                ):
                     runner.usage_complete = False
                     raise RuntimeError("subscription turn failed or omitted evidence")
                 break

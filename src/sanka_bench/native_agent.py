@@ -280,6 +280,8 @@ class Runner:
             output_bytes=len(raw.encode()),
         )
         body = raw
+        if timed_out:
+            self.remaining()  # Preserve overall wall-budget exhaustion before parsing output.
         if len(raw) > MAX_TOOL_OUTPUT:
             body = raw[: MAX_TOOL_OUTPUT // 2] + "\n[truncated]\n" + raw[-MAX_TOOL_OUTPUT // 2 :]
         return outcome, f"exit={outcome.returncode} output={path}\n{body}"
@@ -318,7 +320,24 @@ class Runner:
         failure_category = None if ok else "infrastructure_failure"
         if stage == "verify":
             # Coverage is separate from parity: matching all-404 responses is not proof.
-            if data.get("ok") is False:
+            if data.get("error", {}).get("code") == "SANKA_EXTENSION_REPLAY_INVALID" and (
+                (
+                    data["error"].get("message", "").startswith("candidate entrypoint not found: ")
+                    and not (self.workspace / "target_app.py").exists()
+                )
+                or (
+                    data["error"].get("message", "").startswith("candidate[")
+                    and "] process failed: " in data["error"]["message"]
+                    and str(self.workspace / "target_app.py") in data["error"]["message"]
+                )
+            ):
+                failure_category = "candidate_failure"
+            elif data.get("error", {}).get("code") == "SANKA_EXTENSION_REPLAY_INVALID" and (
+                "seed changed MEDIA_ROOT; write seed files under settings.MEDIA_ROOT"
+                in data["error"].get("message", "")
+            ):
+                failure_category = "coverage_incomplete"
+            elif data.get("ok") is False:
                 counts = data.get("summary", {})
                 source_only = counts.get("source_expectation_mismatches", 0) > 0 and not any(
                     counts.get(key, 0)
@@ -327,6 +346,7 @@ class Runner:
                         "body_mismatches",
                         "header_mismatches",
                         "database_mismatches",
+                        "media_mismatches",
                         "non_native",
                     )
                 )
@@ -405,6 +425,15 @@ class Runner:
             ],
         )
         summaries.append(summary)
+        if (
+            not self.stages["apply"]["ok"]
+            and self.stages["apply"]["data"].get("error", {}).get("code")
+            == "SANKA_EXTENSION_READINESS"
+        ):
+            summaries.append(
+                "Readiness blocked generation. Implement the missing target, then verify."
+            )
+            return "\n".join(summaries)
         if self.stages["apply"]["ok"]:
             # Test the generated tree before promoting it: promotion changes the source hash.
             _, summary = self.lifecycle("test", [".", "--to", self.target])
@@ -544,6 +573,12 @@ class Runner:
                 request_status = "provider_timeout"
                 self.usage_complete = False  # The in-flight response may still be billed.
                 self.remaining()  # Classify our own deadline as a budget stop, preserving output.
+                raise
+            except urllib.error.URLError as exc:
+                self.usage_complete = False
+                if isinstance(exc.reason, TimeoutError):
+                    request_status = "provider_timeout"
+                    self.remaining()
                 raise
             except (OSError, ValueError):
                 self.usage_complete = False  # ambiguous response: never claim zero billed tokens
@@ -735,7 +770,9 @@ class Runner:
                     calls = self.receive(self.request())
                     if not calls:
                         if self.sanka and not self.verified:
-                            summary = self.verify(self.seed)
+                            summary = self.dispatch(
+                                {"name": "verify", "arguments": json.dumps({"seed": self.seed})}
+                            )
                             if not self.verified:
                                 self.repairs += 1
                                 failure_key = self.verification_failure_key()
@@ -826,7 +863,7 @@ class Runner:
                 if self.usage_complete
                 else None,
                 "cost_usd": self.cost(),
-                "cost_basis": "subscription-no-marginal-cost"
+                "cost_basis": "subscription-billing-unreported"
                 if self.exchange
                 else "provided-rates-cache-aware-upper-estimate"
                 if self.price_cached is not None
@@ -849,6 +886,12 @@ class Runner:
                     "max_context_bytes": self.max_context_bytes,
                 },
             }
+            if self.exchange:
+                from sanka_bench.usage_cost import model_estimate
+
+                stats["api_equivalent"] = model_estimate(
+                    self.events, self.model, complete=self.usage_complete
+                )
             checkpoint = self.artifacts / "state.tmp"
             checkpoint.write_text(json.dumps({"stats": stats, "history": self.history}))
             checkpoint.replace(self.artifacts / "state.json")
