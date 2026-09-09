@@ -332,6 +332,11 @@ class Runner:
                 )
             ):
                 failure_category = "candidate_failure"
+            elif data.get("error", {}).get("code") == "SANKA_EXTENSION_REPLAY_INVALID" and (
+                "seed changed MEDIA_ROOT; write seed files under settings.MEDIA_ROOT"
+                in data["error"].get("message", "")
+            ):
+                failure_category = "coverage_incomplete"
             elif data.get("ok") is False:
                 counts = data.get("summary", {})
                 source_only = counts.get("source_expectation_mismatches", 0) > 0 and not any(
@@ -341,6 +346,7 @@ class Runner:
                         "body_mismatches",
                         "header_mismatches",
                         "database_mismatches",
+                        "media_mismatches",
                         "non_native",
                     )
                 )
@@ -567,6 +573,12 @@ class Runner:
                 request_status = "provider_timeout"
                 self.usage_complete = False  # The in-flight response may still be billed.
                 self.remaining()  # Classify our own deadline as a budget stop, preserving output.
+                raise
+            except urllib.error.URLError as exc:
+                self.usage_complete = False
+                if isinstance(exc.reason, TimeoutError):
+                    request_status = "provider_timeout"
+                    self.remaining()
                 raise
             except (OSError, ValueError):
                 self.usage_complete = False  # ambiguous response: never claim zero billed tokens
@@ -851,7 +863,7 @@ class Runner:
                 if self.usage_complete
                 else None,
                 "cost_usd": self.cost(),
-                "cost_basis": "subscription-no-marginal-cost"
+                "cost_basis": "subscription-billing-unreported"
                 if self.exchange
                 else "provided-rates-cache-aware-upper-estimate"
                 if self.price_cached is not None
@@ -874,6 +886,12 @@ class Runner:
                     "max_context_bytes": self.max_context_bytes,
                 },
             }
+            if self.exchange:
+                from sanka_bench.usage_cost import model_estimate
+
+                stats["api_equivalent"] = model_estimate(
+                    self.events, self.model, complete=self.usage_complete
+                )
             checkpoint = self.artifacts / "state.tmp"
             checkpoint.write_text(json.dumps({"stats": stats, "history": self.history}))
             checkpoint.replace(self.artifacts / "state.json")

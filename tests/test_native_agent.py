@@ -361,20 +361,28 @@ def test_full_tool_output_survives_context_truncation(tmp_path):
 
 
 @pytest.mark.parametrize("deadline_expired", [False, True])
-def test_timeout_preserves_billing_and_classifies_deadline(tmp_path, monkeypatch, deadline_expired):
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_timeout_preserves_billing_and_classifies_deadline(
+    tmp_path, monkeypatch, deadline_expired, wrapped
+):
     run = runner(tmp_path, price_in=1, price_out=1)
 
     def post(*args):
         if deadline_expired:
             run.deadline = 0
-        raise TimeoutError("response lost")
+        error = TimeoutError("response lost")
+        raise urllib.error.URLError(error) if wrapped else error
 
     monkeypatch.setattr(native, "post", post)
     outcome, stats = run.run()
     assert stats["is_error"] is not deadline_expired
     assert outcome.returncode == (0 if deadline_expired else 1)
     assert stats["result"] == (
-        "wall_clock" if deadline_expired else "provider_or_runner_error:TimeoutError"
+        "wall_clock"
+        if deadline_expired
+        else "provider_or_runner_error:URLError"
+        if wrapped
+        else "provider_or_runner_error:TimeoutError"
     )
     assert stats["cost_usd"] is None and stats["total_tokens"] is None
     assert stats["work"]["provider_api_requests"] == 1
@@ -737,3 +745,44 @@ def test_removed_seed_at_finalization_is_recoverable(tmp_path, monkeypatch):
     assert any(
         "seed must be an existing workspace file" in row.get("content", "") for row in run.history
     )
+
+
+def test_seed_media_configuration_error_is_repairable(tmp_path):
+    def execute(argv, **kw):
+        error = {
+            "code": "SANKA_EXTENSION_REPLAY_INVALID",
+            "message": "prepare process failed: seed changed MEDIA_ROOT; "
+            "write seed files under settings.MEDIA_ROOT",
+        }
+        return subprocess.CompletedProcess(
+            argv, 1, "sanka-compact/v1 verify error failed\nerror=" + json.dumps(error), ""
+        )
+
+    run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    run.lifecycle("verify", [])
+    assert run.stages["verify"]["failure_category"] == "coverage_incomplete"
+
+
+def test_interrupted_subscription_keeps_observed_api_cost(tmp_path):
+    def exchange(run):
+        usage = {
+            "inputTokens": 100,
+            "cachedInputTokens": 40,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 20,
+        }
+        run.event(
+            "subscription_event",
+            event={
+                "method": "thread/tokenUsage/updated",
+                "params": {"threadId": "test", "tokenUsage": {"total": usage, "last": usage}},
+            },
+        )
+        raise native.BudgetReached("tool_calls")
+
+    run = runner(tmp_path, exchange=exchange)
+    run.model = "gpt-5.6-luna"
+    _, stats = run.run()
+    assert stats["api_equivalent"]["cost_status"] == "lower_bound"
+    assert stats["api_equivalent"]["estimated_api_cost_usd"] == pytest.approx(0.0000368)
+    assert stats["cost_usd"] is None and stats["total_tokens"] is None
