@@ -1650,3 +1650,46 @@ def test_invalid_candidate_id_fails_before_task_or_agent_access(
         harness.main()
     assert error.value.code == 2
     assert not (tmp_path / "out").exists()
+
+
+def test_verified_checkpoint_freezes_additive_candidate_and_discloses_source_edits(
+    harness, tmp_path
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "original.py").write_text("original")
+    source = harness._workspace_files(workspace)
+    (workspace / "original.py").write_text("modified")
+    (workspace / "target_app.py").write_text("first passing version")
+    (workspace / ".sanka").mkdir()
+    (workspace / ".sanka" / "excluded.json").write_text("generated artifacts")
+    artifacts = tmp_path / "candidate" / "native"
+    artifacts.mkdir(parents=True)
+    runner = SimpleNamespace(
+        workspace=workspace,
+        artifacts=artifacts,
+        started=harness.time.monotonic(),
+        tool_calls=3,
+        seed="seed.py",
+        stages={"verify": {"ok": True}},
+        event=lambda *a, **kw: None,
+    )
+    args = SimpleNamespace(
+        candidate_id="checkpoint",
+        agent="sanka-native",
+        model="test",
+        actual_model_id=None,
+        billing_mode="subscription",
+    )
+    harness._capture_verified_checkpoint(runner, source, args, "test-version")
+    checkpoint = artifacts.parent / "first-verified"
+    load_and_validate(checkpoint / "candidate.yaml", "candidate")
+    assert sorted(p.name for p in (checkpoint / "overlay").iterdir()) == ["target_app.py"]
+    metadata = json.loads((checkpoint / "checkpoint.json").read_text())
+    assert metadata["source_changes_dropped"] == ["original.py"]
+    assert metadata["independently_graded"] is False
+    assert metadata["tool_calls"] == 3
+    (workspace / "target_app.py").write_text("later version")
+    assert (checkpoint / "overlay" / "target_app.py").read_text() == "first passing version"
+    with pytest.raises(FileExistsError):
+        harness._capture_verified_checkpoint(runner, source, args, "test-version")

@@ -762,6 +762,58 @@ def _workspace_files(workspace: Path) -> dict[str, str]:
     }
 
 
+def _capture_verified_checkpoint(
+    runner: native_agent.Runner,
+    source_files: dict[str, str],
+    args: argparse.Namespace,
+    agent_version: str,
+) -> None:
+    """Freeze the first public-verification pass for later independent grading.
+
+    Match final candidate semantics: added files only; source edits are disclosed,
+    never promoted. This checkpoint is evidence, not a second pass@1 submission.
+    """
+    started = time.monotonic()
+    checkpoint = runner.artifacts.parent / "first-verified"
+    checkpoint.mkdir()  # Never overwrite evidence from another run.
+    overlay = checkpoint / "overlay"
+    overlay.mkdir()
+    files: dict[str, str] = {}
+    for path in sorted(runner.workspace.rglob("*")):
+        relative = path.relative_to(runner.workspace)
+        if _excluded(relative):
+            continue
+        if path.is_symlink() or not path.resolve().is_relative_to(runner.workspace.resolve()):
+            raise ValueError("checkpoint cannot contain workspace symlinks")
+        if not path.is_file():
+            continue
+        key = relative.as_posix()
+        content = path.read_bytes()
+        files[key] = _sha256_bytes(content)
+        if key not in source_files:
+            destination = overlay / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(content)
+    _write_candidate(checkpoint, args, agent_version, {})
+    _write_json_atomic(
+        checkpoint / "checkpoint.json",
+        {
+            "schema": "sanka-bench/verified-checkpoint/v1",
+            "independently_graded": False,
+            "elapsed_seconds": started - runner.started,
+            "tool_calls": runner.tool_calls,
+            "seed": runner.seed,
+            "verification": runner.stages["verify"],
+            "source_changes_dropped": sorted(
+                key for key, digest in source_files.items() if files.get(key) != digest
+            ),
+            "overlay_sha256": digest_tree(overlay),
+            "capture_seconds": time.monotonic() - started,
+        },
+    )
+    runner.event("verified_checkpoint", path=str(checkpoint), tool_calls=runner.tool_calls)
+
+
 def _promote_scaffold(workspace: Path, overlay: Path | None = None) -> dict[str, str]:
     """Install only new generated files, preserving the immutable source contract."""
     overlay = overlay if overlay is not None else workspace / "bench-candidate" / "overlay"
@@ -1300,6 +1352,9 @@ def main() -> int:
                     max_cost=args.max_agent_cost_usd,
                     max_output_tokens=args.max_output_tokens or native_agent.MAX_OUTPUT_TOKENS,
                     max_context_bytes=args.max_context_bytes or native_agent.MAX_CONTEXT_BYTES,
+                    on_verified=lambda current: _capture_verified_checkpoint(
+                        current, before_agent, args, agent_version
+                    ),
                 )
                 if subscription_run:
                     from sanka_bench.subscription import Subscription

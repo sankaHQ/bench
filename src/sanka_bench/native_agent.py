@@ -176,6 +176,7 @@ class Runner:
         max_output_tokens: int = MAX_OUTPUT_TOKENS,
         max_context_bytes: int = MAX_CONTEXT_BYTES,
         exchange: Callable[[Runner], dict[str, Any]] | None = None,
+        on_verified: Callable[[Runner], None] | None = None,
     ) -> None:
         for name, value in (
             ("max_output_tokens", max_output_tokens),
@@ -184,6 +185,7 @@ class Runner:
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
         self.exchange = exchange
+        self.on_verified = on_verified
         self.max_output_tokens = max_output_tokens
         self.max_context_bytes = max_context_bytes
         self.provider, self.model, self.effort, self.key = provider, model, effort, key
@@ -473,6 +475,9 @@ class Runner:
         )
         self.verified = self.stages["verify"]["ok"]
         self.verification_summary = summary
+        if self.verified and self.on_verified is not None:
+            self.on_verified(self)
+            self.on_verified = None  # Preserve the first passing candidate, even after later edits.
         return summary
 
     def payload(self) -> dict[str, Any]:

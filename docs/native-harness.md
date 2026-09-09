@@ -40,6 +40,16 @@ Repeated failed finalization or structured verification stops when the failure
 fields are unchanged, ignoring newly generated report paths. Public verification is not a benchmark score:
 the unchanged independent evaluator still grades the frozen candidate.
 
+The first warning-free verification also saves `first-verified/candidate.yaml`,
+its additive overlay, and `checkpoint.json` next to the final candidate. Source
+edits are disclosed and dropped using the same contract as final freezing. The
+checkpoint records its time, tool count, seed, verification result and overlay
+hash; raw usage remains in the parent `native/events.jsonl` up to the
+`verified_checkpoint` event. This is an ungraded diagnostic snapshot, not a
+second pass@1 attempt. Grade it separately before judging subsequent work
+unnecessary or changing stopping behavior. Snapshot capture time is recorded
+and remains part of the run's wall budget. The model cannot read the snapshot.
+
 ## State, limits, and accounting
 
 - Direct OpenAI Responses and Fireworks Chat Completions routes. Exact model
