@@ -458,20 +458,39 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
         ):
             raise ValueError(f"official v2 manifest requires {agent_tool} version and binary pins")
         if harness == "sanka-native":
-            expected_route = {"openai": "openai-responses", "fireworks": "openai-chat"}.get(
-                model.get("provider")
+            managed = (
+                model.get("provider") == "openai" and model.get("billing_mode") == "subscription"
             )
+            expected_route = (
+                "codex-managed-subscription"
+                if managed
+                else {"openai": "openai-responses", "fireworks": "openai-chat"}.get(
+                    model.get("provider")
+                )
+            )
+            model_cost_limit = model.get("max_agent_cost_usd", cost_limit)
+            if model_cost_limit is not None and (
+                type(model_cost_limit) not in {int, float}
+                or not math.isfinite(model_cost_limit)
+                or model_cost_limit <= 0
+            ):
+                raise ValueError("model cost limit must be positive and finite")
+            if managed and model_cost_limit is not None:
+                raise ValueError("subscription matrices cannot use API dollar caps")
             if (
                 expected_route is None
                 or model.get("route_kind") != expected_route
-                or model.get("billing_mode") != "api_key"
+                or model.get("billing_mode") != ("subscription" if managed else "api_key")
                 or model.get("gateway_profile") is not None
                 or model.get("reasoning_effort") != "high"
             ):
-                raise ValueError("native matrices require direct API billing and high reasoning")
+                raise ValueError(
+                    "native matrices require a qualified API or managed subscription route "
+                    "and high reasoning"
+                )
             if manifest["execution"].get("sanka_workflow") != "native-lifecycle-v1":
                 raise ValueError("native matrices require native-lifecycle-v1")
-            if cost_limit is not None and any(
+            if model_cost_limit is not None and any(
                 type(model.get(name)) not in {int, float}
                 or not math.isfinite(model[name])
                 or model[name] < 0
@@ -534,6 +553,13 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
             or evidence.get("status") != "qualified"
         ):
             raise ValueError("qualification record is not qualified")
+        if model.get("route_kind") == "codex-managed-subscription":
+            pin = toolchain.get("subscription_bin_sha256")
+            if (
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(pin or "")) is None
+                or evidence.get("subscription_bin_sha256") != pin
+            ):
+                raise ValueError("subscription qualification binary pin mismatch")
         checks = evidence.get("checks")
         required_checks = (
             "tool_use",
@@ -981,7 +1007,7 @@ class RollingCoordinator:
         environment = (
             evaluation_environment(self.manifest)
             if phase == "evaluate"
-            else isolated_environment(os.environ)
+            else isolated_environment(os.environ, ("SANKA_BENCH_CELL_COST_CAP_USD",))
         )
         environment.update(
             {

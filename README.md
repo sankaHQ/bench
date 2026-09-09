@@ -12,7 +12,8 @@ benchmark tasks and grading. Legacy Claude Code/Codex adapters remain explicit o
 > subscription API for the native harness. Authentication behavior and provider
 > terms may change. You are responsible for your account, usage limits, and
 > compliance with the applicable provider terms. Subscription-backed benchmark
-> generation, including parallel execution and refresh recovery, is not yet supported.
+> generation uses an experimental managed transport. Independent GPT workers are
+> serialized; live expiry/revocation recovery is not yet qualified.
 
 Install the [Codex CLI](https://learn.chatgpt.com/docs/cli), then run:
 
@@ -42,11 +43,28 @@ Login, status, and logout take an exclusive process lock: a competing command
 fails with `session is busy` instead of changing credentials concurrently.
 The lock is released when the owning processes exit; do not delete its file.
 
-This command stores a subscription session; **subscription-backed benchmark
-generation is not yet implemented**. The native harness and current Codex
-generation adapter still require API keys and reject `--billing-mode subscription`
-instead of silently charging the API. Login does not establish availability of
-a particular model or change the billing of an existing run.
+The native harness supports ChatGPT subscriptions with `--provider openai
+--billing-mode subscription`. It delegates inference and refresh to Codex App Server,
+with built-in environments and ambient plugins disabled. Only the benchmark's
+sandboxed tools can access task files. Each cell gets a fresh ephemeral conversation;
+credentials remain outside cell artifacts. The coordinator pins the Codex binary.
+API keys are stripped, and authentication failures do not fall back to API billing.
+The harness supplies its own base instructions so model defaults cannot require
+unavailable editing tools such as `apply_patch`. File edits use the advertised
+`bench_exec` tool and ordinary shell commands or Python in the isolated workspace.
+
+One subscription cell holds the account lock for its full lifetime. Run different
+API providers alongside it; do not start independent concurrent GPT workers.
+Codex still adds environment context and manages context/output limits, so this transport
+is reported separately from direct API runs. Tool count and wall-time limits remain
+harness-enforced. Token usage includes Codex overhead; actual subscription cost
+stays null. Native stats also contain `api_equivalent`, priced from saved response
+usage at OpenAI Standard API rates (source and check date included). Interrupted
+turns retain an observed cost lower bound; unreported tokens are not extrapolated.
+Cache reads/writes are input subsets, and reasoning is included in output. The
+estimate applies long-context pricing per response and is not a subscription invoice.
+Rates must be rechecked before future campaigns. Native response/context byte settings do
+not impose equivalent limits inside Codex's managed model loop.
 
 For Claude, Bench launches the unmodified `claude auth login --claudeai` command
 with a private `~/.sanka-bench/claude/` configuration directory. Claude Code owns
@@ -62,12 +80,10 @@ using subscription tokens in the Sanka-native HTTP adapter, and this new login
 store is not yet wired to benchmark generation. See
 [Anthropic authentication boundaries](https://code.claude.com/docs/en/legal-and-compliance).
 
-Parallel subscription generation remains blocked. Before enabling it, the harness
-must use one Codex-managed authentication owner for concurrent workers, rather than
-copying refresh tokens into each sandbox or sharing credentials between independent
-refreshing processes. Qualification must cover concurrent expiry, failed refresh,
-account revocation, cancellation, and no fallback to API billing. The login command
-tests alone do not qualify subscription inference.
+Simultaneous subscription workers remain blocked. Cross-provider parallelism must
+pass the normal isolation and boot qualification first. Login and tool-round-trip
+tests do not prove recovery from a revoked or expired session; authentication errors
+stop admission for investigation and any rerun retains its original attempt.
 
 Sanka Migration Bench (repository `sankaHQ/bench`, package `sanka-bench`) is a tool-neutral, repository-level
 benchmark for evaluating whether a software migration preserves behavior and

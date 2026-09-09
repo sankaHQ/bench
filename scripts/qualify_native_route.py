@@ -18,6 +18,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider", required=True, choices=native_agent.ROUTES)
     parser.add_argument("--model", required=True)
+    parser.add_argument("--subscription-bin", type=Path)
+    parser.add_argument("--billing-mode", choices=("api_key", "subscription"), default="api_key")
     parser.add_argument("--actual-model-id")
     parser.add_argument("--provider-variant", default="standard")
     parser.add_argument("--out", type=Path, required=True)
@@ -29,8 +31,13 @@ def main() -> int:
     if args.max_context_bytes <= 0:
         parser.error("--max-context-bytes must be positive")
     key = os.environ.get(native_agent.ROUTES[args.provider][1])
-    if not key:
+    managed = args.billing_mode == "subscription"
+    if managed and args.provider != "openai":
+        parser.error("subscription qualification requires OpenAI")
+    if not managed and not key:
         parser.error("selected provider API key is missing")
+    if managed:
+        key = ""
     root = args.out.resolve().parent / (args.out.stem + "-probe")
     if args.out.exists() or args.out.with_suffix(".jsonl").exists() or root.exists():
         parser.error("qualification already exists; preserve its evidence")
@@ -71,7 +78,18 @@ def main() -> int:
         max_output_tokens=args.max_output_tokens,
         max_context_bytes=args.max_context_bytes,
     )
-    outcome, stats = runner.run()
+    if managed:
+        from sanka_bench.subscription import Subscription
+
+        runner.history[0]["content"] = prompt.replace("Use exec", "Use bench_exec")
+        prompt = runner.history[0]["content"]
+        with Subscription(
+            runner.deadline, str(args.subscription_bin) if args.subscription_bin else None
+        ) as transport:
+            runner.exchange = transport
+            outcome, stats = runner.run()
+    else:
+        outcome, stats = runner.run()
     probe = workspace / "probe.txt"
     checks = {
         "tool_use": probe.is_file()
@@ -94,8 +112,12 @@ def main() -> int:
         "actual_model_id": args.actual_model_id or args.model,
         "provider": args.provider,
         "provider_variant": args.provider_variant,
-        "route_kind": "openai-responses" if args.provider == "openai" else "openai-chat",
-        "billing_mode": "api_key",
+        "route_kind": "codex-managed-subscription"
+        if managed
+        else "openai-responses"
+        if args.provider == "openai"
+        else "openai-chat",
+        "billing_mode": args.billing_mode,
         "gateway_profile": None,
         "reasoning_effort": "high",
         "native": {
@@ -110,6 +132,8 @@ def main() -> int:
             "transcript_sha256": digest(transcript.read_bytes()),
         },
     }
+    if managed and args.subscription_bin:
+        evidence["subscription_bin_sha256"] = digest(args.subscription_bin.read_bytes())
     args.out.write_text(json.dumps(evidence, indent=2) + "\n")
     print(evidence["status"])
     return 0 if evidence["status"] == "qualified" else 1

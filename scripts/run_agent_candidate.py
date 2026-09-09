@@ -822,6 +822,7 @@ def main() -> int:
     )
     parser.add_argument("--route-kind", default="legacy")
     parser.add_argument("--billing-mode", default="unknown")
+    parser.add_argument("--subscription-bin", type=Path)
     parser.add_argument("--gateway-profile", default=None)
     parser.add_argument(
         "--provider",
@@ -902,7 +903,16 @@ def main() -> int:
         args.model = "claude-sonnet-5"
     if args.provider is None:
         args.provider = "anthropic" if args.agent == "claude-code" else "openai"
-    if args.agent in {"codex", "sanka-native"} and args.billing_mode not in {"unknown", "api_key"}:
+    subscription_run = (
+        args.agent == "sanka-native"
+        and args.provider == "openai"
+        and args.billing_mode == "subscription"
+    )
+    if (
+        args.agent in {"codex", "sanka-native"}
+        and args.billing_mode not in {"unknown", "api_key"}
+        and not subscription_run
+    ):
         parser.error(
             "this generation adapter requires API-key billing; sanka-bench login stores a "
             "subscription session but subscription generation is not yet supported"
@@ -943,10 +953,22 @@ def main() -> int:
             parser.error("native output already exists; preserve the previous attempt")
         args.reasoning_effort = args.reasoning_effort or "high"
         args.route_kind = "openai-responses" if args.provider == "openai" else "openai-chat"
-        args.billing_mode = "api_key"
+        args.billing_mode = "subscription" if subscription_run else "api_key"
+        if subscription_run:
+            args.route_kind = "codex-managed-subscription"
+            if any(
+                value is not None
+                for value in (
+                    args.price_in,
+                    args.price_out,
+                    args.price_cached,
+                    args.max_agent_cost_usd,
+                )
+            ):
+                parser.error("subscription runs must not use API prices or dollar caps")
         if args.gateway_profile:
             parser.error("native harness uses direct API keys, not gateway profiles")
-        if not os.environ.get(native_agent.ROUTES[args.provider][1]):
+        if not subscription_run and not os.environ.get(native_agent.ROUTES[args.provider][1]):
             parser.error("native harness requires the selected provider API key")
         prices = (args.price_in, args.price_out)
         if any(p is not None for p in prices) and not all(
@@ -1075,7 +1097,7 @@ def main() -> int:
         )
         native_key = None
         if args.agent == "sanka-native":
-            native_key = env[native_agent.ROUTES[args.provider][1]]
+            native_key = "" if subscription_run else env[native_agent.ROUTES[args.provider][1]]
             for name in (
                 *PROVIDER_ENV_KEYS.values(),
                 "ANTHROPIC_API_KEY",
@@ -1279,7 +1301,18 @@ def main() -> int:
                     max_output_tokens=args.max_output_tokens or native_agent.MAX_OUTPUT_TOKENS,
                     max_context_bytes=args.max_context_bytes or native_agent.MAX_CONTEXT_BYTES,
                 )
-                outcome, native_stats = runner.run()
+                if subscription_run:
+                    from sanka_bench.subscription import Subscription
+
+                    with Subscription(
+                        runner.deadline,
+                        str(args.subscription_bin) if args.subscription_bin else None,
+                    ) as managed:
+                        runner.exchange = managed
+                        outcome, native_stats = runner.run()
+                        native_stats["cost_basis"] = "subscription-no-marginal-cost"
+                else:
+                    outcome, native_stats = runner.run()
                 generated_files = runner.generated
             else:
                 outcome = agent_isolation.run(
