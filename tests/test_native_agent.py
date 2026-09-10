@@ -786,3 +786,33 @@ def test_interrupted_subscription_keeps_observed_api_cost(tmp_path):
     assert stats["api_equivalent"]["cost_status"] == "lower_bound"
     assert stats["api_equivalent"]["estimated_api_cost_usd"] == pytest.approx(0.0000368)
     assert stats["cost_usd"] is None and stats["total_tokens"] is None
+
+
+def test_first_verified_callback_excludes_warnings_and_survives_later_edits(tmp_path):
+    captures = []
+    warning = True
+
+    def execute(argv, **kwargs):
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            "sanka-compact/v1 verify success verified\nok=true\n"
+            + ('warnings=["missing seed"]\n' if warning else ""),
+            "",
+        )
+
+    instance = runner(
+        tmp_path,
+        sanka=Path("sanka"),
+        execute=execute,
+        on_verified=lambda r: captures.append(r.tool_calls),
+    )
+    instance.verify(None)
+    assert captures == []
+    warning = False
+    instance.verification_summary = None
+    instance.verify(None)
+    assert captures == [0]
+    instance.dispatch({"name": "exec", "arguments": '{"command":"touch target_app.py"}'})
+    instance.verify(None)
+    assert captures == [0]
