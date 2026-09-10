@@ -50,6 +50,15 @@ second pass@1 attempt. Grade it separately before judging subsequent work
 unnecessary or changing stopping behavior. Snapshot capture time is recorded
 and remains part of the run's wall budget. The model cannot read the snapshot.
 
+Subscription runs now stop at the same successful verification boundary as the
+direct API loop. The controller saves the checkpoint, interrupts the owned Codex
+turn while it is waiting for the verification result, and waits for the matching
+interrupted completion. It does not acknowledge that result and start another
+inference round. Failed or incomplete verification continues the existing repair
+flow. Unexpected interruptions remain failures. Usage events are retained;
+interrupted usage is conservatively reported as a lower bound. This stopping
+policy does not replace independent grading or establish full-suite accuracy.
+
 ## State, limits, and accounting
 
 - Direct OpenAI Responses and Fireworks Chat Completions routes. Exact model

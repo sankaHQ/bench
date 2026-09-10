@@ -222,6 +222,7 @@ class Subscription:
         )
         before = dict(self.total)
         responses = 0
+        verified_stop: str | None = None
         while True:
             event = self.next()
             method, params = event.get("method"), event.get("params", {})
@@ -232,6 +233,8 @@ class Subscription:
                     raise ValueError("subscription changed model or reasoning effort")
                 self.confirmed_settings = (settings["model"], settings["effort"])
             elif method == "item/tool/call":
+                if verified_stop is not None:
+                    raise RuntimeError("subscription emitted another tool after verified stop")
                 if params["threadId"] != self.thread_id:
                     raise ValueError("subscription tool call crossed thread boundary")
                 call = {
@@ -243,6 +246,23 @@ class Subscription:
                     raise ValueError("unexpected subscription tool")
                 result = runner.dispatch(call)
                 runner.event("tool_result", **call, result=result)
+                if call["name"] == "verify" and runner.verified:
+                    verified_stop = params.get("turnId")
+                    if not isinstance(verified_stop, str) or not verified_stop:
+                        raise ValueError("verified subscription tool omitted turn identity")
+                    # Cancel while the provider is waiting for this tool result, before
+                    # acknowledging it can trigger another inference request.
+                    self.sequence += 1
+                    self.send(
+                        {
+                            "id": self.sequence,
+                            "method": "turn/interrupt",
+                            "params": {"threadId": self.thread_id, "turnId": verified_stop},
+                        }
+                    )
+                    runner.usage_complete = False  # Preserve unreported final usage as unknown.
+                    runner.event("subscription_verified_stop", turn_id=verified_stop)
+                    continue
                 self.send(
                     {
                         "id": event["id"],
@@ -258,8 +278,15 @@ class Subscription:
                     responses += 1
                     self.total = total
             elif method == "turn/completed":
+                stopped = (
+                    verified_stop is not None
+                    and params.get("threadId") == self.thread_id
+                    and params["turn"].get("id") == verified_stop
+                    and params["turn"]["status"] == "interrupted"
+                )
                 if (
-                    params["turn"]["status"] != "completed"
+                    (verified_stop is not None and not stopped)
+                    or (verified_stop is None and params["turn"]["status"] != "completed")
                     or self.confirmed_settings != (runner.model, runner.effort)
                     or not responses
                 ):

@@ -140,3 +140,96 @@ def test_subscription_dispatches_only_to_native_runner_and_reconciles_usage():
     )
     with pytest.raises(ValueError, match="changed model"):
         managed(runner)
+
+
+@pytest.mark.parametrize(
+    "verified,completion_thread", [(True, "owned"), (False, "owned"), (True, "other")]
+)
+def test_subscription_stops_only_after_accepted_verification_and_drains_usage(
+    verified, completion_thread
+):
+    managed = Subscription(time.monotonic() + 1)
+    managed.thread_id = "owned"
+    managed.confirmed_settings = ("test", "high")
+    events = iter(
+        [
+            {
+                "method": "item/tool/call",
+                "id": 9,
+                "params": {
+                    "threadId": "owned",
+                    "turnId": "turn",
+                    "callId": "verify",
+                    "tool": "bench_verify",
+                    "arguments": {"seed": None},
+                },
+            },
+            {
+                "method": "thread/tokenUsage/updated",
+                "params": {
+                    "tokenUsage": {
+                        "total": {
+                            "inputTokens": 300,
+                            "cachedInputTokens": 200,
+                            "outputTokens": 30,
+                            "reasoningOutputTokens": 10,
+                        }
+                    }
+                },
+            },
+            {
+                "method": "turn/completed",
+                "params": {
+                    "threadId": completion_thread,
+                    "turn": {"id": "turn", "status": "interrupted" if verified else "completed"},
+                },
+            },
+        ]
+    )
+    sent, audit = [], []
+    managed.send = sent.append
+    managed.next = lambda: next(events)
+    runner = SimpleNamespace(
+        model="test",
+        effort="high",
+        sanka=Path("sanka"),
+        turns=0,
+        requests=1,
+        history=[{"role": "user", "content": "task"}],
+        verified=verified,
+        usage_complete=True,
+        event=lambda *a, **kw: audit.append((a, kw)),
+        dispatch=lambda call: "accepted" if verified else "coverage incomplete",
+    )
+    if completion_thread != "owned":
+        with pytest.raises(RuntimeError, match="omitted evidence"):
+            managed(runner)
+        return
+    result = managed(runner)
+    assert result["usage"]["input_tokens"] == 300
+    interrupts = [event for event in sent if event.get("method") == "turn/interrupt"]
+    replies = [event for event in sent if event.get("id") == 9]
+    if verified:
+        assert interrupts[0]["params"] == {"threadId": "owned", "turnId": "turn"}
+        assert not replies  # No acknowledgement that starts another inference round.
+        assert runner.usage_complete is False
+        assert any(a[0] == "subscription_verified_stop" for a, kw in audit)
+    else:
+        assert not interrupts
+        assert replies[0]["result"]["contentItems"][0]["text"] == "coverage incomplete"
+
+
+def test_unrequested_subscription_interruption_is_still_a_failure():
+    managed = Subscription(time.monotonic() + 1)
+    managed.thread_id = "owned"
+    managed.confirmed_settings = ("test", "high")
+    managed.send = lambda event: None
+    managed.next = lambda: {
+        "method": "turn/completed",
+        "params": {"threadId": "owned", "turn": {"id": "turn", "status": "interrupted"}},
+    }
+    runner = SimpleNamespace(
+        model="test", effort="high", history=[], event=lambda *a, **kw: None, usage_complete=True
+    )
+    with pytest.raises(RuntimeError, match="omitted evidence"):
+        managed(runner)
