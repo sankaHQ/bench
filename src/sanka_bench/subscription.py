@@ -233,8 +233,6 @@ class Subscription:
                     raise ValueError("subscription changed model or reasoning effort")
                 self.confirmed_settings = (settings["model"], settings["effort"])
             elif method == "item/tool/call":
-                if verified_stop is not None:
-                    raise RuntimeError("subscription emitted another tool after verified stop")
                 if params["threadId"] != self.thread_id:
                     raise ValueError("subscription tool call crossed thread boundary")
                 call = {
@@ -244,6 +242,13 @@ class Subscription:
                 }
                 if call["name"] not in {spec["name"] for spec in tools(runner.sanka is not None)}:
                     raise ValueError("unexpected subscription tool")
+                if verified_stop is not None:
+                    if params.get("turnId") != verified_stop:
+                        raise ValueError("subscription tool call crossed turn boundary")
+                    # A queued call can arrive before the interrupt acknowledgement.
+                    # Do not execute or acknowledge it; drain the interrupted turn.
+                    runner.event("subscription_tool_skipped_after_verify", **call)
+                    continue
                 result = runner.dispatch(call)
                 runner.event("tool_result", **call, result=result)
                 if call["name"] == "verify" and runner.verified:
