@@ -1,4 +1,4 @@
-.PHONY: sync format lint typecheck test test-unit test-suite check baselines docker-baselines report
+.PHONY: sync sanka-toolchain format lint typecheck test test-unit test-suite check baselines docker-baselines report
 
 CONTAINER_ENGINE ?= docker
 TEST_WORKERS ?= 2
@@ -11,6 +11,14 @@ endif
 
 sync:
 	uv sync --frozen --python 3.12 --extra fixture --group dev
+
+# Create one isolated CLI environment per new campaign, outside the evaluator venv.
+sanka-toolchain:
+	test -n "$(RUN_DIR)"
+	test ! -e "$(RUN_DIR)/toolchain"
+	uv venv --python 3.12 "$(RUN_DIR)/toolchain"
+	uv pip install --python "$(RUN_DIR)/toolchain/bin/python" -r requirements-sanka.txt
+	"$(RUN_DIR)/toolchain/bin/sanka" --version
 
 format:
 	uv run ruff format .
