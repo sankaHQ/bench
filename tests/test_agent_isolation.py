@@ -183,3 +183,38 @@ def test_real_claude_has_only_the_treatment_skill(tmp_path: Path, arm: str) -> N
     )
     assert init["mcp_servers"] == []
     assert init["plugins"] == []
+
+
+@pytest.mark.parametrize("group_exists", [False, True])
+def test_finished_group_permission_error_requires_absent_group(tmp_path, monkeypatch, group_exists):
+    monkeypatch.setattr(agent_isolation, "command", lambda argv, **kw: argv)
+    monkeypatch.setattr(agent_isolation.sys, "platform", "darwin")
+    group = []
+
+    def denied(pid, sig):
+        group.append(pid)
+        raise PermissionError("group cleanup")
+
+    monkeypatch.setattr(agent_isolation.os, "killpg", denied)
+    monkeypatch.setattr(
+        agent_isolation.subprocess,
+        "check_output",
+        lambda *a, **kw: str(group[0]) if group_exists else "",
+    )
+
+    def execute():
+        return agent_isolation.run(
+            [sys.executable, "-c", "print('done')"],
+            workspace=tmp_path,
+            readable=[],
+            writable=[tmp_path],
+            env={"PATH": os.defpath},
+            timeout=5,
+        )
+
+    if group_exists:
+        with pytest.raises(PermissionError):
+            execute()
+    else:
+        result = execute()
+        assert result.returncode == 0 and result.stdout == "done\n"

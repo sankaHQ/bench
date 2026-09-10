@@ -158,5 +158,18 @@ def run(
             # A finished agent must not leave background probes or servers alive.
             if not group_stopped:
                 with suppress(ProcessLookupError):
-                    os.killpg(process.pid, signal.SIGKILL)
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except PermissionError:
+                        # macOS can return EPERM after the entire group has exited.
+                        # Fail closed if the group still exists or cannot be inspected.
+                        if (
+                            sys.platform != "darwin"
+                            or process.returncode is None
+                            or str(process.pid)
+                            in subprocess.check_output(
+                                ["/bin/ps", "-axo", "pgid="], text=True, timeout=5
+                            ).split()
+                        ):
+                            raise
     return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
