@@ -1,0 +1,2 @@
+# CLI treatment for new runs; historical manifests retain their original version.
+sanka-cli==0.2.7

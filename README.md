@@ -4,6 +4,14 @@ The default agent is now the [Sanka native harness](docs/native-harness.md):
 direct provider APIs, controller-owned Sanka lifecycle, and the same independent
 benchmark tasks and grading. Legacy Claude Code/Codex adapters remain explicit options.
 
+## CLI version for new benchmark runs
+
+New +CLI runs use **sanka-cli 0.2.7**, pinned in `requirements-sanka.txt`.
+After publication, `make sanka-toolchain RUN_DIR=/absolute/path/to/new-run`
+creates an isolated CLI environment. Follow the [native harness setup](docs/native-harness.md#running)
+to pin its executable and separately versioned extensions in the run manifest.
+Existing measurements retain their original versions and scores.
+
 ## Provider login
 
 > **Experimental — DWYOR (Do With Your Own Risk).** Sanka Bench's login

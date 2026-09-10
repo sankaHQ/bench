@@ -105,10 +105,33 @@ policy does not replace independent grading or establish full-suite accuracy.
 
 ## Running
 
-Use the existing Python 3.12 fixture environment and a pinned Sanka installation
-supporting compact lifecycle output. Select an exact provider model and export
-only its `OPENAI_API_KEY` or `FIREWORKS_API_KEY` through the existing secret loader.
-The following command incurs provider charges when model work is needed:
+Use the existing Python 3.12 fixture environment. New CLI treatments pin
+`sanka-cli==0.2.7` through `requirements-sanka.txt`. After that version is published
+to PyPI, create a separate toolchain in a new run directory:
+
+```sh
+RUN_DIR="$(pwd)/runs/my-new-campaign"
+make sanka-toolchain RUN_DIR="$RUN_DIR"
+export SANKA_BIN="$RUN_DIR/toolchain/bin/sanka"
+```
+
+The target refuses an existing toolchain and fails if the pinned release is
+unavailable; it never falls back to another version. It installs only the CLI.
+Install the campaign's separately pinned DRF extension wheels into the same
+`toolchain/bin/python` environment and prepare its isolated marketplace/Sanka home
+before generation. Keep the evaluator fixture environment separate.
+
+New run manifests must set `toolchain.sanka_bin` to that absolute executable path
+and `toolchain.sanka_cli` to `sanka, version 0.2.7`, alongside the actual extension
+version, hashes, and other existing toolchain pins. The matrix preflight checks
+the installed version against the manifest before model work. Preserve old
+manifests, candidates, environments, and scores; the new CLI requires new cell
+input digests and run directories. Updating this setup does not rerun a benchmark
+or imply that the separately packaged extensions have been upgraded.
+
+Select an exact provider model and export only its `OPENAI_API_KEY` or
+`FIREWORKS_API_KEY` through the existing secret loader. The following command
+incurs provider charges when model work is needed:
 
 ```sh
 uv run python scripts/run_agent_candidate.py \
