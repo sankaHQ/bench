@@ -168,6 +168,16 @@ class ClaudeSubscription(Subscription):
         self.cursor = len(runner.history)
         self.send({"type": "user", "message": {"role": "user", "content": "\n\n".join(messages)}})
         responses: dict[str, dict[str, Any]] = {}
+
+        def observe(message: dict[str, Any]) -> None:
+            if message.get("model") != runner.model:
+                raise ValueError("Claude model fallback detected")
+            if message["id"] not in responses:
+                # Count on arrival so quota, timeout and tool-budget exits retain evidence.
+                runner.requests += bool(responses)
+                runner.turns += 1
+                responses[message["id"]] = dict(message["usage"])
+
         initialized = False
         current_id = None
         final_usage = None
@@ -216,20 +226,16 @@ class ClaudeSubscription(Subscription):
                 initialized = True
             elif kind == "assistant":
                 message = event["message"]
-                if message.get("model") != runner.model:
-                    raise ValueError("Claude model fallback detected")
-                responses.setdefault(message["id"], message["usage"])
-                if runner.turns + len(responses) > runner.max_turns:
+                observe(message)
+                if runner.turns > runner.max_turns:
                     runner.usage_complete = False
                     raise BudgetReached("model_turns")
             elif kind == "stream_event":
                 data = event["event"]
                 if data["type"] == "message_start":
                     message = data["message"]
-                    if message["model"] != runner.model:
-                        raise ValueError("Claude stream model mismatch")
+                    observe(message)
                     current_id = message["id"]
-                    responses[current_id] = dict(message["usage"])
                 elif data["type"] == "message_delta":
                     if current_id is None:
                         raise ValueError("Claude usage delta without message")
@@ -272,8 +278,7 @@ class ClaudeSubscription(Subscription):
             raise ValueError("Claude final usage does not reconcile with streamed usage")
         if any(type(v) is not int or v < 0 for v in usage.values()):
             raise ValueError("invalid Claude usage")
-        runner.turns += len(responses) - 1
-        runner.requests += len(responses) - 1
+        runner.turns -= 1  # Runner.request adds the successfully returned response.
         return {
             "model": runner.model,
             "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": ""}}],

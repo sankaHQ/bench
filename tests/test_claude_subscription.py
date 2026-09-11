@@ -126,3 +126,51 @@ def test_claude_verified_stop_never_acknowledges_or_runs_queued_tool():
     assert stopped == [True] and not runner.usage_complete
     assert len(sent) == 1 and sent[0]["type"] == "user"
     assert next(events)["type"] == "unexpected_queued_call"
+
+
+def test_claude_quota_preserves_response_counters():
+    transport = ClaudeSubscription(time.monotonic() + 1)
+    transport.started = True
+    transport.thread_id = "initialized"
+    transport.send = lambda event: None
+    usage = {
+        "input_tokens": 2,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "output_tokens": 1,
+    }
+    events = iter(
+        [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "message_start",
+                    "message": {"id": "one", "model": "claude-sonnet-5", "usage": usage},
+                },
+            },
+            {
+                "type": "assistant",
+                "message": {"id": "one", "model": "claude-sonnet-5", "usage": usage},
+            },
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "message_start",
+                    "message": {"id": "two", "model": "claude-sonnet-5", "usage": usage},
+                },
+            },
+            {"type": "rate_limit_event", "rate_limit_info": {"status": "rejected"}},
+        ]
+    )
+    transport.next = lambda: next(events)
+    runner = SimpleNamespace(
+        model="claude-sonnet-5",
+        history=[{"role": "user", "content": "task"}],
+        turns=0,
+        requests=1,
+        max_turns=60,
+        event=lambda *a, **kw: None,
+    )
+    with pytest.raises(RuntimeError, match="subscription limit"):
+        transport(runner)
+    assert runner.turns == 2 and runner.requests == 2
