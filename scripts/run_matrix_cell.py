@@ -210,7 +210,10 @@ def route_environment(base: dict[str, str], cell: Cell) -> dict[str, str]:
     env = dict(base)
     if cell.agent == "sanka-native":
         if cell.billing_mode == "subscription":
-            if cell.provider != "openai" or cell.route_kind != "codex-managed-subscription":
+            if cell.route_kind != {
+                "openai": "codex-managed-subscription",
+                "anthropic": "claude-managed-subscription",
+            }.get(cell.provider):
                 raise ValueError("invalid subscription route")
             for name in ALLOWED_KEYS:
                 env.pop(name, None)
