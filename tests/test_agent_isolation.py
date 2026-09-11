@@ -12,6 +12,29 @@ import pytest
 from sanka_bench import agent_isolation
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS Keychain broker")
+def test_candidate_cannot_lookup_keychain_broker(tmp_path: Path) -> None:
+    # Ask only for a broker port, never for an account or a credential value.
+    code = (
+        "import ctypes; lib=ctypes.CDLL(None); "
+        "port=ctypes.c_uint.in_dll(lib,'bootstrap_port'); out=ctypes.c_uint(); "
+        "print(lib.bootstrap_look_up(port,b'com.apple.SecurityServer',ctypes.byref(out)))"
+    )
+    outside = subprocess.check_output([sys.executable, "-c", code], text=True)
+    if outside.strip() != "0":
+        pytest.skip("Keychain broker not registered on this host")
+    result = agent_isolation.run(
+        [sys.executable, "-c", code],
+        workspace=tmp_path,
+        readable=[Path(sys.prefix), Path(sys.base_prefix)],
+        writable=[tmp_path],
+        env={"PATH": os.defpath, "HOME": str(tmp_path)},
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert int(result.stdout.strip()) != 0
+
+
 @pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS zsh and sandbox-exec")
 def test_zsh_heredoc_uses_owned_scratch(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
