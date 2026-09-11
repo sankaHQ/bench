@@ -199,6 +199,11 @@ class ClaudeSubscription(Subscription):
                     runner.usage_complete = False
                     self._stop()
                     break
+                if runner.tool_calls >= runner.max_turns:
+                    # The last permitted tool already ran. Do not buy another
+                    # model response merely to discover the exhausted tool budget.
+                    runner.usage_complete = False
+                    raise BudgetReached("tool_calls")
                 self.send(
                     {
                         "type": "control_response",

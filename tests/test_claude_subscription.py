@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from sanka_bench.claude_subscription import ClaudeSubscription
+from sanka_bench.native_agent import BudgetReached
 from sanka_bench.usage_cost import model_estimate
 
 
@@ -174,3 +175,46 @@ def test_claude_quota_preserves_response_counters():
     with pytest.raises(RuntimeError, match="subscription limit"):
         transport(runner)
     assert runner.turns == 2 and runner.requests == 2
+
+
+def test_last_permitted_tool_does_not_trigger_extra_inference():
+    transport = ClaudeSubscription(time.monotonic() + 1)
+    transport.started = True
+    transport.thread_id = "initialized"
+    sent = []
+    transport.send = sent.append
+    transport.next = lambda: {
+        "type": "control_request",
+        "request_id": "last",
+        "request": {
+            "subtype": "mcp_message",
+            "server_name": "bench",
+            "message": {
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "exec", "arguments": {"command": "echo ok"}},
+            },
+        },
+    }
+    runner = SimpleNamespace(
+        model="claude-sonnet-5",
+        sanka=None,
+        verified=False,
+        history=[{"role": "user", "content": "task"}],
+        turns=0,
+        requests=1,
+        tool_calls=59,
+        max_turns=60,
+        usage_complete=True,
+        event=lambda *a, **kw: None,
+    )
+
+    def dispatch(call):
+        runner.tool_calls += 1
+        return "ok"
+
+    runner.dispatch = dispatch
+    with pytest.raises(BudgetReached, match="tool_calls"):
+        transport(runner)
+    assert runner.tool_calls == 60 and not runner.usage_complete
+    assert len(sent) == 1 and sent[0]["type"] == "user"
