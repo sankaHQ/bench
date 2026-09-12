@@ -19,6 +19,7 @@ from typing import Any
 
 VERSION = "sanka-native/1"
 ROUTES = {
+    "anthropic": ("claude-managed-subscription", "ANTHROPIC_API_KEY"),
     "openai": ("https://api.openai.com/v1/responses", "OPENAI_API_KEY"),
     "fireworks": ("https://api.fireworks.ai/inference/v1/chat/completions", "FIREWORKS_API_KEY"),
 }

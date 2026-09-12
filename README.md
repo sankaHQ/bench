@@ -83,10 +83,25 @@ Each provider has its own command lock, so logging out of one does not invoke th
 other provider's CLI. These locks coordinate Bench commands, not independently
 started vendor CLIs.
 
-Claude login is for the official Claude Code application. It does not authorize
-using subscription tokens in the Sanka-native HTTP adapter, and this new login
-store is not yet wired to benchmark generation. See
-[Anthropic authentication boundaries](https://code.claude.com/docs/en/legal-and-compliance).
+The native harness supports Claude subscriptions with `--provider anthropic
+--billing-mode subscription`. It runs the unmodified Claude Code binary as a
+managed transport; it never reads or forwards subscription tokens to an HTTP
+adapter. Built-in tools, skills, hooks, plugins, and ambient MCP servers are
+disabled. Only the harness-owned `exec`, `read`, and treatment-only `verify` MCP
+tools can access the isolated task workspace. Sanka retains scan → plan → apply
+→ test → verify, sandbox execution, limits, and independent grading.
+
+A Claude account lease serializes cells and login/logout. Authentication or quota
+errors stop admission without API fallback. Verification stops the managed child
+before another inference request; missing final usage remains a lower bound.
+Results identify `claude-managed-subscription`, include CLI version and binary
+hash, and retain streamed usage and final-result reconciliation. Anthropic
+Standard API-equivalent estimates use current prices and separate 5-minute from
+1-hour cache writes; the CLI-reported dollar estimate is retained as raw evidence
+and may use older prices. Managed transport context/output limits and auxiliary
+behavior differ from a direct API route. Qualification rejects unexpected tools,
+model substitution, auxiliary models, or missing usage.
+See [Anthropic authentication boundaries](https://code.claude.com/docs/en/legal-and-compliance).
 
 Simultaneous subscription workers remain blocked. Cross-provider parallelism must
 pass the normal isolation and boot qualification first. Login and tool-round-trip

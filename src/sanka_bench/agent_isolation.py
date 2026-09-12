@@ -74,6 +74,14 @@ def command(argv: list[str], *, readable: list[Path], writable: list[Path]) -> l
         traversal = " ".join(f"(literal {json.dumps(str(p))})" for p in ancestors)
         profile = (
             "(version 1)(allow default)"
+            # File rules alone do not restrict the Keychain broker. Provider CLIs
+            # own credentials outside this candidate-tool sandbox.
+            '(deny mach-lookup (global-name "com.apple.SecurityServer") '
+            '(global-name "com.apple.securityd.xpc") '
+            '(global-name "com.apple.securityd.systemkeychain") '
+            '(global-name "com.apple.security.agent") '
+            '(global-name "com.apple.security.cloudkeychainproxy3") '
+            '(global-name "com.apple.security.KeychainStasher"))'
             f"(deny file-read* (require-not {paths_filter(reads)}))"
             f"(allow file-read* (require-any {traversal}))"
             "(allow file-read-metadata)"

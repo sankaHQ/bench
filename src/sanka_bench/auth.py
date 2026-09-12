@@ -51,7 +51,7 @@ def run_auth(action: str, provider: str = "chatgpt") -> int:
     if action == "login":
         print(
             f"Complete the {provider} login in the official CLI below. "
-            "This does not enable subscription generation in the native harness.",
+            "Benchmark generation requires a separately qualified managed transport.",
             flush=True,
         )
     try:

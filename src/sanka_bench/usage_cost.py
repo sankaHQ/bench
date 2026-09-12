@@ -19,6 +19,8 @@ def model_estimate(
     events: Iterable[Mapping[str, Any]], model: str, *, complete: bool
 ) -> dict[str, Any]:
     """Reporting must survive incomplete telemetry without inventing a full bill."""
+    if model.startswith("claude-"):
+        return claude_estimate(events, model, complete=complete)
     prices = OPENAI_RATES.get(model.replace(".", "-"))
     basis = {
         "pricing_source": PRICE_SOURCE,
@@ -33,6 +35,55 @@ def model_estimate(
         return basis | subscription_estimate(events, rate, complete=complete)
     except (ValueError, KeyError, TypeError):
         return basis | {"estimated_api_cost_usd": None, "cost_status": "invalid-usage"}
+
+
+def claude_estimate(
+    events: Iterable[Mapping[str, Any]], model: str, *, complete: bool
+) -> dict[str, Any]:
+    basis = {
+        "pricing_source": "https://platform.claude.com/docs/en/about-claude/pricing",
+        "pricing_checked_at": "2026-09-11",
+        "cost_basis": "Anthropic Standard API-equivalent; not subscription charges",
+    }
+    prices = {"claude-sonnet-5": (2.0, 10.0), "claude-opus-5": (5.0, 25.0)}.get(model)
+    if prices is None:
+        return basis | {"estimated_api_cost_usd": None, "cost_status": "model-unpriced"}
+    latest = {
+        e["message_id"]: e["usage"]
+        for e in events
+        if e.get("type") == "claude_usage" and e.get("model") == model
+    }
+    tokens = dict.fromkeys(FIELDS, 0)
+    cost = 0.0
+    try:
+        for u in latest.values():
+            i, c, w, o = (
+                u[k]
+                for k in (
+                    "input_tokens",
+                    "cache_read_input_tokens",
+                    "cache_creation_input_tokens",
+                    "output_tokens",
+                )
+            )
+            ttl = u["cache_creation"]
+            short, long = ttl["ephemeral_5m_input_tokens"], ttl["ephemeral_1h_input_tokens"]
+            if (
+                any(type(v) is not int or v < 0 for v in (i, c, w, o, short, long))
+                or short + long != w
+            ):
+                raise ValueError("invalid cache usage")
+            cost += ((i + c * 0.1 + short * 1.25 + long * 2) * prices[0] + o * prices[1]) / 1e6
+            for k, v in zip(FIELDS, (i + c + w, c, w, o), strict=True):
+                tokens[k] += v
+    except (KeyError, TypeError, ValueError):
+        return basis | {"estimated_api_cost_usd": None, "cost_status": "invalid-usage"}
+    return basis | {
+        "estimated_api_cost_usd": cost if latest or complete else None,
+        "cost_status": "complete" if complete else "lower_bound" if latest else "unavailable",
+        "observed_responses": len(latest),
+        "observed_tokens": tokens if latest or complete else None,
+    }
 
 
 def subscription_estimate(

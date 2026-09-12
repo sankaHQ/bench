@@ -32,9 +32,9 @@ def main() -> int:
         parser.error("--max-context-bytes must be positive")
     key = os.environ.get(native_agent.ROUTES[args.provider][1])
     managed = args.billing_mode == "subscription"
-    if managed and args.provider != "openai":
+    if managed and args.provider not in {"openai", "anthropic"}:
         parser.error("subscription qualification requires OpenAI")
-    if not managed and not key:
+    if not managed and (not key or args.provider == "anthropic"):
         parser.error("selected provider API key is missing")
     if managed:
         key = ""
@@ -83,7 +83,10 @@ def main() -> int:
 
         runner.history[0]["content"] = prompt.replace("Use exec", "Use bench_exec")
         prompt = runner.history[0]["content"]
-        with Subscription(
+        from sanka_bench.claude_subscription import ClaudeSubscription
+
+        transport_class = ClaudeSubscription if args.provider == "anthropic" else Subscription
+        with transport_class(
             runner.deadline, str(args.subscription_bin) if args.subscription_bin else None
         ) as transport:
             runner.exchange = transport
@@ -112,7 +115,11 @@ def main() -> int:
         "actual_model_id": args.actual_model_id or args.model,
         "provider": args.provider,
         "provider_variant": args.provider_variant,
-        "route_kind": "codex-managed-subscription"
+        "route_kind": (
+            "claude-managed-subscription"
+            if args.provider == "anthropic"
+            else "codex-managed-subscription"
+        )
         if managed
         else "openai-responses"
         if args.provider == "openai"

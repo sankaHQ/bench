@@ -461,10 +461,14 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
             raise ValueError(f"official v2 manifest requires {agent_tool} version and binary pins")
         if harness == "sanka-native":
             managed = (
-                model.get("provider") == "openai" and model.get("billing_mode") == "subscription"
+                model.get("provider") in {"openai", "anthropic"}
+                and model.get("billing_mode") == "subscription"
             )
             expected_route = (
-                "codex-managed-subscription"
+                {
+                    "openai": "codex-managed-subscription",
+                    "anthropic": "claude-managed-subscription",
+                }[model["provider"]]
                 if managed
                 else {"openai": "openai-responses", "fireworks": "openai-chat"}.get(
                     model.get("provider")
@@ -555,7 +559,7 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
             or evidence.get("status") != "qualified"
         ):
             raise ValueError("qualification record is not qualified")
-        if model.get("route_kind") == "codex-managed-subscription":
+        if model.get("route_kind") in {"codex-managed-subscription", "claude-managed-subscription"}:
             pin = toolchain.get("subscription_bin_sha256")
             if (
                 re.fullmatch(r"sha256:[0-9a-f]{64}", str(pin or "")) is None

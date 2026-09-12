@@ -957,7 +957,7 @@ def main() -> int:
         args.provider = "anthropic" if args.agent == "claude-code" else "openai"
     subscription_run = (
         args.agent == "sanka-native"
-        and args.provider == "openai"
+        and args.provider in {"openai", "anthropic"}
         and args.billing_mode == "subscription"
     )
     if (
@@ -997,7 +997,9 @@ def main() -> int:
     if args.agent != "sanka-native" and args.sanka_workflow == "native-lifecycle-v1":
         parser.error("native-lifecycle-v1 requires the native harness")
     if args.agent == "sanka-native":
-        if args.provider not in native_agent.ROUTES:
+        if args.provider not in native_agent.ROUTES or (
+            args.provider == "anthropic" and not subscription_run
+        ):
             parser.error("native harness supports direct OpenAI and Fireworks API routes")
         if args.agent_bin is not None:
             parser.error("native harness does not use --agent-bin")
@@ -1007,7 +1009,11 @@ def main() -> int:
         args.route_kind = "openai-responses" if args.provider == "openai" else "openai-chat"
         args.billing_mode = "subscription" if subscription_run else "api_key"
         if subscription_run:
-            args.route_kind = "codex-managed-subscription"
+            args.route_kind = (
+                "claude-managed-subscription"
+                if args.provider == "anthropic"
+                else "codex-managed-subscription"
+            )
             if any(
                 value is not None
                 for value in (
@@ -1357,9 +1363,11 @@ def main() -> int:
                     ),
                 )
                 if subscription_run:
+                    from sanka_bench.claude_subscription import ClaudeSubscription
                     from sanka_bench.subscription import Subscription
 
-                    with Subscription(
+                    transport = ClaudeSubscription if args.provider == "anthropic" else Subscription
+                    with transport(
                         runner.deadline,
                         str(args.subscription_bin) if args.subscription_bin else None,
                     ) as managed:
