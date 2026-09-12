@@ -145,8 +145,9 @@ def test_subscription_dispatches_only_to_native_runner_and_reconciles_usage():
 @pytest.mark.parametrize(
     "verified,completion_thread", [(True, "owned"), (False, "owned"), (True, "other")]
 )
+@pytest.mark.parametrize("late_tool", [None, "owned", "other", "other-turn"])
 def test_subscription_stops_only_after_accepted_verification_and_drains_usage(
-    verified, completion_thread
+    verified, completion_thread, late_tool
 ):
     managed = Subscription(time.monotonic() + 1)
     managed.thread_id = "owned"
@@ -164,6 +165,23 @@ def test_subscription_stops_only_after_accepted_verification_and_drains_usage(
                     "arguments": {"seed": None},
                 },
             },
+            *(
+                [
+                    {
+                        "method": "item/tool/call",
+                        "id": 10,
+                        "params": {
+                            "threadId": "other" if late_tool == "other" else "owned",
+                            "turnId": "other" if late_tool == "other-turn" else "turn",
+                            "callId": "late",
+                            "tool": "bench_read",
+                            "arguments": {"path": "migration_comparison.json"},
+                        },
+                    }
+                ]
+                if verified and late_tool
+                else []
+            ),
             {
                 "method": "thread/tokenUsage/updated",
                 "params": {
@@ -186,7 +204,7 @@ def test_subscription_stops_only_after_accepted_verification_and_drains_usage(
             },
         ]
     )
-    sent, audit = [], []
+    sent, audit, calls = [], [], []
     managed.send = sent.append
     managed.next = lambda: next(events)
     runner = SimpleNamespace(
@@ -199,13 +217,22 @@ def test_subscription_stops_only_after_accepted_verification_and_drains_usage(
         verified=verified,
         usage_complete=True,
         event=lambda *a, **kw: audit.append((a, kw)),
-        dispatch=lambda call: "accepted" if verified else "coverage incomplete",
+        dispatch=lambda call: (
+            calls.append(call) or ("accepted" if verified else "coverage incomplete")
+        ),
     )
+    if verified and late_tool in {"other", "other-turn"}:
+        with pytest.raises(ValueError, match=r"crossed .* boundary"):
+            managed(runner)
+        assert len(calls) == 1
+        return
     if completion_thread != "owned":
         with pytest.raises(RuntimeError, match="omitted evidence"):
             managed(runner)
         return
     result = managed(runner)
+    assert len(calls) == 1
+    assert not any(event.get("id") == 10 for event in sent)
     assert result["usage"]["input_tokens"] == 300
     interrupts = [event for event in sent if event.get("method") == "turn/interrupt"]
     replies = [event for event in sent if event.get("id") == 9]
