@@ -382,10 +382,12 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
         )
     if manifest["execution"].get("configurations") not in (
         ["alone", "with-sanka"],
+        ["alone", "sanka-cli"],
         ["alone", "sanka-cli", "with-sanka"],
     ):
         raise ValueError(
-            "official v2 configurations must be alone/with-sanka or the three-arm ablation"
+            "official v2 configurations must be alone paired with sanka-cli or with-sanka, "
+            "or the three-arm ablation"
         )
     if any(
         not isinstance(manifest["execution"].get(name), int)

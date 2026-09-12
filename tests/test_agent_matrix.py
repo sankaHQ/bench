@@ -226,6 +226,14 @@ def test_native_matrix_pins_route_effort_and_runner(tmp_path, provider, route):
         validate_official_manifest(value, tmp_path)
 
 
+def test_official_manifest_accepts_cli_only_pair(tmp_path: Path) -> None:
+    value = official_manifest(tmp_path)
+    value["execution"]["configurations"] = ["alone", "sanka-cli"]
+    value["execution"]["expected_rows"] = 2
+    validate_official_manifest(value, tmp_path)
+    assert [cell.config for cell in build_cells(value)] == ["alone", "sanka-cli"]
+
+
 def test_official_manifest_accepts_three_arm_ablation(tmp_path: Path) -> None:
     value = official_manifest(tmp_path)
     value["execution"]["configurations"] = ["alone", "sanka-cli", "with-sanka"]
