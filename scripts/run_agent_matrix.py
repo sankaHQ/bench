@@ -470,9 +470,11 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
                     "anthropic": "claude-managed-subscription",
                 }[model["provider"]]
                 if managed
-                else {"openai": "openai-responses", "fireworks": "openai-chat"}.get(
-                    model.get("provider")
-                )
+                else {
+                    "openai": "openai-responses",
+                    "fireworks": "openai-chat",
+                    "anthropic": "anthropic-messages",
+                }.get(model.get("provider"))
             )
             model_cost_limit = model.get("max_agent_cost_usd", cost_limit)
             if model_cost_limit is not None and (

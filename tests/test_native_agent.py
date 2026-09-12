@@ -854,3 +854,38 @@ def test_seed_constraint_failure_returns_repair_feedback(tmp_path, seed, side, e
     else:
         with pytest.raises(RuntimeError, match="verification infrastructure failed"):
             run.dispatch(call)
+
+
+def test_anthropic_tool_roundtrip_cache_cost_and_missing_usage(tmp_path):
+    from sanka_bench.anthropic_api import payload
+
+    run = runner(tmp_path, provider="anthropic", price_in=2, price_out=10, price_cached=0.2)
+    content = [
+        {"type": "thinking", "thinking": "opaque", "signature": "preserve"},
+        {"type": "tool_use", "id": "t1", "name": "exec", "input": {"command": "pwd"}},
+    ]
+    raw = {
+        "model": "test-model",
+        "content": content,
+        "stop_reason": "tool_use",
+        "usage": {
+            "input_tokens": 100,
+            "cache_read_input_tokens": 200,
+            "cache_creation_input_tokens": 300,
+            "output_tokens": 40,
+        },
+    }
+    calls = run.receive(raw)
+    assert calls[0]["call_id"] == "t1"
+    assert run.usage["input_tokens"] == 600
+    assert run.cost() == pytest.approx((100 * 2 + 200 * 0.2 + 300 * 2.5 + 40 * 10) / 1e6)
+    run.history.append({"role": "tool", "tool_call_id": "t1", "content": "ok"})
+    request = payload(run.history, [], model="test-model", effort="high", max_tokens=1024)
+    assert request["messages"][1]["content"] == content
+    assert request["messages"][2]["content"][0]["tool_use_id"] == "t1"
+    assert request["output_config"] == {"effort": "high"}
+    assert "cache_control" not in content[-1]
+    del raw["usage"]["output_tokens"]
+    with pytest.raises(ValueError, match="usage"):
+        run.receive(raw)
+    assert run.cost() is None

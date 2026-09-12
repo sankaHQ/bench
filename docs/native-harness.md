@@ -183,3 +183,21 @@ The implementation uses design ideas, not either project's runtime:
 No TUI, MCP host, subagents, plugin framework, vector memory, or general-purpose
 planning engine. Token/cost/latency/pass@1 improvements require a new controlled
 paid comparison; offline checks alone do not establish them.
+
+### Anthropic API keys
+
+Use `--provider anthropic --billing-mode api_key` with `ANTHROPIC_API_KEY` in
+an untracked environment file. This calls Anthropic Messages directly; it does
+not require Claude Code or subscription authentication. Qualify the exact model
+with `scripts/qualify_native_route.py` before running a matrix, and record
+`route_kind: anthropic-messages`. The current adapter requires a model supporting
+adaptive thinking and `output_config.effort` (Sonnet 5 was qualified at `high`).
+
+Provide `--price-in`, `--price-out`, and `--price-cached` as USD per million
+tokens, plus `--max-agent-cost-usd` for a candidate (`--max-cost` for qualification).
+Check the provider's current price card. Input totals include cache reads and
+writes; five-minute cache writes are charged at 1.25 times base input, reads at
+the supplied cached rate. Missing usage leaves cost unknown. A campaign owner
+must reserve each cell's maximum against its cumulative cap before launch and
+retain reservations for ambiguous billed requests. Keep direct API and managed
+subscription measurements separate because their context handling differs.

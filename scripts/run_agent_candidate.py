@@ -997,16 +997,18 @@ def main() -> int:
     if args.agent != "sanka-native" and args.sanka_workflow == "native-lifecycle-v1":
         parser.error("native-lifecycle-v1 requires the native harness")
     if args.agent == "sanka-native":
-        if args.provider not in native_agent.ROUTES or (
-            args.provider == "anthropic" and not subscription_run
-        ):
-            parser.error("native harness supports direct OpenAI and Fireworks API routes")
+        if args.provider not in native_agent.ROUTES:
+            parser.error("native harness requires a supported provider")
         if args.agent_bin is not None:
             parser.error("native harness does not use --agent-bin")
         if args.out.exists() and any(args.out.iterdir()):
             parser.error("native output already exists; preserve the previous attempt")
         args.reasoning_effort = args.reasoning_effort or "high"
-        args.route_kind = "openai-responses" if args.provider == "openai" else "openai-chat"
+        args.route_kind = {
+            "openai": "openai-responses",
+            "fireworks": "openai-chat",
+            "anthropic": "anthropic-messages",
+        }[args.provider]
         args.billing_mode = "subscription" if subscription_run else "api_key"
         if subscription_run:
             args.route_kind = (

@@ -19,7 +19,7 @@ from typing import Any
 
 VERSION = "sanka-native/1"
 ROUTES = {
-    "anthropic": ("claude-managed-subscription", "ANTHROPIC_API_KEY"),
+    "anthropic": ("https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY"),
     "openai": ("https://api.openai.com/v1/responses", "OPENAI_API_KEY"),
     "fireworks": ("https://api.fireworks.ai/inference/v1/chat/completions", "FIREWORKS_API_KEY"),
 }
@@ -42,7 +42,15 @@ def post(url: str, key: str, payload: dict[str, Any], timeout: float) -> dict[st
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode(),
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+        headers=(
+            {
+                "x-api-key": key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            }
+            if url == ROUTES["anthropic"][0]
+            else {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
+        ),
     )
     # Never forward credentials to a redirect or an ambient proxy.
     opener = urllib.request.build_opener(_NoRedirect, urllib.request.ProxyHandler({}))
@@ -207,6 +215,7 @@ class Runner:
         ):
             raise ValueError("price_cached must be finite and between zero and price_in")
         self.price_cached = price_cached
+        self.cache_write_input_tokens = 0
         self.started = time.monotonic()
         self.deadline = self.started + wall_seconds
         self.events: list[dict[str, Any]] = []
@@ -491,6 +500,16 @@ class Runner:
 
     def payload(self) -> dict[str, Any]:
         specs = tools(self.sanka is not None)
+        if self.provider == "anthropic" and not self.exchange:
+            from sanka_bench.anthropic_api import payload
+
+            return payload(
+                self.history,
+                specs,
+                model=self.model,
+                effort=self.effort,
+                max_tokens=self.max_output_tokens,
+            )
         if self.provider == "openai":
             return {
                 "model": self.model,
@@ -516,7 +535,7 @@ class Runner:
     def cost(self) -> float | None:
         if not self.usage_complete or self.price_in is None or self.price_out is None:
             return None
-        # price_in must cover uncached input including any cache-write premium.
+        # Anthropic uses five-minute cache writes, charged at 1.25x base input.
         # Discount only cache reads actually reported; future requests reserve full input.
         cached = self.usage["cache_read_input_tokens"]
         discount = 0 if self.price_cached is None else cached * (self.price_in - self.price_cached)
@@ -524,6 +543,7 @@ class Runner:
             self.usage["input_tokens"] * self.price_in
             + self.usage["output_tokens"] * self.price_out
             - discount
+            + self.cache_write_input_tokens * self.price_in * 0.25
         ) / 1_000_000
 
     def request(self) -> dict[str, Any]:
@@ -534,7 +554,8 @@ class Runner:
         if self.max_cost is not None:
             assert self.price_in is not None and self.price_out is not None
             reserve = (
-                (size + 1024) * self.price_in + self.max_output_tokens * self.price_out
+                (size + 1024) * self.price_in * (1.25 if self.provider == "anthropic" else 1)
+                + self.max_output_tokens * self.price_out
             ) / 1e6
             if (self.cost() or 0) + reserve > self.max_cost:
                 raise BudgetReached("cost_reservation")
@@ -617,6 +638,15 @@ class Runner:
 
     def receive(self, response: dict[str, Any]) -> list[dict[str, Any]]:
         self.event("response", response=response)
+        if self.provider == "anthropic" and not self.exchange:
+            from sanka_bench.anthropic_api import response as normalize
+
+            try:
+                response = normalize(response)
+            except (ValueError, KeyError, TypeError, AttributeError):
+                self.usage_complete = False
+                raise
+            self.cache_write_input_tokens += response["usage"]["cache_creation_input_tokens"]
         usage = response.get("usage")
         if not isinstance(usage, dict):
             self.usage_complete = False
@@ -900,6 +930,8 @@ class Runner:
                     "max_context_bytes": self.max_context_bytes,
                 },
             }
+            if self.provider == "anthropic" and not self.exchange:
+                stats["cache_creation_input_tokens"] = self.cache_write_input_tokens
             if self.exchange:
                 from sanka_bench.usage_cost import model_estimate
 

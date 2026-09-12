@@ -25,6 +25,10 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--max-output-tokens", type=int, default=native_agent.MAX_OUTPUT_TOKENS)
     parser.add_argument("--max-context-bytes", type=int, default=native_agent.MAX_CONTEXT_BYTES)
+    parser.add_argument("--price-in", type=float)
+    parser.add_argument("--price-out", type=float)
+    parser.add_argument("--price-cached", type=float)
+    parser.add_argument("--max-cost", type=float)
     args = parser.parse_args()
     if args.max_output_tokens <= 0:
         parser.error("--max-output-tokens must be positive")
@@ -34,7 +38,7 @@ def main() -> int:
     managed = args.billing_mode == "subscription"
     if managed and args.provider not in {"openai", "anthropic"}:
         parser.error("subscription qualification requires OpenAI")
-    if not managed and (not key or args.provider == "anthropic"):
+    if not managed and not key:
         parser.error("selected provider API key is missing")
     if managed:
         key = ""
@@ -73,10 +77,14 @@ def main() -> int:
         promote=lambda: {},
         sanka=None,
         target="",
-        max_turns=3,
+        max_turns=5,
         wall_seconds=120,
         max_output_tokens=args.max_output_tokens,
         max_context_bytes=args.max_context_bytes,
+        price_in=args.price_in,
+        price_out=args.price_out,
+        price_cached=args.price_cached,
+        max_cost=args.max_cost,
     )
     if managed:
         from sanka_bench.subscription import Subscription
@@ -123,6 +131,8 @@ def main() -> int:
         if managed
         else "openai-responses"
         if args.provider == "openai"
+        else "anthropic-messages"
+        if args.provider == "anthropic"
         else "openai-chat",
         "billing_mode": args.billing_mode,
         "gateway_profile": None,
