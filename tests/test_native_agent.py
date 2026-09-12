@@ -816,3 +816,41 @@ def test_first_verified_callback_excludes_warnings_and_survives_later_edits(tmp_
     instance.dispatch({"name": "exec", "arguments": '{"command":"touch target_app.py"}'})
     instance.verify(None)
     assert captures == [0]
+
+
+@pytest.mark.parametrize(
+    "seed,side,error,repairable",
+    [
+        ("seed.py", "prepare", "django.db.utils.IntegrityError: UNIQUE constraint failed", True),
+        (None, "prepare", "django.db.utils.IntegrityError: UNIQUE constraint failed", False),
+        (
+            "seed.py",
+            "source[list]",
+            "django.db.utils.IntegrityError: UNIQUE constraint failed",
+            False,
+        ),
+        ("seed.py", "prepare", "django.db.utils.OperationalError: unable to open database", False),
+    ],
+)
+def test_seed_constraint_failure_returns_repair_feedback(tmp_path, seed, side, error, repairable):
+    def execute(argv, **kw):
+        failure = {
+            "code": "SANKA_EXTENSION_REPLAY_INVALID",
+            "message": f"{side} process failed: {error}",
+        }
+        return subprocess.CompletedProcess(
+            argv, 1, "sanka-compact/v1 verify error failed\nerror=" + json.dumps(failure), ""
+        )
+
+    run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    if seed:
+        (run.workspace / seed).write_text("# model-generated seed\n")
+    call = {"name": "verify", "arguments": json.dumps({"seed": seed})}
+    if repairable:
+        feedback = run.dispatch(call)
+        assert "coverage_incomplete" in feedback
+        assert "seed/auth" in feedback
+        assert not run.verified
+    else:
+        with pytest.raises(RuntimeError, match="verification infrastructure failed"):
+            run.dispatch(call)

@@ -339,6 +339,14 @@ class Runner:
                 in data["error"].get("message", "")
             ):
                 failure_category = "coverage_incomplete"
+            elif (
+                self.seed is not None
+                and data.get("error", {}).get("code") == "SANKA_EXTENSION_REPLAY_INVALID"
+                and data["error"].get("message", "").startswith("prepare process failed: ")
+                and "django.db.utils.IntegrityError:" in data["error"]["message"]
+            ):
+                # A supplied seed violating schema constraints needs model repair.
+                failure_category = "coverage_incomplete"
             elif data.get("ok") is False:
                 counts = data.get("summary", {})
                 source_only = counts.get("source_expectation_mismatches", 0) > 0 and not any(
