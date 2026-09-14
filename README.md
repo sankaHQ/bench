@@ -11,6 +11,7 @@ The default agent is the Sanka native harness. It controls model calls, sandboxe
 tools and the Sanka workflow; the evaluator grades every configuration independently.
 
 [Published results](https://sanka.com/bench) ·
+[Download result data](results/2026-09-12/README.md) ·
 [Native harness](docs/native-harness.md) ·
 [Run manifests and recovery](docs/measurement-runs.md) ·
 [Task details](docs/task-catalog.md)

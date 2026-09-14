@@ -44,8 +44,7 @@ not a completed security scan or authorization to change repository visibility.
 - Review docs/superpowers/plans/2026-09-05-drf-flask.md for decisions worth retaining
   in maintained docs before archiving the implementation plan. Do not remove
   fixtures or frozen baselines as cleanup; they are reproducibility evidence.
-- .gitignore excludes .env but not .env.local or other secret variants. Consider
-  .env.* with an explicit !.env.example exception. Local .worktrees-unused/ in
+- .gitignore now excludes .env.* with an explicit !.env.example exception. Local .worktrees-unused/ in
   the existing bench checkout is untracked, not published repository content;
   inspect ownership before removing it.
 - Keep public result JSON and source hashes traceable to exact benchmark revisions.

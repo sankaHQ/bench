@@ -1,6 +1,6 @@
 name: Converter regression
 
-# Private fixtures stay in this repository and its private run artifacts.
+# Open evaluation fixtures stay in this repository; scrub run artifacts before publication.
 # Run this check for the exact extensions commit before a converter release.
 on:
   workflow_dispatch:

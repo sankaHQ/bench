@@ -1,0 +1,664 @@
+{
+  "date": "2026-09-12",
+  "status": "completed",
+  "task": "drf-flask-002",
+  "effort": "high",
+  "configuration": "Model + Sanka CLI",
+  "cliVersion": "0.2.7",
+  "extensionCommit": "c1d60b4b4bd26778dd56e85331e4a5cedfbd03a6",
+  "extensionStatus": "unreleased",
+  "sourceHash": "f784256660644aa4accb65a5c95e45f33b07c00916c29e9819e7034be773ca51",
+  "reportHashes": [
+    "abf92ab2420c7bd5a312aa2606f4d2ce470beef5758ee16d8c49052cbc16fbf0",
+    "2bd6579550544ec2c98c0485d658016b6be67657812fcaaaa5fd72c741841c34",
+    "f5c07fa5b1c9113a99989248f66a67cc582a88e89ec17324938e41f6a058271d",
+    "98daf87722bbd6b80b7f0cf51a579a2df13cdab19c8d75ed0283504d114a8c6f",
+    "89e3cab26478216ca55b68183b1a3a8e97f9d4061d9fa29deef6716162a51693",
+    "014d8d6352df6b8f45cba6cf6fff376d8b3266b66cfa76cc78473956f6682e43",
+    "1e04b6b86a30864bca949ab0809fa00f61c317aff80ffcfa14ab84bcb816e0ac",
+    "1ef3330491d8bb377a9fac127965d1c6d37d7ed4dbc1126a2dae9192b5d02a97"
+  ],
+  "rows": [
+    {
+      "model": "gpt-6-astra",
+      "name": "GPT-6 Astra (high)",
+      "before": {
+        "task": "drf-flask-002",
+        "model": "gpt-6-astra",
+        "config": "with-sanka",
+        "passed": true,
+        "result": "verified",
+        "seconds": 519.402808,
+        "unreportedCostReserveUsd": 0,
+        "input": {
+          "value": 373995,
+          "complete": false
+        },
+        "cached": {
+          "value": 336384,
+          "complete": false
+        },
+        "output": {
+          "value": 7607,
+          "complete": false
+        },
+        "cost": {
+          "value": 1.0928440000000001,
+          "complete": false
+        },
+        "toolCalls": 14,
+        "commands": 19,
+        "gates": {
+          "behavior_parity": true,
+          "database_parity": true,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": true,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "scenarios": 32
+      },
+      "after": {
+        "passed": true,
+        "scenarios": 32,
+        "boundaryPassed": true,
+        "seconds": 345.913327,
+        "input": {
+          "value": 180769,
+          "complete": false
+        },
+        "output": {
+          "value": 3477,
+          "complete": false
+        },
+        "cached": {
+          "value": 155776,
+          "complete": false
+        },
+        "cost": {
+          "value": 0.5795560000000001,
+          "complete": false
+        },
+        "toolCalls": 9,
+        "commands": 14,
+        "result": "verified",
+        "gates": {
+          "behavior_parity": true,
+          "database_parity": true,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": true,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "unreportedCostReserveUsd": 0,
+        "failedScenarios": []
+      }
+    },
+    {
+      "model": "gpt-5-6-terra",
+      "name": "GPT-5.6 Terra (high)",
+      "before": {
+        "task": "drf-flask-002",
+        "model": "gpt-5-6-terra",
+        "config": "with-sanka",
+        "passed": true,
+        "result": "verified",
+        "seconds": 1000.356344,
+        "unreportedCostReserveUsd": 0,
+        "input": {
+          "value": 2229546,
+          "complete": false
+        },
+        "cached": {
+          "value": 2085376,
+          "complete": false
+        },
+        "output": {
+          "value": 17608,
+          "complete": false
+        },
+        "cost": {
+          "value": 0.9167111999999997,
+          "complete": false
+        },
+        "toolCalls": 55,
+        "commands": 49,
+        "gates": {
+          "behavior_parity": true,
+          "database_parity": true,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": true,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "scenarios": 32
+      },
+      "after": {
+        "passed": true,
+        "scenarios": 32,
+        "boundaryPassed": true,
+        "seconds": 453.560851,
+        "input": {
+          "value": 553586,
+          "complete": false
+        },
+        "output": {
+          "value": 10865,
+          "complete": false
+        },
+        "cached": {
+          "value": 501760,
+          "complete": false
+        },
+        "cost": {
+          "value": 0.33438399999999996,
+          "complete": false
+        },
+        "toolCalls": 19,
+        "commands": 21,
+        "result": "verified",
+        "gates": {
+          "behavior_parity": true,
+          "database_parity": true,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": true,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "unreportedCostReserveUsd": 0,
+        "failedScenarios": []
+      }
+    },
+    {
+      "model": "gpt-5-6-sol",
+      "name": "GPT-5.6 Sol (high)",
+      "before": {
+        "task": "drf-flask-002",
+        "model": "gpt-5-6-sol",
+        "config": "with-sanka",
+        "passed": true,
+        "result": "verified",
+        "seconds": 452.080314,
+        "unreportedCostReserveUsd": 0,
+        "input": {
+          "value": 708487,
+          "complete": false
+        },
+        "cached": {
+          "value": 659584,
+          "complete": false
+        },
+        "output": {
+          "value": 8264,
+          "complete": false
+        },
+        "cost": {
+          "value": 0.6247256,
+          "complete": false
+        },
+        "toolCalls": 21,
+        "commands": 23,
+        "gates": {
+          "behavior_parity": true,
+          "database_parity": true,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": true,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "scenarios": 32
+      },
+      "after": {
+        "passed": true,
+        "scenarios": 32,
+        "boundaryPassed": true,
+        "seconds": 637.923828,
+        "input": {
+          "value": 1810935,
+          "complete": false
+        },
+        "output": {
+          "value": 17614,
+          "complete": false
+        },
+        "cached": {
+          "value": 1724032,
+          "complete": false
+        },
+        "cost": {
+          "value": 1.3895048000000003,
+          "complete": false
+        },
+        "toolCalls": 39,
+        "commands": 36,
+        "result": "verified",
+        "gates": {
+          "behavior_parity": true,
+          "database_parity": true,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": true,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "unreportedCostReserveUsd": 0,
+        "failedScenarios": []
+      }
+    },
+    {
+      "model": "claude-sonnet-5",
+      "name": "Claude Sonnet 5 (high)",
+      "before": {
+        "task": "drf-flask-002",
+        "model": "claude-sonnet-5",
+        "config": "with-sanka",
+        "passed": false,
+        "result": "verification_failed",
+        "seconds": 1014.987877,
+        "unreportedCostReserveUsd": 0,
+        "input": {
+          "value": 3877755,
+          "complete": true
+        },
+        "cached": {
+          "value": 3748426,
+          "complete": true
+        },
+        "output": {
+          "value": 78969,
+          "complete": true
+        },
+        "cost": {
+          "value": 1.8626407000000003,
+          "complete": true
+        },
+        "toolCalls": 57,
+        "commands": 62,
+        "gates": {
+          "behavior_parity": false,
+          "database_parity": false,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": false,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "scenarios": 31
+      },
+      "after": {
+        "passed": true,
+        "scenarios": 32,
+        "boundaryPassed": true,
+        "seconds": 896.315108,
+        "input": {
+          "value": 3149732,
+          "complete": true
+        },
+        "output": {
+          "value": 72173,
+          "complete": true
+        },
+        "cached": {
+          "value": 3022869,
+          "complete": true
+        },
+        "cost": {
+          "value": 1.6434082999999997,
+          "complete": true
+        },
+        "toolCalls": 53,
+        "commands": 53,
+        "result": "verified",
+        "gates": {
+          "behavior_parity": true,
+          "database_parity": true,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": true,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "unreportedCostReserveUsd": 0,
+        "failedScenarios": []
+      }
+    },
+    {
+      "model": "deepseek-v4-flash-0731",
+      "name": "DeepSeek V4 Flash (high)",
+      "before": {
+        "task": "drf-flask-002",
+        "model": "deepseek-v4-flash-0731",
+        "config": "with-sanka",
+        "passed": false,
+        "result": "tool_calls",
+        "seconds": 864.518522,
+        "unreportedCostReserveUsd": 0,
+        "input": {
+          "value": 2980679,
+          "complete": true
+        },
+        "cached": {
+          "value": 2861133,
+          "complete": true
+        },
+        "output": {
+          "value": 68679,
+          "complete": true
+        },
+        "cost": {
+          "value": 0.091656191,
+          "complete": true
+        },
+        "toolCalls": 60,
+        "commands": 53,
+        "gates": {
+          "behavior_parity": false,
+          "database_parity": false,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": false,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "scenarios": 30
+      },
+      "after": {
+        "passed": true,
+        "scenarios": 32,
+        "boundaryPassed": true,
+        "seconds": 935.724517,
+        "input": {
+          "value": 3104860,
+          "complete": true
+        },
+        "output": {
+          "value": 73488,
+          "complete": true
+        },
+        "cached": {
+          "value": 2980141,
+          "complete": true
+        },
+        "cost": {
+          "value": 0.09680124699999998,
+          "complete": true
+        },
+        "toolCalls": 56,
+        "commands": 61,
+        "result": "context_bytes",
+        "gates": {
+          "behavior_parity": true,
+          "database_parity": true,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": true,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "unreportedCostReserveUsd": 0,
+        "failedScenarios": []
+      }
+    },
+    {
+      "model": "claude-opus-5",
+      "name": "Claude Opus 5 (high)",
+      "before": {
+        "task": "drf-flask-002",
+        "model": "claude-opus-5",
+        "config": "with-sanka",
+        "passed": false,
+        "result": "wall_clock",
+        "seconds": 1002.694858,
+        "unreportedCostReserveUsd": 0,
+        "input": {
+          "value": 2150526,
+          "complete": true
+        },
+        "cached": {
+          "value": 2033781,
+          "complete": true
+        },
+        "output": {
+          "value": 70684,
+          "complete": true
+        },
+        "cost": {
+          "value": 3.51357175,
+          "complete": true
+        },
+        "toolCalls": 30,
+        "commands": 35,
+        "gates": {
+          "behavior_parity": false,
+          "database_parity": false,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": false,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "scenarios": 31
+      },
+      "after": {
+        "passed": true,
+        "scenarios": 32,
+        "boundaryPassed": true,
+        "seconds": 988.173043,
+        "input": {
+          "value": 2156197,
+          "complete": false
+        },
+        "output": {
+          "value": 77079,
+          "complete": false
+        },
+        "cached": {
+          "value": 2029525,
+          "complete": false
+        },
+        "cost": {
+          "value": 3.7333625,
+          "complete": false
+        },
+        "toolCalls": 30,
+        "commands": 34,
+        "result": "wall_clock",
+        "gates": {
+          "behavior_parity": true,
+          "database_parity": true,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": true,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "unreportedCostReserveUsd": 3.13359375,
+        "failedScenarios": []
+      }
+    },
+    {
+      "model": "glm-5p3-flash",
+      "name": "GLM 5.3 Flash (high)",
+      "before": {
+        "task": "drf-flask-002",
+        "model": "glm-5p3-flash",
+        "config": "with-sanka",
+        "passed": false,
+        "result": "wall_clock",
+        "seconds": 1016.980364,
+        "unreportedCostReserveUsd": 0,
+        "input": {
+          "value": null,
+          "complete": false
+        },
+        "cached": {
+          "value": null,
+          "complete": false
+        },
+        "output": {
+          "value": null,
+          "complete": false
+        },
+        "cost": {
+          "value": 0.14966974999999996,
+          "complete": false
+        },
+        "toolCalls": 53,
+        "commands": 58,
+        "gates": {
+          "behavior_parity": false,
+          "database_parity": false,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": false,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "scenarios": 31
+      },
+      "after": {
+        "passed": true,
+        "scenarios": 32,
+        "boundaryPassed": true,
+        "seconds": 992.07761,
+        "input": {
+          "value": 2847947,
+          "complete": true
+        },
+        "output": {
+          "value": 74080,
+          "complete": true
+        },
+        "cached": {
+          "value": 2689024,
+          "complete": true
+        },
+        "cost": {
+          "value": 0.14154916999999997,
+          "complete": true
+        },
+        "toolCalls": 47,
+        "commands": 49,
+        "result": "wall_clock",
+        "gates": {
+          "behavior_parity": true,
+          "database_parity": true,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": true,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "unreportedCostReserveUsd": 0,
+        "failedScenarios": []
+      }
+    },
+    {
+      "model": "gpt-5-6-luna",
+      "name": "GPT-5.6 Luna (high)",
+      "before": {
+        "task": "drf-flask-002",
+        "model": "gpt-5-6-luna",
+        "config": "with-sanka",
+        "passed": true,
+        "result": "verified",
+        "seconds": 914.113812,
+        "unreportedCostReserveUsd": 0,
+        "input": {
+          "value": 1882201,
+          "complete": false
+        },
+        "cached": {
+          "value": 1787904,
+          "complete": false
+        },
+        "output": {
+          "value": 19603,
+          "complete": false
+        },
+        "cost": {
+          "value": 0.07814108000000002,
+          "complete": false
+        },
+        "toolCalls": 41,
+        "commands": 46,
+        "gates": {
+          "behavior_parity": true,
+          "database_parity": true,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": true,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "scenarios": 32
+      },
+      "after": {
+        "passed": false,
+        "scenarios": 24,
+        "boundaryPassed": true,
+        "seconds": 714.621671,
+        "input": {
+          "value": 2075139,
+          "complete": false
+        },
+        "output": {
+          "value": 18703,
+          "complete": false
+        },
+        "cached": {
+          "value": 1977088,
+          "complete": false
+        },
+        "cost": {
+          "value": 0.08159556,
+          "complete": false
+        },
+        "toolCalls": 49,
+        "commands": 44,
+        "result": "verified",
+        "gates": {
+          "behavior_parity": false,
+          "database_parity": true,
+          "deterministic": true,
+          "native_target": true,
+          "regression_tests": true,
+          "side_effect_parity": false,
+          "source_qualified": true,
+          "target_boot": true
+        },
+        "unreportedCostReserveUsd": 0,
+        "failedScenarios": [
+          "upload-api-unusual-boundary",
+          "upload-api-json",
+          "upload-33-bytes-api",
+          "upload-blank-key",
+          "upload-blank-label",
+          "upload-duplicate-key",
+          "upload-then-detail-api",
+          "duplicate-after-valid-upload-keeps-original-file"
+        ]
+      }
+    }
+  ]
+}
