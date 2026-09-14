@@ -11,6 +11,7 @@ The default agent is the Sanka native harness. It controls model calls, sandboxe
 tools and the Sanka workflow; the evaluator grades every configuration independently.
 
 [Published results](https://sanka.com/bench) ·
+[Download result data](results/2026-09-12/README.md) ·
 [Native harness](docs/native-harness.md) ·
 [Run manifests and recovery](docs/measurement-runs.md) ·
 [Task details](docs/task-catalog.md)
@@ -253,17 +254,25 @@ gh workflow run converter-regression.yml --repo sankaHQ/bench --ref main \
 See the [converter regression instructions](https://github.com/sankaHQ/extensions/blob/main/docs/converter-regression.md).
 This workflow is a release check, not automatic coverage on extension PRs.
 
+## Evaluation suite visibility
+
+The 17 tasks shown on [the benchmark site](https://sanka.com/bench/) are the open
+evaluation suite. Keep source fixtures, public examples, grading files and
+controls at their existing paths. Publishing does not change task identities,
+digests or scores. Scenarios withheld from candidate workspaces are publicly
+inspectable after publication. Future private holdouts require a separate,
+versioned suite.
+
 ## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR. Open or reuse an
+issue first, then link your PR to it. Maintainers review the proposed scope
+before substantial changes are implemented.
 
 This repository owns the evaluator, fixtures, isolation and reports.
 [sankaHQ/sanka](https://github.com/sankaHQ/sanka) owns the migration runtime;
 [sankaHQ/extensions](https://github.com/sankaHQ/extensions) owns extensions.
 All candidates use the same evaluator contract.
-
-Propose a task with a source application, the behaviors it must preserve and the
-failure mode existing tasks miss. Include scenarios, evaluation configuration and
-positive/negative controls. Hidden grading scenarios must stay outside the
-candidate-visible workspace. See [design](docs/design.md) for evaluator details.
 
 ## License
 

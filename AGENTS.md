@@ -5,9 +5,10 @@ This repository is the independent evaluator for repository-level migrations.
 ## Boundaries
 
 - Keep evaluator logic tool-neutral. Do not special-case Sanka candidates.
-- Graded scenario supersets live under `tasks/*/evaluation/` while this repository
-  is private; before it becomes public they move to a private companion the
-  evaluator mounts, and `task.yaml` points at that mount.
+- The 17 tasks shown on sanka.com/bench form the open evaluation suite.
+  Keep grading files beside their tasks under tasks/<family>/<task>/evaluation/.
+  Preserve paths and historical digests. Candidate isolation does not make
+  published scenarios secret; future private holdouts need a separate suite.
 - Pin source commits, dependency locks, container digests, task schemas, and
   result schemas.
 - A behavior pass never compensates for a failed native-target-compliance gate.

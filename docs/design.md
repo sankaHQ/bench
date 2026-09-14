@@ -1,3 +1,8 @@
+> Publication policy: the 17 tasks shown on sanka.com/bench include their
+> evaluation files as an open suite. Historical "hidden" wording below means
+> withheld from candidate workspaces during a run, not secret after publication.
+> Public-suite results do not establish performance on unseen private holdouts.
+
 # Implemented slices
 
 ## drf-fastapi-011: aggregates and related-row computed fields
@@ -395,8 +400,8 @@ successful DRF-to-FastAPI migration.
 
 ## Roadmap
 
-1. Move the graded scenario supersets to a private companion mounted at
-   evaluation time before this repository becomes public, and sign result
+1. Keep the current 17-task open evaluation suite together, including grading
+   files and controls. Version future private holdouts separately and sign result
    manifests.
 2. Grow the suite past thirty tasks with synthetic variants and Verified-tier
    real repositories.
