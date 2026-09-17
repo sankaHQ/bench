@@ -370,3 +370,40 @@ def test_flask_lazy_import_remains_a_native_failure(tmp_path: Path) -> None:
     assert payload["response"] == {"status": 200, "body": "plain text"}
     assert payload["native"]["forbidden_imports"] == ["wave"]
     assert not _native_verdict(payload, "flask")[0]
+
+
+def test_flask_factory_preserves_native_guards(tmp_path: Path) -> None:
+    from sanka_bench.evaluator import _native_verdict
+
+    source = (
+        "from flask import Flask\n"
+        "def create_app():\n"
+        "    app = Flask(__name__)\n"
+        "    @app.get('/ping/')\n"
+        "    def ping(): return {'ok': True}\n"
+        "    return app\n"
+    )
+    path = tmp_path / "svc.py"
+    path.write_text(source)
+    payload = _payload(_run_guard(tmp_path, framework="flask"))
+    assert payload["response"] == {"status": 200, "body": {"ok": True}}
+    assert _native_verdict(payload, "flask") == (True, "ok")
+
+    path.write_text(source.replace("    return app", "    import wave\n    return app"))
+    payload = _payload(_run_guard(tmp_path, framework="flask", forbidden=["wave"]))
+    assert payload["native"]["forbidden_imports"] == ["wave"]
+    assert not _native_verdict(payload, "flask")[0]
+
+    path.write_text(
+        source.replace(
+            "    return app", "    app.dispatch_request = lambda: {'ok': True}\n    return app"
+        )
+    )
+    payload = _payload(_run_guard(tmp_path, framework="flask"))
+    assert not _native_verdict(payload, "flask")[0]
+
+    path.write_text("def create_app(): return object()\n")
+    assert _run_guard(tmp_path, framework="flask").returncode != 0
+
+    path.write_text(source + "app = object()\n")
+    assert _run_guard(tmp_path, framework="flask").returncode != 0

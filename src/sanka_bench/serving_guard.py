@@ -302,9 +302,14 @@ def _serve_flask(
     Flask.dispatch_request = recorded_dispatch  # type: ignore[method-assign, assignment]
     module = importlib.import_module(Path(args.entrypoint).stem)
     app = getattr(module, "app", None)
+    if app is None and callable(getattr(module, "create_app", None)):
+        app = module.create_app()
     native["app_is_flask"] = isinstance(app, Flask)
     if not isinstance(app, Flask):
-        print("candidate entrypoint does not expose a Flask app", file=sys.stderr)
+        print(
+            "candidate entrypoint must expose a Flask app or a create_app() factory returning one",
+            file=sys.stderr,
+        )
         return 3
     headers = {str(k): str(v) for k, v in dict(scenario.get("headers") or {}).items()}
     options: dict[str, Any] = {
