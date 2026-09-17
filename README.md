@@ -186,6 +186,12 @@ compliance even if its responses match. Passing 31 of 32 scenarios does not pass
 the task. Scenario percentages help diagnose the failure; they do not offset a
 failed gate.
 
+Flask entrypoints may expose an `app` instance or, when `app` is absent or None,
+a zero-argument `create_app()` factory. Factory execution remains inside the
+serving guard; its result must be a Flask application and use real Flask dispatch.
+An invalid existing `app` is rejected rather than replaced by a factory result.
+This entrypoint support does not change any task's ORM or behavioral acceptance rules.
+
 Task pass@1 counts fully migrated tasks on their first scored attempt. Reports
 also support route-weighted scores: a task contributes its method-routes only
 when the entire task passes. State the denominator and task coverage when
