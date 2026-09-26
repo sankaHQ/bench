@@ -247,7 +247,8 @@ make docker-baselines          # Container baseline evaluations
 ```
 
 `make check` defaults to two task workers. Keep local concurrency bounded; use
-one worker when memory is constrained. CI also runs Docker baselines.
+one worker when memory is constrained. CI runs Docker baselines on every push to
+`main` and for pull requests that change the evaluator image.
 
 Before releasing a converter change, run the manual regression workflow against
 its exact extension commit:

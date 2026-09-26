@@ -500,34 +500,36 @@ cell with Wilson and bootstrap intervals and cost per verified route, as
 Baseline evaluations are independent at the task boundary: every
 task/candidate pair already receives isolated temporary workspaces and a
 task-specific report path, while a single evaluator run owns its scenario
-sequence and determinism repetitions. CI shards all eleven evaluator test
-modules across GitHub-hosted runners, with at most five local task jobs and
-ten Docker task jobs. The fast unit job excludes those evaluator modules.
-Each local shard runs its module-scoped baseline fixture once and checks the
-resulting verdicts, native gates and scenarios. It does not repeat those same
-four evaluations through a second CLI invocation. All 44 Docker baselines
-still run through the CLI, including their determinism repetitions.
+sequence and determinism repetitions. CI shards the evaluator tests by task
+across GitHub-hosted runners, one local job per task, all in parallel; the
+FastAPI tasks share one parametrized module and each shard selects its task with
+`-k`. The fast unit job excludes the evaluator tests. Each local shard evaluates
+its task's baselines once and checks the resulting verdicts, native gates and
+scenarios. It does not repeat those same four evaluations through a second CLI
+invocation. All Docker baselines still run through the CLI, including their
+determinism repetitions, in the separate Docker baselines workflow: on every
+push to `main`, on demand, and for pull requests that change the image or its
+runner. That workflow builds the evaluator image once and loads it in every task
+shard.
 
-The stable required checks remain `check` and `docker-baselines`. Each is an
-aggregate gate over its underlying unit/local or Docker task shards, so branch
-protection still fails closed when any shard fails or is cancelled. The
-Makefile retains the full sequential `baselines` and `docker-baselines` targets
-for producing local reports and exposes task-scoped targets such as
-`test-evaluator-008` and `docker-baselines-008` for CI. Superseded PR runs are
-cancelled within that PR's concurrency group.
+The aggregate checks are `check` (unit and local shards) and `docker-baselines`
+(Docker shards), so a required check still fails closed when any shard fails or
+is cancelled. The Makefile retains the full sequential `baselines` and
+`docker-baselines` targets for producing local reports and exposes task-scoped
+targets such as `test-evaluator-008` and `docker-baselines-008` for CI.
+Superseded PR runs are cancelled within that PR's concurrency group.
 
 `make check` runs lint, types, all tests and schema validation. `make test`
 uses Make's existing job scheduler with two workers by default, grouping tests
 by module so expensive fixtures are not duplicated across workers. Set
 `TEST_WORKERS=1` under memory pressure, or at most four with adequate headroom.
 `make test-unit` runs just the fast subset. Tests write separate JUnit files
-under `reports/` and show their slowest durations. A coverage check ensures
-every test file belongs to exactly one suite partition.
+under `reports/` and show their slowest durations.
 
-Docker evaluator images are content-addressed from the repository tree. A task
-shard builds its image on the first candidate and reuses that exact local image
-for the remaining candidates; a changed task, candidate, lockfile, or evaluator
-source produces a different tag. Dependencies are compiled to bytecode at
-image build time to reduce repeated Python import work in the read-only
-containers. Evaluation containers keep the existing
+Docker evaluator images are content-addressed from the repository tree. The
+first evaluation builds the image and later ones reuse that exact local image; in
+CI, one job builds it and every task shard loads it. A changed task, candidate,
+lockfile, or evaluator source produces a different tag. Dependencies are
+compiled to bytecode at image build time to reduce repeated Python import work
+in the read-only containers. Evaluation containers keep the existing
 network, filesystem, capability, memory, CPU, and process isolation controls.
