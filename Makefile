@@ -58,7 +58,7 @@ define BASELINE_RULES
 .PHONY: baselines-$(1) docker-baselines-$(1) test-evaluator-$(1)
 
 test-evaluator-$(1):
-	uv run python -m pytest tests/test_evaluator$(if $(filter 001,$(1)),,_$(1)).py --durations=5 --junitxml=reports/tests-evaluator-$(1).xml
+	uv run python -m pytest tests/test_evaluator_fastapi.py -k drf-fastapi-$(1) --durations=5 --junitxml=reports/tests-evaluator-$(1).xml
 
 baselines-$(1):
 	@for name in $$(BASELINES_$(1)); do \

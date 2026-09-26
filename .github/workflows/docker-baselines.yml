@@ -1,0 +1,95 @@
+name: Docker baselines
+
+# Repeats every frozen baseline inside the network-disabled evaluator image. The
+# local baselines in CI already run the same evaluator on every pull request, so
+# this runs on each push to main and for pull requests that change the image or
+# how it runs. The image is built once per run and shared by all task shards.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - pyproject.toml
+      - uv.lock
+      - src/sanka_bench/docker.py
+      - .github/workflows/docker-baselines.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  evaluator-image:
+    name: evaluator image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      tag: ${{ steps.build.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.21"
+          enable-cache: true
+      - run: uv sync --frozen --python 3.12 --extra fixture --group dev
+      - name: Build the content-addressed evaluator image
+        id: build
+        run: |
+          tag="$(uv run python -c 'from sanka_bench.docker import _ensure_evaluator_image, repository_root; print(_ensure_evaluator_image(repository_root()))')"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          docker save "$tag" | zstd -T0 -3 -q -o "$RUNNER_TEMP/evaluator-image.tar.zst"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evaluator-image
+          path: ${{ runner.temp }}/evaluator-image.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  docker-baseline-shard:
+    name: docker-baselines (${{ matrix.task }})
+    needs: [evaluator-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 17
+      matrix:
+        task: ["001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "flask-001", "flask-002", "flask-003", "flask-004", "flask-005", "flask-006"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.21"
+          enable-cache: true
+      - run: uv sync --frozen --python 3.12 --extra fixture --group dev
+      # Outside the checkout: the image tag is a digest of the repository tree.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: evaluator-image
+          path: ${{ runner.temp }}
+      - name: Load the shared evaluator image
+        env:
+          IMAGE_TAG: ${{ needs.evaluator-image.outputs.tag }}
+        run: |
+          zstd -dc "$RUNNER_TEMP/evaluator-image.tar.zst" | docker load
+          docker image inspect "$IMAGE_TAG" > /dev/null
+      - run: make docker-baselines-${{ matrix.task }}
+
+  docker-baselines:
+    name: docker-baselines
+    if: ${{ always() }}
+    needs: [docker-baseline-shard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all Docker baseline shards
+        env:
+          DOCKER_BASELINES_RESULT: ${{ needs.docker-baseline-shard.result }}
+        run: test "$DOCKER_BASELINES_RESULT" = success

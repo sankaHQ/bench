@@ -40,9 +40,10 @@ make check TEST_WORKERS=1
 ```
 
 Run affected positive and negative baseline controls for evaluator changes.
-CI also checks container baselines. Do not launch paid model campaigns just to
-submit a PR; explain which checks ran, which did not, and why. Never weaken a
-failing test to improve a reported score.
+CI checks container baselines on `main` and when the evaluator image changes.
+Do not launch paid model campaigns just to submit a PR; explain which checks
+ran, which did not, and why. Never weaken a failing test to improve a reported
+score.
 
 ## Benchmark changes need evidence
 

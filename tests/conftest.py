@@ -13,8 +13,3 @@ def repository_root() -> Path:
 @pytest.fixture(scope="session")
 def task_dir(repository_root: Path) -> Path:
     return repository_root / "tasks" / "drf-fastapi" / "drf-fastapi-001"
-
-
-@pytest.fixture(scope="session")
-def task_002_dir(repository_root: Path) -> Path:
-    return repository_root / "tasks" / "drf-fastapi" / "drf-fastapi-002"
