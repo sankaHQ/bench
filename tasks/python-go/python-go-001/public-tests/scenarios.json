@@ -1,0 +1,30 @@
+[
+  {
+    "id": "list-seeded-widget",
+    "method": "GET",
+    "path": "/api/widgets/"
+  },
+  {
+    "id": "create-widget",
+    "method": "POST",
+    "path": "/api/widgets/",
+    "body": { "name": "Beta", "quantity": 7 }
+  },
+  {
+    "id": "partial-update-widget",
+    "method": "PATCH",
+    "path": "/api/widgets/1/",
+    "body": { "quantity": 9 }
+  },
+  {
+    "id": "reject-negative-quantity",
+    "method": "POST",
+    "path": "/api/widgets/",
+    "body": { "name": "Beta", "quantity": -1 }
+  },
+  {
+    "id": "delete-widget",
+    "method": "DELETE",
+    "path": "/api/widgets/1/"
+  }
+]

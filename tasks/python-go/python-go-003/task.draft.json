@@ -1,0 +1,62 @@
+{
+  "format": "sanka-bench/draft-task/v1",
+  "status": "implemented-unqualified",
+  "id": "python-go-003",
+  "lane": "python-go",
+  "title": "Nested writes and transaction rollback",
+  "source": {
+    "repository": "https://github.com/sankaHQ/bench",
+    "commit": "10860b35a6cf008bad331e33e75e56aa93f7439f",
+    "task": "tasks/drf-fastapi/drf-fastapi-006",
+    "path": "tasks/drf-fastapi/drf-fastapi-006/source",
+    "framework": "django-rest-framework",
+    "python": "3.12",
+    "license": "Apache-2.0",
+    "digest": "sha256:40f1aac4ed46aba3e2e348bf6f45fcd75f697625948136af08999080d9a54b7f",
+    "task_digest": "sha256:77f5959a7ae5741309d4b04bcbc3532959a4b849854a808a604780874c75156b"
+  },
+  "target": {
+    "language": "go",
+    "framework": "fiber",
+    "database": "sqlite",
+    "entrypoint": "cmd/api",
+    "runtime": "compiled Go executable; no Python/Django/DRF serving runtime"
+  },
+  "scenarios": {
+    "public": {
+      "path": "tasks/drf-fastapi/drf-fastapi-006/public-tests/scenarios.json",
+      "sha256": "sha256:3166c504856d2883d48a22df4ad4b12e7edcda3c3ca4eab0d10cf3323cf202b2",
+      "count": 7
+    },
+    "evaluation": {
+      "path": "tasks/drf-fastapi/drf-fastapi-006/evaluation/scenarios.json",
+      "sha256": "sha256:1f0e076b74732a7a2ac6ef0a8e08de69018ffd2311ac825a0c5904a2000e92b6",
+      "count": 32
+    }
+  },
+  "acceptance": [
+    "Preserve Order -> OrderItem -> Adjustment writes, defaults, decimals and string-indexed validation errors.",
+    "PATCH without items preserves descendants; supplied items atomically replace the graph.",
+    "Failures after partial writes restore parent fields and all deleted or inserted descendants."
+  ],
+  "evaluation": {
+    "contract": "../README.md#grading-contract",
+    "repeat": 2,
+    "qualification": "not-run",
+    "driver_status": "implemented-not-executed",
+    "controls_status": "implemented-not-executed"
+  },
+  "toolchain": {
+    "cli_version": null,
+    "extension_id": "sanka/python-to-golang",
+    "extension_distribution": "sanka-extension-python-to-golang",
+    "extension_version": null,
+    "go_version": "1.26.5",
+    "fiber_version": "v3.5.0",
+    "sqlite_driver_version": "v1.57.0"
+  },
+  "execution": {
+    "enabled": false,
+    "paid_run_authorized": false
+  }
+}

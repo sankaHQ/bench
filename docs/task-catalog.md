@@ -1,6 +1,9 @@
 # Task catalog
 
-The suite has 17 tasks: 11 FastAPI migrations and 6 Flask migrations.
+The published suite has 17 tasks: 11 FastAPI migrations and 6 Flask migrations.
+Four additional [Python-to-Go tasks](../tasks/python-go/README.md) are implemented
+but unqualified and unmeasured. They belong to a separate, disabled campaign and
+do not change the historical results or their denominator.
 Each task directory contains its source, target contract and scenario definitions.
 
 ## FastAPI

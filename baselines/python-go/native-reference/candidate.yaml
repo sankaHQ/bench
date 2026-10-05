@@ -1,0 +1,8 @@
+schema_version: sanka-bench/candidate/v0.2
+id: python-go-native-reference
+kind: overlay
+overlay: overlay
+provenance:
+  producer: independently-authored-go-reference
+  revision: unqualified
+  command: "Not executed; reference control requires qualification"

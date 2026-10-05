@@ -1,0 +1,69 @@
+{
+  "schema": "sanka-bench/model-matrix-run-manifest/v2",
+  "benchmark_sha": null,
+  "suite": {
+    "tasks": [
+      "python-go-001",
+      "python-go-002",
+      "python-go-003",
+      "python-go-004"
+    ],
+    "route_weights": {
+      "python-go-001": 1,
+      "python-go-002": 1,
+      "python-go-003": 1,
+      "python-go-004": 1
+    }
+  },
+  "models": [],
+  "execution": {
+    "configurations": [
+      "alone",
+      "sanka-cli"
+    ],
+    "samples": 1,
+    "sanka_workflow": "native-lifecycle-v1",
+    "max_turns": 60,
+    "wall_clock_seconds": 3600,
+    "max_agent_cost_usd": null,
+    "concurrency": {
+      "provider_cap": 1,
+      "model_cap": 1,
+      "evaluation_cap": 1
+    },
+    "container_engine": "docker",
+    "authorization_scope": null
+  },
+  "authorization": {
+    "paid_run_authorized": false,
+    "run_id": null,
+    "authorization_scope": null,
+    "authorized_by": null,
+    "authorized_at": null
+  },
+  "go_toolchain": {
+    "go_bin": null,
+    "go_bin_sha256": null,
+    "go_version": "1.26.5",
+    "fiber_version": "v3.5.0",
+    "sqlite_version": "v1.57.0",
+    "evaluator_image": null
+  },
+  "go_qualification": {
+    "path": null,
+    "sha256": null
+  },
+  "toolchain": {
+    "sanka_bin": null,
+    "sanka_cli": null,
+    "extension_version": null,
+    "marketplace_commit": null,
+    "wheel_hashes": {},
+    "env_path": null,
+    "native_bin_sha256": null,
+    "native_version": null,
+    "agent_runner_sha256": null,
+    "evaluator_sha256": null
+  },
+  "stages": []
+}

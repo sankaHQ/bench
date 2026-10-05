@@ -287,6 +287,9 @@ def cell_input_digest(
         },
         "toolchain": {key: toolchain.get(key) for key in toolchain_fields if key in toolchain},
     }
+    if "go_toolchain" in manifest:
+        payload["go_toolchain"] = manifest["go_toolchain"]
+        payload["go_qualification"] = manifest.get("go_qualification")
     if "experimental_toolchain" in manifest:
         payload["experimental_toolchain"] = manifest["experimental_toolchain"]
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -376,10 +379,14 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
     if manifest.get("schema") != "sanka-bench/model-matrix-run-manifest/v2":
         return
     lanes = {str(task).rsplit("-", 1)[0] for task in manifest["suite"]["tasks"]}
-    if len(lanes) != 1 or not lanes <= {"drf-fastapi", "drf-flask"}:
+    if len(lanes) != 1 or not lanes <= {"drf-fastapi", "drf-flask", "python-go"}:
         raise ValueError(
             "official v2 comparisons require one supported migration lane per manifest"
         )
+    if "python-go" in lanes:
+        from sanka_bench.go_lane import validate_campaign
+
+        validate_campaign(manifest, execution=False)
     if manifest["execution"].get("configurations") not in (
         ["alone", "with-sanka"],
         ["alone", "sanka-cli"],
@@ -441,7 +448,10 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
     if not isinstance(toolchain, dict):
         raise ValueError("official v2 manifest requires toolchain pins")
     skill_sha = toolchain.get("sanka_skill_sha256")
-    if re.fullmatch(r"sha256:[0-9a-f]{64}", str(skill_sha or "")) is None:
+    if (
+        "with-sanka" in manifest["execution"]["configurations"]
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", str(skill_sha or "")) is None
+    ):
         raise ValueError("official v2 manifest requires Sanka skill pins")
     root = root.resolve()
     for model in manifest["models"]:
@@ -1252,6 +1262,10 @@ class RollingCoordinator:
 
 
 def ensure_authorized(manifest: dict[str, Any]) -> None:
+    if any(str(task).startswith("python-go-") for task in manifest["suite"]["tasks"]):
+        from sanka_bench.go_lane import validate_campaign
+
+        validate_campaign(manifest, execution=True)
     authorization = manifest.get("authorization", {})
     expected_scope = manifest["execution"].get("authorization_scope")
     if authorization.get("paid_run_authorized") is not True:

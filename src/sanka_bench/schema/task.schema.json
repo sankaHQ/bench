@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sanka.com/schemas/sanka-bench/task/v0.2.json",
+  "$id": "https://sanka.com/schemas/sanka-bench/task/v0.3.json",
   "title": "Sanka Migration Bench task",
   "type": "object",
   "additionalProperties": false,
@@ -21,12 +21,105 @@
     {
       "if": { "properties": { "lane": { "const": "drf-flask" } } },
       "then": { "properties": { "target": { "properties": { "framework": { "const": "flask" } } } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "lane": {
+            "const": "python-go"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "schema_version": {
+            "const": "sanka-bench/task/v0.3"
+          },
+          "target": {
+            "required": [
+              "language",
+              "database"
+            ],
+            "properties": {
+              "framework": {
+                "const": "fiber"
+              },
+              "orm": {
+                "const": "none"
+              },
+              "entrypoint": {
+                "const": "cmd/api/main.go"
+              }
+            }
+          },
+          "commands": {
+            "required": [
+              "target_regression"
+            ]
+          },
+          "source": {
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]+$"
+              }
+            }
+          },
+          "evaluation": {
+            "properties": {
+              "driver": {
+                "type": "string",
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]+$"
+              },
+              "scenarios": {
+                "type": "string",
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]+$"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "schema_version": {
+            "const": "sanka-bench/task/v0.2"
+          },
+          "target": {
+            "properties": {
+              "orm": {
+                "const": "django"
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "language"
+                  ]
+                },
+                {
+                  "required": [
+                    "database"
+                  ]
+                }
+              ]
+            }
+          },
+          "commands": {
+            "not": {
+              "required": [
+                "target_regression"
+              ]
+            }
+          }
+        }
+      }
     }
   ],
   "properties": {
-    "schema_version": { "const": "sanka-bench/task/v0.2" },
+    "schema_version": { "enum": ["sanka-bench/task/v0.2", "sanka-bench/task/v0.3"] },
     "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]+$" },
-    "lane": { "enum": ["drf-fastapi", "drf-flask"] },
+    "lane": { "enum": ["drf-fastapi", "drf-flask", "python-go"] },
     "source": {
       "type": "object",
       "additionalProperties": false,
@@ -60,8 +153,8 @@
         "static_patterns"
       ],
       "properties": {
-        "framework": { "enum": ["fastapi", "flask"] },
-        "orm": { "const": "django" },
+        "framework": { "enum": ["fastapi", "flask", "fiber"] },
+        "orm": { "enum": ["django", "none"] },
         "entrypoint": { "type": "string", "minLength": 1 },
         "serving": {
           "type": "object",
@@ -92,7 +185,9 @@
               "items": { "type": "string", "minLength": 1 }
             }
           }
-        }
+        },
+        "language": { "const": "go" },
+        "database": { "const": "sqlite" }
       }
     },
     "commands": {
@@ -108,7 +203,8 @@
             "minItems": 1,
             "items": { "type": "string" }
           }
-        }
+        },
+        "target_regression": { "const": [["go", "build", "-mod=readonly", "./..."]] }
       }
     },
     "evaluation": {
