@@ -348,6 +348,8 @@ def sanka_versions(
     version = subprocess.run(
         [str(sanka_bin), "--version"], capture_output=True, text=True, check=False, env=env
     ).stdout.strip()
+    if version.startswith("sanka, version "):
+        version = "sanka " + version.removeprefix("sanka, version ")
     if distribution is None:
         return version, ""
     python = sanka_bin.parent / "python"
