@@ -68,3 +68,26 @@ def test_overlay_candidate_requires_overlay_path() -> None:
     }
     with pytest.raises(SchemaError, match="overlay"):
         validate_payload(payload, "candidate", label="candidate")
+
+
+def test_go_native_evidence_is_validated_without_python_fields() -> None:
+    schema = load_schema("result")
+    fragment = dict(schema["properties"]["scenarios"]["items"]["properties"]["native"])
+    fragment["$defs"] = schema["$defs"]
+    validator = Draft202012Validator(fragment)
+    evidence = {
+        "app_is_fiber": True,
+        "fiber_dispatch_observed": True,
+        "endpoint_in_workspace": True,
+        "binary_sha256": "a" * 64,
+        "forbidden_imports": [],
+        "process_events": [],
+        "socket_events": [],
+    }
+    assert not list(validator.iter_errors(evidence))
+    for key in evidence:
+        invalid = evidence.copy()
+        del invalid[key]
+        assert list(validator.iter_errors(invalid))
+    evidence["binary_sha256"] = "invalid"
+    assert list(validator.iter_errors(evidence))

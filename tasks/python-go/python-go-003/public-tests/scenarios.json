@@ -1,0 +1,106 @@
+[
+  {
+    "id": "retrieve-seeded-graph",
+    "method": "GET",
+    "path": "/api/orders/1/"
+  },
+  {
+    "id": "create-deep-graph",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "reference": "ORD-NEW",
+      "customer_note": "created",
+      "items": [
+        {
+          "sku": "SKU-C",
+          "quantity": 3,
+          "description": "gamma",
+          "adjustments": [
+            {"code": "TAX", "amount": "1.25", "note": "city"},
+            {"code": "CREDIT", "amount": "-2.00", "note": ""}
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "create-invalid-deep-amount",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "reference": "ORD-BAD-AMOUNT",
+      "items": [
+        {
+          "sku": "SKU-C",
+          "quantity": 1,
+          "adjustments": [
+            {"code": "OK", "amount": "1.00"},
+            {"code": "BAD", "amount": "not-a-number"}
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "put-replaces-entire-graph",
+    "method": "PUT",
+    "path": "/api/orders/1/",
+    "body": {
+      "reference": "ORD-100-R",
+      "customer_note": "replaced",
+      "items": [
+        {
+          "sku": "SKU-R",
+          "quantity": 5,
+          "description": "replacement",
+          "adjustments": [
+            {"code": "FEE", "amount": "3.00", "note": "handling"}
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "patch-note-preserves-graph",
+    "method": "PATCH",
+    "path": "/api/orders/1/",
+    "body": {"customer_note": "changed only"}
+  },
+  {
+    "id": "patch-items-replaces-entire-list",
+    "method": "PATCH",
+    "path": "/api/orders/1/",
+    "body": {
+      "items": [
+        {
+          "sku": "SKU-P",
+          "quantity": 4,
+          "description": "patch replacement",
+          "adjustments": [
+            {"code": "CREDIT", "amount": "-4.00", "note": "replacement"}
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "create-duplicate-adjustment-rolls-back",
+    "method": "POST",
+    "path": "/api/orders/",
+    "body": {
+      "reference": "ORD-DUP-ADJ",
+      "customer_note": "must roll back",
+      "items": [
+        {
+          "sku": "SKU-C",
+          "quantity": 1,
+          "adjustments": [
+            {"code": "TAX", "amount": "1.00"},
+            {"code": "TAX", "amount": "2.00"}
+          ]
+        }
+      ]
+    }
+  }
+]

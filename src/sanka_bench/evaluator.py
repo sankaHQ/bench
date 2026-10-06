@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from collections.abc import Sequence
@@ -28,6 +29,7 @@ def evaluate_local(task_dir: Path, candidate_dir: Path) -> dict[str, Any]:
     candidate_dir = candidate_dir.resolve()
     task = load_and_validate(task_dir / "task.yaml", "task")
     candidate = load_and_validate(candidate_dir / "candidate.yaml", "candidate")
+    go_target = task["lane"] == "python-go"
 
     source_dir = _resolve_within(task_dir, cast(str, task["source"]["path"]))
     driver_path = _resolve_within(task_dir, cast(str, task["evaluation"]["driver"]))
@@ -61,13 +63,31 @@ def evaluate_local(task_dir: Path, candidate_dir: Path) -> dict[str, Any]:
             temp_root = Path(temp)
             workspace = temp_root / "candidate"
             shutil.copytree(source_dir, workspace)
+            if go_target and any(path.is_symlink() for path in candidate_dir.rglob("*")):
+                raise EvaluationError("Go candidate must not contain symlinks")
             _apply_candidate(candidate, candidate_dir, workspace)
 
-            regression_passed, regression_details = _run_regression(
-                task,
-                workspace,
-                timeout=timeout,
-            )
+            go_ready = False
+            if go_target:
+                from sanka_bench.go_guard import prepare
+
+                try:
+                    for source_file in source_dir.rglob("*.py"):
+                        copied = workspace / source_file.relative_to(source_dir)
+                        if not copied.is_file() or copied.read_bytes() != source_file.read_bytes():
+                            raise ValueError("Go candidate changed a preserved Python source file")
+                    binary = prepare(workspace, temp_root / "go-build")
+                    serving_policy = json.dumps({"go_binary": str(binary)})
+                    regression_passed, regression_details = True, []
+                    go_ready = True
+                except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+                    regression_passed, regression_details = False, [str(exc)]
+            else:
+                regression_passed, regression_details = _run_regression(
+                    task,
+                    workspace,
+                    timeout=timeout,
+                )
             regression_runs.append(regression_passed)
             errors.extend(
                 f"candidate regression run {run_index + 1}: {detail}"
@@ -85,23 +105,35 @@ def evaluate_local(task_dir: Path, candidate_dir: Path) -> dict[str, Any]:
             oracle_results: list[dict[str, Any] | None] = []
             target_results: list[dict[str, Any] | None] = []
             for scenario in scenarios:
+                # Go serving sees only one case's database, never another oracle's state.
+                source_db = temp_root / f"source-{scenario['id']}.sqlite3"
+                target_db = temp_root / f"candidate-{scenario['id']}.sqlite3"
+                if go_target:
+                    source_db = temp_root / f"source-{scenario['id']}" / "case.sqlite3"
+                    target_db = temp_root / f"candidate-{scenario['id']}" / "case.sqlite3"
+                    source_db.parent.mkdir()
+                    target_db.parent.mkdir()
                 oracle, oracle_error = _run_driver(
                     driver_path,
                     mode="source",
                     workspace=source_dir,
                     scenario=scenario,
-                    database=temp_root / f"source-{scenario['id']}.sqlite3",
+                    database=source_db,
                     timeout=timeout,
                 )
-                target, target_error = _run_driver(
-                    driver_path,
-                    mode="candidate",
-                    workspace=workspace,
-                    scenario=scenario,
-                    database=temp_root / f"candidate-{scenario['id']}.sqlite3",
-                    timeout=timeout,
-                    policy=serving_policy,
-                )
+                target_error: str | None
+                if go_target and not go_ready:
+                    target, target_error = None, "Go candidate did not compile"
+                else:
+                    target, target_error = _run_driver(
+                        driver_path,
+                        mode="candidate",
+                        workspace=workspace,
+                        scenario=scenario,
+                        database=target_db,
+                        timeout=timeout,
+                        policy=serving_policy,
+                    )
                 oracle_results.append(oracle)
                 target_results.append(target)
                 if oracle_error:
@@ -332,7 +364,15 @@ def _native_verdict(payload: dict[str, Any] | None, framework: str = "fastapi") 
     if not isinstance(native, dict):
         return False, "candidate driver returned no native serving evidence"
     problems: list[str] = []
-    if framework == "flask":
+    if framework == "fiber":
+        if (
+            native.get("app_is_fiber") is not True
+            or native.get("fiber_dispatch_observed") is not True
+        ):
+            problems.append("no native Fiber dispatch observed in the compiled probe")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(native.get("binary_sha256", ""))):
+            problems.append("missing compiled Go executable provenance")
+    elif framework == "flask":
         if not native.get("app_is_flask"):
             problems.append("entrypoint `app` is not a Flask application")
         if not native.get("route_is_flask_rule") or not native.get("flask_dispatch_observed"):

@@ -92,7 +92,7 @@ from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sanka_bench import agent_isolation, native_agent
+from sanka_bench import agent_isolation, go_lane, native_agent
 from sanka_bench.environment import isolated_environment
 from sanka_bench.hashing import digest_tree
 from sanka_bench.schema import load_and_validate, validate_candidate_id
@@ -232,6 +232,10 @@ def task_prompt(task_dir: Path, max_turns: int, wall_seconds: int) -> str:
         else "This task grades the supplied public scenarios."
     )
     core = PROMPT_CORE
+    if task["lane"] == "python-go":
+        from sanka_bench.go_lane import PROMPT
+
+        core = PROMPT
     if task["target"]["framework"] == "flask":
         core = core.replace("FastAPI", "Flask").replace("fastapi", "flask")
         core = core.replace("Flask `APIRoute`", "Flask URL rule")
@@ -478,7 +482,12 @@ PLAN_INPUTS = (
 
 
 def _enable_sanka_extension(
-    sanka_bin: Path, *, workspace: Path, env: dict[str, str], framework: str = "fastapi"
+    sanka_bin: Path,
+    *,
+    workspace: Path,
+    env: dict[str, str],
+    framework: str = "fastapi",
+    marketplace_revision: str | None = None,
 ) -> list[str]:
     """Make the DRF extension usable in the workspace: marketplace snapshot + project lock.
 
@@ -488,23 +497,38 @@ def _enable_sanka_extension(
     the alone arm never sees it. The marketplace add is idempotent by name.
     """
     _run_sanka_command(
-        [str(sanka_bin), "extension", "marketplace", "add", OFFICIAL_MARKETPLACE, "--json"],
+        [
+            str(sanka_bin),
+            "extension",
+            "marketplace",
+            "add",
+            OFFICIAL_MARKETPLACE,
+            *(["--revision", marketplace_revision] if marketplace_revision else []),
+            "--json",
+        ],
         workspace=workspace,
         env=env,
         tolerate=("SANKA_MARKETPLACE_EXISTS",),
     )
+    extension_id = "sanka/python-to-golang" if framework == "fiber" else f"sanka/drf-to-{framework}"
     enabled = _run_sanka_command(
-        [str(sanka_bin), "extension", "add", f"sanka/drf-to-{framework}", "--json"],
+        [str(sanka_bin), "extension", "add", extension_id, "--json"],
         workspace=workspace,
         env=env,
     )
 
     records = _cli_data(enabled.stdout).get("records")
     for record in records if isinstance(records, list) else []:
-        if isinstance(record, dict) and record.get("id") == f"sanka/drf-to-{framework}":
+        if isinstance(record, dict) and record.get("id") == extension_id:
+            if framework == "fiber":
+                from sanka_bench.go_lane import validate_extension_lock
+
+                validate_extension_lock(record, marketplace_revision)
             commands = record.get("commands")
             if isinstance(commands, list) and all(isinstance(item, str) for item in commands):
                 return commands
+    if framework == "fiber":
+        raise ValueError("Sanka did not return the installed Go extension lock")
     return []
 
 
@@ -631,6 +655,7 @@ def _sanka_tool_versions(sanka_bin: Path, *, workspace: Path, env: dict[str, str
         if isinstance(record, dict) and record.get("id") in {
             DRF_EXTENSION_ID,
             "sanka/drf-to-flask",
+            "sanka/python-to-golang",
         }:
             extension += f"; {record.get('id')} {record.get('version')} {record.get('status')}"
     return f"{version or sanka_bin}{extension}"
@@ -923,6 +948,8 @@ def main() -> int:
         help="estimated-cost cap (native requires prices); not verified provider billing",
     )
     parser.add_argument("--wall-clock-seconds", type=int, default=3600)
+    parser.add_argument("--go-bin", type=Path)
+    parser.add_argument("--marketplace-revision")
     parser.add_argument("--sanka-bin", type=Path, default=None)
     parser.add_argument("--sanka-skill-sha256")
     parser.add_argument(
@@ -1097,6 +1124,25 @@ def main() -> int:
         )
     args.agent_bin = str(Path(shutil.which(args.agent_bin) or args.agent_bin).resolve())
     task = load_and_validate(task_dir / "task.yaml", "task")
+    if task["lane"] == "python-go":
+        if args.agent != "sanka-native" or args.sanka_workflow != "native-lifecycle-v1":
+            parser.error("Python-to-Go requires the native harness and native-lifecycle-v1")
+        if mode not in {"alone", "sanka-cli"}:
+            parser.error("Python-to-Go supports only model-only and CLI-only arms")
+        if args.go_bin is None or not args.go_bin.is_file():
+            parser.error("Python-to-Go requires --go-bin with the pinned compiler")
+        compiler = subprocess.run(
+            [str(args.go_bin.resolve()), "version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+            env={**isolated_environment(os.environ), "GOTOOLCHAIN": "local"},
+        )
+        if compiler.returncode or " go1.26.5 " not in compiler.stdout:
+            parser.error("Python-to-Go requires the public-contract Go 1.26.5 compiler")
+        if mode != "alone" and not re.fullmatch(r"[0-9a-f]{40}", args.marketplace_revision or ""):
+            parser.error("Python-to-Go CLI treatment requires --marketplace-revision")
     required_python = str(task["source"]["python"])
     actual_python = f"{sys.version_info.major}.{sys.version_info.minor}"
     if required_python != actual_python:
@@ -1132,6 +1178,11 @@ def main() -> int:
                 return 2
             workspace.rmdir()
         shutil.copytree(source, workspace)
+        if task["lane"] == "python-go":
+            # Both arms receive the same public dependency contract.
+            locks = Path(__file__).resolve().parents[1] / "toolchains/python-go"
+            for name in ("go.mod", "go.sum"):
+                shutil.copy2(locks / name, workspace / name)
         public_tests = workspace / "public-tests"
         public_tests.mkdir()
         shutil.copy2(scenarios, public_tests / "scenarios.json")
@@ -1193,7 +1244,11 @@ def main() -> int:
                 stripped.extend(["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"])
             for name in stripped:
                 env.pop(name, None)
-        if mode != "alone":
+        if task["lane"] == "python-go":
+            # Go fixture replay uses SANKA_GO_SOURCE_PYTHON. Do not shadow the
+            # wheel-verified CLI/SDK with the benchmark venv's site-packages.
+            env.pop("PYTHONPATH", None)
+        elif mode != "alone":
             env = _sanka_runtime_env(env)
         readiness_context: dict[str, object] | None = None
         skill_record: dict[str, str] | None = None
@@ -1226,6 +1281,7 @@ def main() -> int:
                         workspace=workspace,
                         env=env,
                         framework=task["target"]["framework"],
+                        marketplace_revision=args.marketplace_revision,
                     )
             except (OSError, RuntimeError, ValueError) as exc:
                 print(f"{mode} setup failed: {exc}", file=sys.stderr)
@@ -1234,7 +1290,11 @@ def main() -> int:
             if readiness_context is not None:
                 prompt += _readiness_prompt(readiness_context, sanka_bin)
             else:
-                prompt += PROMPT_SANKA.format(sanka=sanka_bin)
+                prompt += (
+                    f"\nThe harness runs the pinned Python-to-Go extension through {sanka_bin}.\n"
+                    if task["lane"] == "python-go"
+                    else PROMPT_SANKA.format(sanka=sanka_bin)
+                )
             if mode == "with-sanka":
                 assert skill_record is not None
                 prompt += (
@@ -1299,11 +1359,12 @@ def main() -> int:
         agent_started_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         before_agent = _workspace_files(workspace)
         started = time.monotonic()
-        first_target_seconds: float | None = 0.0 if "target_app.py" in before_agent else None
+        target_entrypoint = task["target"]["entrypoint"]
+        first_target_seconds: float | None = 0.0 if target_entrypoint in before_agent else None
 
         def observe_target() -> None:
             nonlocal first_target_seconds
-            if first_target_seconds is None and (workspace / "target_app.py").is_file():
+            if first_target_seconds is None and (workspace / target_entrypoint).is_file():
                 first_target_seconds = round(time.monotonic() - started, 3)
 
         try:
@@ -1316,7 +1377,24 @@ def main() -> int:
                     env, {"SANKA_HOME", "PYTHONPATH", "PYTHONDONTWRITEBYTECODE"}
                 )
                 tool_env["HOME"] = str(claude_config)
+                if task["lane"] == "python-go":
+                    assert args.go_bin is not None
+                    readable.append(args.go_bin.resolve().parent.parent)
+                    tool_env.update(
+                        {
+                            "SANKA_GO_SOURCE_PYTHON": sys.executable,
+                            "GOTOOLCHAIN": "local",
+                            "GOWORK": "off",
+                            "GOCACHE": str(temp_dir / "go-build"),
+                            "GOMODCACHE": str(temp_dir / "go-mod"),
+                        }
+                    )
                 tool_env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + os.defpath
+
+                if task["lane"] == "python-go":
+                    tool_env["PATH"] = (
+                        str(args.go_bin.resolve().parent) + os.pathsep + tool_env["PATH"]
+                    )
 
                 def execute_native(
                     argv: list[str], *, timeout: float
@@ -1341,14 +1419,18 @@ def main() -> int:
                     workspace=workspace,
                     artifacts=artifacts,
                     execute=execute_native,
-                    promote=lambda: _promote_scaffold(
-                        workspace,
-                        workspace
-                        / (
-                            ".sanka/output/flask"
-                            if task["target"]["framework"] == "flask"
-                            else ".sanka/agent-candidate/overlay"
-                        ),
+                    promote=lambda: (
+                        go_lane.promote(workspace)
+                        if task["lane"] == "python-go"
+                        else _promote_scaffold(
+                            workspace,
+                            workspace
+                            / (
+                                ".sanka/output/flask"
+                                if task["target"]["framework"] == "flask"
+                                else ".sanka/agent-candidate/overlay"
+                            ),
+                        )
                     ),
                     sanka=args.sanka_bin.resolve() if mode != "alone" else None,
                     target=task["target"]["framework"],
@@ -1521,7 +1603,7 @@ def main() -> int:
                     after_agent.get(key) == digest for key, digest in generated_files.items()
                 ),
                 "agent_changed_files": len(changed_by_agent),
-                "target_present_before_agent": "target_app.py" in before_agent,
+                "target_present_before_agent": target_entrypoint in before_agent,
             },
             "timing": {
                 "lane_setup_seconds": round(started - lane_started, 6),

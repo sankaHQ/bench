@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any, cast
 
 from sanka_bench.hashing import digest_tree
 from sanka_bench.process import run_command
+from sanka_bench.schema import load_and_validate
 
 
 class DockerEvaluationError(RuntimeError):
@@ -30,7 +32,54 @@ def evaluate_docker(
     root = repository_root()
     task_relative = _relative_to_root(task_dir, root)
     candidate = candidate_dir.resolve()
-    image_tag = _ensure_evaluator_image(root, engine=engine)
+    go_target = load_and_validate(task_dir / "task.yaml", "task")["lane"] == "python-go"
+    go_options: list[str] = []
+    if go_target:
+        platform = os.environ.get("SANKA_BENCH_GO_PLATFORM", "linux/amd64")
+        if platform not in {"linux/amd64", "linux/arm64"}:
+            raise DockerEvaluationError("unsupported Go evaluator platform")
+        image_tag = os.environ.get("SANKA_BENCH_GO_IMAGE", "")
+        if not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", image_tag):
+            raise DockerEvaluationError("Go evaluation requires a prepared, digest-pinned image")
+        revision = run_command(["git", "rev-parse", "HEAD"], cwd=root, timeout=10)
+        label = run_command(
+            [
+                engine,
+                "image",
+                "inspect",
+                "--format",
+                '{{ index .Config.Labels "com.sanka.bench.revision" }}',
+                image_tag,
+            ],
+            cwd=root,
+            timeout=30,
+        )
+        if (
+            not revision.passed
+            or not label.passed
+            or label.stdout.strip() != revision.stdout.strip()
+        ):
+            raise DockerEvaluationError("Go evaluator image does not match this benchmark revision")
+        go_options = [
+            "--platform",
+            platform,
+            "--env",
+            f"SANKA_BENCH_GO_PLATFORM={platform}",
+            "--security-opt",
+            "seccomp=unconfined",
+            "--security-opt",
+            "apparmor=unconfined",
+        ]
+        for name in (
+            "SANKA_BENCH_GO_VERSION",
+            "SANKA_BENCH_FIBER_VERSION",
+            "SANKA_BENCH_SQLITE_VERSION",
+        ):
+            if not os.environ.get(name):
+                raise DockerEvaluationError(f"Go evaluation requires {name}")
+            go_options.extend(["--env", f"{name}={os.environ[name]}"])
+    else:
+        image_tag = _ensure_evaluator_image(root, engine=engine)
 
     # Docker Desktop shares /Users by default, but not macOS's resolved
     # /var/folders temporary path. Keep the bind source inside the repository
@@ -56,15 +105,16 @@ def evaluate_docker(
                 "--pids-limit",
                 "128",
                 "--memory",
-                "1g",
+                "2g" if go_target else "1g",
                 "--cpus",
                 "2",
                 "--tmpfs",
-                "/tmp:rw,nosuid,nodev,size=512m",
+                "/tmp:rw,nosuid,nodev,size=1g" if go_target else "/tmp:rw,nosuid,nodev,size=512m",
                 "--mount",
                 f"type=bind,source={output_root},target=/output",
                 "--mount",
                 f"type=bind,source={candidate},target=/candidate,readonly",
+                *go_options,
                 image_tag,
                 "evaluate",
                 "--runner",
@@ -77,7 +127,7 @@ def evaluate_docker(
                 "/output/result.json",
             ],
             cwd=root,
-            timeout=900,
+            timeout=1800 if go_target else 900,
         )
         if not run.passed:
             detail = run.stderr.strip() or run.stdout.strip()

@@ -10,6 +10,18 @@ import pytest
 from sanka_bench import native_agent as native
 
 
+@pytest.fixture(autouse=True)
+def mock_fireworks_transport(monkeypatch):
+    # Lifecycle tests inject provider responses; transport has its own tests.
+    monkeypatch.setattr(
+        native.Runner,
+        "fireworks_request",
+        lambda self, payload, timeout: native.post(
+            native.ROUTES["fireworks"][0], self.key, payload, timeout
+        ),
+    )
+
+
 def response(provider="openai", *, calls=(), status="completed", model="test-model"):
     if provider == "openai":
         return {
@@ -153,6 +165,31 @@ def cli_response(argv, *, ok=True, **data):
     text = f"sanka-compact/v1 {stage} {'success' if ok else 'error'} within_scope\n"
     text += "\n".join(f"{k}={json.dumps(v)}" for k, v in payload.items())
     return subprocess.CompletedProcess(argv, 0 if ok else 1, text.rstrip(), "")
+
+
+def test_go_lifecycle_uses_sqlite_and_checks_before_promotion(tmp_path, monkeypatch):
+    commands = []
+
+    def execute(argv, **kwargs):
+        commands.append(argv)
+        return cli_response(argv)
+
+    run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    run.target = "fiber"
+
+    def promote():
+        assert [argv[1] for argv in commands] == ["scan", "plan", "apply", "test", "verify"]
+        return {"backend.go": "sha256:generated"}
+
+    monkeypatch.setattr(run, "promote", promote)
+    run.bootstrap_go()
+    plan = commands[1]
+    assert json.loads(plan[plan.index("--extension-config") + 1]) == {
+        "database_layer": "sqlite",
+        "target_framework": "fiber",
+    }
+    assert commands[2][commands[2].index("--plan-hash") + 1] == "sha256:reviewed"
+    assert run.generated == {"backend.go": "sha256:generated"}
 
 
 @pytest.mark.parametrize("target", ["fastapi", "flask"])
@@ -375,8 +412,8 @@ def test_timeout_preserves_billing_and_classifies_deadline(
 
     monkeypatch.setattr(native, "post", post)
     outcome, stats = run.run()
-    assert stats["is_error"] is not deadline_expired
-    assert outcome.returncode == (0 if deadline_expired else 1)
+    assert stats["is_error"] is True
+    assert outcome.returncode == 1
     assert stats["result"] == (
         "wall_clock"
         if deadline_expired
@@ -889,3 +926,23 @@ def test_anthropic_tool_roundtrip_cache_cost_and_missing_usage(tmp_path):
     with pytest.raises(ValueError, match="usage"):
         run.receive(raw)
     assert run.cost() is None
+
+
+def test_budget_feedback_counts_individual_tools_without_growing_history(tmp_path, monkeypatch):
+    run = runner(tmp_path, provider="fireworks", max_turns=5)
+    requests = []
+
+    def post(url, key, payload, timeout):
+        requests.append(payload)
+        return response(
+            "fireworks",
+            calls=[("exec", {"command": "true"}), ("exec", {"command": "true"})]
+            if len(requests) == 1
+            else [],
+        )
+
+    monkeypatch.setattr(native, "post", post)
+    run.run()
+    assert "5 model responses, 5 individual tool calls" in requests[0]["messages"][-1]["content"]
+    assert "4 model responses, 3 individual tool calls" in requests[1]["messages"][-1]["content"]
+    assert not any("Budget remaining:" in str(x) for x in run.history)

@@ -158,6 +158,9 @@
               },
               {
                 "$ref": "#/$defs/nativeEvidence"
+              },
+              {
+                "$ref": "#/$defs/goNativeEvidence"
               }
             ]
           }
@@ -348,6 +351,52 @@
           "type": "number",
           "minimum": 0,
           "maximum": 1
+        }
+      }
+    },
+    "goNativeEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "endpoint_in_workspace",
+        "forbidden_imports",
+        "process_events",
+        "socket_events",
+        "app_is_fiber",
+        "fiber_dispatch_observed",
+        "binary_sha256"
+      ],
+      "properties": {
+        "endpoint_in_workspace": {
+          "type": "boolean"
+        },
+        "forbidden_imports": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "process_events": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "socket_events": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "app_is_fiber": {
+          "type": "boolean"
+        },
+        "fiber_dispatch_observed": {
+          "type": "boolean"
+        },
+        "binary_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       }
     },

@@ -1,0 +1,62 @@
+{
+  "format": "sanka-bench/draft-task/v1",
+  "status": "implemented-unqualified",
+  "id": "python-go-004",
+  "lane": "python-go",
+  "title": "Tenant wallet transfers and idempotency",
+  "source": {
+    "repository": "https://github.com/sankaHQ/bench",
+    "commit": "10860b35a6cf008bad331e33e75e56aa93f7439f",
+    "task": "tasks/drf-flask/drf-flask-004",
+    "path": "tasks/drf-flask/drf-flask-004/source",
+    "framework": "django-rest-framework",
+    "python": "3.12",
+    "license": "Apache-2.0",
+    "digest": "sha256:1b76bee99ca469dd3d19e55adc1747a69f73eba1bf73679d2bda2dc516374cd6",
+    "task_digest": "sha256:7c27a9be97b79de7e0685f31d2d609b3cc0465d5d1ec7d19e7796b57368f2c9c"
+  },
+  "target": {
+    "language": "go",
+    "framework": "fiber",
+    "database": "sqlite",
+    "entrypoint": "cmd/api",
+    "runtime": "compiled Go executable; no Python/Django/DRF serving runtime"
+  },
+  "scenarios": {
+    "public": {
+      "path": "tasks/drf-flask/drf-flask-004/public-tests/scenarios.json",
+      "sha256": "sha256:4a852e0b378644fcbe544fcb616096759d42cc1cb5315bf53690a5d904252029",
+      "count": 8
+    },
+    "evaluation": {
+      "path": "tasks/drf-flask/drf-flask-004/evaluation/scenarios.json",
+      "sha256": "sha256:4b5b062ff348c40832c500acd3476b2a803cfd7c553eb8bde331ce40480e2524",
+      "count": 32
+    }
+  },
+  "acceptance": [
+    "Preserve tenant isolation, decimal amounts, insufficient-funds responses and same-wallet rejection.",
+    "Replay identical idempotency keys without extra debits, transfers or audit rows; reject conflicting reuse.",
+    "Commit both balances, the transfer and its audit record atomically; rejected requests leave state unchanged."
+  ],
+  "evaluation": {
+    "contract": "../README.md#grading-contract",
+    "repeat": 2,
+    "qualification": "not-run",
+    "driver_status": "implemented-not-executed",
+    "controls_status": "implemented-not-executed"
+  },
+  "toolchain": {
+    "cli_version": null,
+    "extension_id": "sanka/python-to-golang",
+    "extension_distribution": "sanka-extension-python-to-golang",
+    "extension_version": null,
+    "go_version": "1.26.5",
+    "fiber_version": "v3.5.0",
+    "sqlite_driver_version": "v1.57.0"
+  },
+  "execution": {
+    "enabled": false,
+    "paid_run_authorized": false
+  }
+}

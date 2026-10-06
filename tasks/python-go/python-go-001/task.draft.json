@@ -1,0 +1,61 @@
+{
+  "format": "sanka-bench/draft-task/v1",
+  "status": "implemented-unqualified",
+  "id": "python-go-001",
+  "lane": "python-go",
+  "title": "CRUD and validation",
+  "source": {
+    "repository": "https://github.com/sankaHQ/bench",
+    "commit": "10860b35a6cf008bad331e33e75e56aa93f7439f",
+    "task": "tasks/drf-fastapi/drf-fastapi-001",
+    "path": "tasks/drf-fastapi/drf-fastapi-001/source",
+    "framework": "django-rest-framework",
+    "python": "3.12",
+    "license": "Apache-2.0",
+    "digest": "sha256:0ce59f6dc6693ac05527598a5589f5d9fc09572fca49742cbb35b6007be85a35",
+    "task_digest": "sha256:847bd92152a3b949a95ae1bdf7be752b0e13c163b7ecab583003d13c5a4921a8"
+  },
+  "target": {
+    "language": "go",
+    "framework": "fiber",
+    "database": "sqlite",
+    "entrypoint": "cmd/api",
+    "runtime": "compiled Go executable; no Python/Django/DRF serving runtime"
+  },
+  "scenarios": {
+    "public": {
+      "path": "tasks/drf-fastapi/drf-fastapi-001/public-tests/scenarios.json",
+      "sha256": "sha256:1abab54046c9b60920c86ea39850dbcc7934641176a2ead4f8ea5869683a3332",
+      "count": 5
+    },
+    "evaluation": {
+      "path": "tasks/drf-fastapi/drf-fastapi-001/public-tests/scenarios.json",
+      "sha256": "sha256:1abab54046c9b60920c86ea39850dbcc7934641176a2ead4f8ea5869683a3332",
+      "count": 5
+    }
+  },
+  "acceptance": [
+    "Preserve list/detail/create/PUT/PATCH/delete responses and missing-object behavior.",
+    "Preserve required name, non-negative quantity, read-only IDs and rejected-write database state."
+  ],
+  "evaluation": {
+    "contract": "../README.md#grading-contract",
+    "repeat": 2,
+    "qualification": "not-run",
+    "driver_status": "implemented-not-executed",
+    "controls_status": "implemented-not-executed"
+  },
+  "toolchain": {
+    "cli_version": null,
+    "extension_id": "sanka/python-to-golang",
+    "extension_distribution": "sanka-extension-python-to-golang",
+    "extension_version": null,
+    "go_version": "1.26.5",
+    "fiber_version": "v3.5.0",
+    "sqlite_driver_version": "v1.57.0"
+  },
+  "execution": {
+    "enabled": false,
+    "paid_run_authorized": false
+  }
+}

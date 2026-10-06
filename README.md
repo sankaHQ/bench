@@ -16,6 +16,9 @@ tools and the Sanka workflow; the evaluator grades every configuration independe
 [Run manifests and recovery](docs/measurement-runs.md) ·
 [Task details](docs/task-catalog.md)
 
+[Python-to-Go tasks](tasks/python-go/README.md) are implemented but unqualified and
+unmeasured. Their separate campaign is disabled and leaves the 17-task results unchanged.
+
 ## Start with one local evaluation
 
 Use Python 3.12 and [uv](https://docs.astral.sh/uv/). Docker or Podman is needed

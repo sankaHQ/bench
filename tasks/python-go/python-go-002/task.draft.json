@@ -1,0 +1,61 @@
+{
+  "format": "sanka-bench/draft-task/v1",
+  "status": "implemented-unqualified",
+  "id": "python-go-002",
+  "lane": "python-go",
+  "title": "Token authentication and object permissions",
+  "source": {
+    "repository": "https://github.com/sankaHQ/bench",
+    "commit": "10860b35a6cf008bad331e33e75e56aa93f7439f",
+    "task": "tasks/drf-fastapi/drf-fastapi-002",
+    "path": "tasks/drf-fastapi/drf-fastapi-002/source",
+    "framework": "django-rest-framework",
+    "python": "3.12",
+    "license": "Apache-2.0",
+    "digest": "sha256:a3f53aebe5b3471fb9b9d1a39ffe970f0b9216730d8b112c95ad8f7f29894939",
+    "task_digest": "sha256:5411f8e93984108e1093a4c7c7b0e77a2af7f56e66841dc83bea2a646b15d1e1"
+  },
+  "target": {
+    "language": "go",
+    "framework": "fiber",
+    "database": "sqlite",
+    "entrypoint": "cmd/api",
+    "runtime": "compiled Go executable; no Python/Django/DRF serving runtime"
+  },
+  "scenarios": {
+    "public": {
+      "path": "tasks/drf-fastapi/drf-fastapi-002/public-tests/scenarios.json",
+      "sha256": "sha256:89bfeb23653189a16a0717ac75af4ddfdadd5e37b8f3583bc874ac7af979f980",
+      "count": 13
+    },
+    "evaluation": {
+      "path": "tasks/drf-fastapi/drf-fastapi-002/public-tests/scenarios.json",
+      "sha256": "sha256:89bfeb23653189a16a0717ac75af4ddfdadd5e37b8f3583bc874ac7af979f980",
+      "count": 13
+    }
+  },
+  "acceptance": [
+    "Reimplement database token authentication in Go; preserve 401/403 bodies and authentication/Allow headers.",
+    "Permit authenticated reads, enforce author-only mutation, bind creation to the authenticated author and preserve denied-write state."
+  ],
+  "evaluation": {
+    "contract": "../README.md#grading-contract",
+    "repeat": 2,
+    "qualification": "not-run",
+    "driver_status": "implemented-not-executed",
+    "controls_status": "implemented-not-executed"
+  },
+  "toolchain": {
+    "cli_version": null,
+    "extension_id": "sanka/python-to-golang",
+    "extension_distribution": "sanka-extension-python-to-golang",
+    "extension_version": null,
+    "go_version": "1.26.5",
+    "fiber_version": "v3.5.0",
+    "sqlite_driver_version": "v1.57.0"
+  },
+  "execution": {
+    "enabled": false,
+    "paid_run_authorized": false
+  }
+}

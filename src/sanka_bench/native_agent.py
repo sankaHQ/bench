@@ -17,7 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-VERSION = "sanka-native/1"
+VERSION = "sanka-native/2"
 ROUTES = {
     "anthropic": ("https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY"),
     "openai": ("https://api.openai.com/v1/responses", "OPENAI_API_KEY"),
@@ -30,7 +30,10 @@ MAX_REPAIRS = 3
 
 
 def version() -> str:
-    return VERSION + "+" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    inputs = (
+        Path(__file__).read_bytes() + Path(__file__).with_name("fireworks_stream.py").read_bytes()
+    )
+    return VERSION + "+" + hashlib.sha256(inputs).hexdigest()
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -312,6 +315,21 @@ class Runner:
                 "HOME",
                 "--extension-env",
                 "TMPDIR",
+                *(
+                    [
+                        item
+                        for name in (
+                            "SANKA_GO_SOURCE_PYTHON",
+                            "GOTOOLCHAIN",
+                            "GOWORK",
+                            "GOCACHE",
+                            "GOMODCACHE",
+                        )
+                        for item in ("--extension-env", name)
+                    ]
+                    if self.target == "fiber"
+                    else []
+                ),
                 "--compact-dsl",
             ],
             phase=stage,
@@ -330,7 +348,7 @@ class Runner:
             raise RuntimeError("invalid lifecycle protocol; inspect saved command output") from None
         ok = outcome.returncode == 0 and data["outcome"] == "success"
         failure_category = None if ok else "infrastructure_failure"
-        if stage == "verify":
+        if stage == "verify" and self.target != "fiber":
             # Coverage is separate from parity: matching all-404 responses is not proof.
             if data.get("error", {}).get("code") == "SANKA_EXTENSION_REPLAY_INVALID" and (
                 (
@@ -398,11 +416,17 @@ class Runner:
             "failure_category": failure_category,
         }
         self.event("lifecycle", stage=stage, ok=ok, result=data, failure_category=failure_category)
-        if stage == "verify" and failure_category == "infrastructure_failure":
+        if (
+            stage == "verify"
+            and self.target != "fiber"
+            and failure_category == "infrastructure_failure"
+        ):
             raise RuntimeError("verification infrastructure failed; inspect saved command output")
         return data, summary
 
     def bootstrap(self) -> str:
+        if self.target == "fiber":
+            return self.bootstrap_go()
         summaries = []
         for stage, arguments in (
             ("scan", ["."]),
@@ -462,6 +486,42 @@ class Runner:
         summaries.append(self.verify(None))
         return "\n".join(summaries)
 
+    def bootstrap_go(self) -> str:
+        """Run the Go extension's own lifecycle before promotion changes source files."""
+        summaries = []
+        for stage, arguments in (
+            ("scan", ["."]),
+            (
+                "plan",
+                [
+                    ".",
+                    "--to",
+                    "fiber",
+                    "--extension-config",
+                    '{"database_layer":"sqlite","target_framework":"fiber"}',
+                ],
+            ),
+        ):
+            _, summary = self.lifecycle(stage, arguments)
+            summaries.append(summary)
+            if not self.stages[stage]["ok"]:
+                return "\n".join(summaries)
+        plan_hash = self.stages["plan"]["data"].get("plan_hash")
+        if not isinstance(plan_hash, str) or not plan_hash.startswith("sha256:"):
+            raise ValueError("Go plan did not return a reviewed core plan hash")
+        _, summary = self.lifecycle("apply", ["--root", ".", "--plan-hash", plan_hash])
+        summaries.append(summary)
+        if self.stages["apply"]["ok"]:
+            for stage in ("test", "verify"):
+                _, summary = self.lifecycle(stage, [".", "--to", "fiber"])
+                summaries.append(summary)
+            self.generated = self.promote()
+        summaries.append(
+            "Go extension checks are advisory; repair the root Go candidate against public "
+            "scenarios, then finish. The independent benchmark grades the frozen candidate."
+        )
+        return "\n".join(summaries)
+
     def verify(self, seed: str | None) -> str:
         if seed is not None:
             path = (self.workspace / seed).resolve()
@@ -499,7 +559,7 @@ class Runner:
         return summary
 
     def payload(self) -> dict[str, Any]:
-        specs = tools(self.sanka is not None)
+        specs = tools(self.sanka is not None and self.target != "fiber")
         if self.provider == "anthropic" and not self.exchange:
             from sanka_bench.anthropic_api import payload
 
@@ -546,8 +606,23 @@ class Runner:
             + self.cache_write_input_tokens * self.price_in * 0.25
         ) / 1_000_000
 
+    def fireworks_request(self, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
+        from sanka_bench.fireworks_stream import complete
+
+        return complete(payload, self.key, timeout, self.event)
+
     def request(self) -> dict[str, Any]:
+        # A fresh status replaces the previous one; never grow history with stale budgets.
+        status = (
+            f"Budget remaining: {self.max_turns - self.turns} model responses, "
+            f"{self.max_turns - self.tool_calls} individual tool calls, "
+            f"{max(0, int(self.deadline - time.monotonic()))} seconds. "
+            "Each tool in a multi-tool response counts separately. "
+            "Leave runnable files before the budget ends."
+        )
         payload = self.payload()
+        history_key = "input" if self.provider == "openai" else "messages"
+        payload[history_key] = [*payload[history_key], {"role": "user", "content": status}]
         size = len(json.dumps(payload).encode())
         if size > self.max_context_bytes:
             raise BudgetReached("context_bytes")
@@ -578,6 +653,8 @@ class Runner:
                 result = (
                     self.exchange(self)
                     if self.exchange
+                    else self.fireworks_request(payload, timeout)
+                    if self.provider == "fireworks"
                     else post(ROUTES[self.provider][0], self.key, payload, timeout)
                 )
                 self.turns += 1
@@ -757,7 +834,12 @@ class Runner:
                 self.verified = False  # Never reuse verification after an arbitrary command.
                 self.verification_summary = None
                 return self.command(["/bin/sh", "-c", command])[1]
-            if call["name"] == "verify" and self.sanka and set(arguments) == {"seed"}:
+            if (
+                call["name"] == "verify"
+                and self.sanka
+                and self.target != "fiber"
+                and set(arguments) == {"seed"}
+            ):
                 seed = arguments["seed"]
                 if seed is not None and not isinstance(seed, str):
                     raise ValueError("seed must be a path or null")
@@ -787,7 +869,7 @@ class Runner:
             provider=self.provider,
             model=self.model,
             effort=self.effort,
-            tools=tools(self.sanka is not None),
+            tools=tools(self.sanka is not None and self.target != "fiber"),
         )
         try:
             if self.sanka:
@@ -796,12 +878,16 @@ class Runner:
                     {
                         "role": "user",
                         "content": (
-                            "Sanka results follow. Reuse generated files; repair only gaps. "
-                            "Do not repeat scan/plan/apply. The scaffold test result is retained. "
-                            "Call the verify tool after repairs, not exec with a shell verify "
-                            "command. Public replay is not a benchmark score. "
-                            "If scenarios need initial rows, create a "
-                            "seed from source/public information and pass its path to verify.\n"
+                            (
+                                "Go lifecycle results follow. Repair the module, then finish. "
+                                if self.target == "fiber"
+                                else "Reuse generated Sanka files; repair only gaps. "
+                                "Do not repeat scan/plan/apply; scaffold tests are retained. "
+                                "Call the verify tool after repairs, not exec with a shell verify "
+                                "command. Public replay is not a benchmark score. "
+                                "If scenarios need initial rows, create a "
+                                "seed from source/public information and pass its path to verify.\n"
+                            )
                             + summary
                         ),
                     }
@@ -810,10 +896,12 @@ class Runner:
                 reason = "verified"
             else:
                 for _ in range(self.max_turns):
+                    if self.tool_calls >= self.max_turns:
+                        raise BudgetReached("tool_calls")
                     self.remaining()
                     calls = self.receive(self.request())
                     if not calls:
-                        if self.sanka and not self.verified:
+                        if self.sanka and not self.verified and self.target != "fiber":
                             summary = self.dispatch(
                                 {"name": "verify", "arguments": json.dumps({"seed": self.seed})}
                             )
@@ -863,6 +951,9 @@ class Runner:
                     reason = "model_turns"
         except BudgetReached as exc:
             reason = str(exc)
+            # A deadline during an unreturned provider request is infrastructure failure,
+            # not a successfully generated candidate that merely used its time budget.
+            error = not self.usage_complete
         except KeyboardInterrupt:
             reason, error = "interrupted", True
             raise

@@ -46,6 +46,38 @@ def test_api_adapters_reject_subscription_billing_before_starting(
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
 
+def test_go_extension_setup_rejects_a_stale_cached_lock(harness, monkeypatch, tmp_path):
+    from sanka_bench.go_lane import EXTENSION, release_pins
+
+    pins = release_pins()
+    record = {
+        "id": EXTENSION,
+        "version": pins["extension_version"],
+        "snapshot_digest": pins["marketplace_commit"],
+        "manifest_digest": pins["manifest_digest"],
+        "enabled": True,
+        "commands": ["scan", "plan", "apply", "test", "verify"],
+    }
+    commands = []
+
+    def command(argv, **kwargs):
+        commands.append(argv)
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"data": {"records": [record]}}), "")
+
+    monkeypatch.setattr(harness, "_run_sanka_command", command)
+    arguments = {
+        "workspace": tmp_path,
+        "env": {},
+        "framework": "fiber",
+        "marketplace_revision": pins["marketplace_commit"],
+    }
+    assert harness._enable_sanka_extension(Path("/sanka"), **arguments) == record["commands"]
+    assert commands[0][commands[0].index("--revision") + 1] == pins["marketplace_commit"]
+    record["version"] = "0.1.0a16"
+    with pytest.raises(ValueError, match="extension lock"):
+        harness._enable_sanka_extension(Path("/sanka"), **arguments)
+
+
 def test_isolated_environment_drops_host_secrets_and_global_tool_path() -> None:
     source = {
         "HOME": "/Users/bench",

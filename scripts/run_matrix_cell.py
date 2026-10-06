@@ -256,6 +256,10 @@ def _armed_path(manifest: dict[str, Any], key: str) -> Path:
 
 
 def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -> dict[str, Path]:
+    if cell.task_id.startswith("python-go-"):
+        from sanka_bench.go_lane import validate_campaign
+
+        validate_campaign(manifest, execution=True)
     expected_sha = str(manifest["benchmark_sha"])
     if not re.fullmatch(r"[0-9a-f]{40}", expected_sha):
         raise ValueError("manifest benchmark SHA is not armed")
@@ -337,13 +341,15 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
 
 
 def sanka_versions(
-    sanka_bin: Path, distribution: str = DRF_EXTENSION_DISTRIBUTION
+    sanka_bin: Path, distribution: str | None = DRF_EXTENSION_DISTRIBUTION
 ) -> tuple[str, str]:
     """(`sanka --version`, installed DRF extension version) for the pinned runtime env."""
     env = isolated_environment(os.environ)
     version = subprocess.run(
         [str(sanka_bin), "--version"], capture_output=True, text=True, check=False, env=env
     ).stdout.strip()
+    if distribution is None:
+        return version, ""
     python = sanka_bin.parent / "python"
     probe = subprocess.run(
         [
@@ -362,15 +368,30 @@ def sanka_versions(
 def check_sanka_toolchain(manifest: dict[str, Any], sanka_bin: Path) -> dict[str, str]:
     """The run measures exactly the Sanka the manifest names; anything else aborts."""
     targets = {str(task).rsplit("-", 1)[0] for task in manifest["suite"]["tasks"]}
-    if len(targets) != 1 or not targets <= {"drf-fastapi", "drf-flask"}:
+    if len(targets) != 1 or not targets <= {"drf-fastapi", "drf-flask", "python-go"}:
         raise ValueError("Sanka toolchain requires one supported migration lane")
     framework = next(iter(targets)).removeprefix("drf-")
-    distribution = f"sanka-extension-drf-to-{framework}"
-    version, extension = sanka_versions(sanka_bin, distribution)
+    distribution = (
+        "sanka-extension-python-to-golang"
+        if framework == "python-go"
+        else f"sanka-extension-drf-to-{framework}"
+    )
+    version, extension = sanka_versions(
+        sanka_bin, None if framework == "python-go" else distribution
+    )
     expected_cli = str(manifest["toolchain"].get("sanka_cli", ""))
     expected_extension = str(manifest["toolchain"].get("extension_version", ""))
     if not expected_cli or version != expected_cli:
         raise ValueError(f"sanka CLI mismatch: expected {expected_cli!r}, got {version!r}")
+    if framework == "python-go":
+        from sanka_bench.go_lane import release_pins, verify_installed_wheels
+
+        pins = release_pins()
+        if version != pins["sanka_cli"] or expected_extension != pins["extension_version"]:
+            raise ValueError("Go campaign must use the selected CLI and extension release")
+        verify_installed_wheels(sanka_bin, manifest["toolchain"]["wheel_hashes"])
+        # Extension installation and lock readback happen in each isolated workspace.
+        return {"sanka_cli": version, "selected_extension_version": expected_extension}
     if not expected_extension or extension != expected_extension:
         raise ValueError(
             f"{distribution} mismatch: expected {expected_extension!r}, "
@@ -385,8 +406,17 @@ def prepare_sanka_home(manifest: dict[str, Any], paths: Paths, sanka_bin: Path) 
     paths.sanka_home.mkdir(parents=True, exist_ok=True)
     env = isolated_environment(os.environ)
     env["SANKA_HOME"] = str(paths.sanka_home)
+    go_lane = any(str(task).startswith("python-go-") for task in manifest["suite"]["tasks"])
     added = subprocess.run(
-        [str(sanka_bin), "extension", "marketplace", "add", OFFICIAL_MARKETPLACE, "--json"],
+        [
+            str(sanka_bin),
+            "extension",
+            "marketplace",
+            "add",
+            OFFICIAL_MARKETPLACE,
+            *(["--revision", manifest["toolchain"]["marketplace_commit"]] if go_lane else []),
+            "--json",
+        ],
         cwd=paths.root,
         env=env,
         stdin=subprocess.DEVNULL,
@@ -417,6 +447,8 @@ def prepare_sanka_home(manifest: dict[str, Any], paths: Paths, sanka_bin: Path) 
         ),
         None,
     )
+    if go_lane and snapshot != manifest["toolchain"]["marketplace_commit"]:
+        raise ValueError("prepared marketplace snapshot does not match its immutable revision")
     record = {
         "prepared_at": utc_now(),
         "sanka_home": str(paths.sanka_home),
@@ -505,6 +537,10 @@ def generation_command(
         "--provider",
         cell.provider,
     ]
+    if cell.task_id.startswith("python-go-"):
+        command.extend(["--go-bin", str(manifest["go_toolchain"]["go_bin"])])
+        if cell.uses_sanka:
+            command.extend(["--marketplace-revision", manifest["toolchain"]["marketplace_commit"]])
     if cell.agent != "sanka-native":
         command.extend(
             ["--agent-bin", str(tools["claude"] if cell.agent == "claude-code" else tools["codex"])]
@@ -596,6 +632,17 @@ def evaluation_command(
 
 def evaluation_environment(manifest: dict[str, Any]) -> dict[str, str]:
     environment = isolated_environment(os.environ)
+    if any(str(task).startswith("python-go-") for task in manifest["suite"]["tasks"]):
+        environment["SANKA_BENCH_GO_PLATFORM"] = manifest["go_toolchain"].get(
+            "platform", "linux/amd64"
+        )
+        for name, key in (
+            ("SANKA_BENCH_GO_IMAGE", "evaluator_image"),
+            ("SANKA_BENCH_GO_VERSION", "go_version"),
+            ("SANKA_BENCH_FIBER_VERSION", "fiber_version"),
+            ("SANKA_BENCH_SQLITE_VERSION", "sqlite_version"),
+        ):
+            environment[name] = str(manifest["go_toolchain"][key])
     engine = str(manifest["execution"].get("container_engine") or "docker")
     executable = shutil.which(engine)
     if executable is None:

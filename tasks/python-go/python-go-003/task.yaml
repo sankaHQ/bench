@@ -1,0 +1,46 @@
+schema_version: sanka-bench/task/v0.3
+id: python-go-003
+lane: python-go
+source:
+  path: source
+  framework: django-rest-framework
+  python: '3.12'
+  provenance:
+    kind: synthetic
+    license: Apache-2.0
+    digest: sha256:40f1aac4ed46aba3e2e348bf6f45fcd75f697625948136af08999080d9a54b7f
+target:
+  framework: fiber
+  language: go
+  database: sqlite
+  orm: none
+  entrypoint: cmd/api/main.go
+  serving:
+    forbidden_imports:
+    - python
+    - django
+    - rest_framework
+  static_patterns:
+    required:
+    - package main
+    forbidden:
+    - os/exec
+    - net/http/httputil
+commands:
+  regression:
+  - - '{python}'
+    - manage.py
+    - test
+    - orders
+    - --verbosity
+    - '0'
+  target_regression:
+  - - go
+    - build
+    - -mod=readonly
+    - ./...
+evaluation:
+  driver: evaluation/driver.py
+  scenarios: evaluation/scenarios.json
+  repeat: 2
+  timeout_seconds: 120
