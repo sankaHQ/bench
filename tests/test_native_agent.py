@@ -398,9 +398,9 @@ def test_full_tool_output_survives_context_truncation(tmp_path):
 
 
 @pytest.mark.parametrize("deadline_expired", [False, True])
-@pytest.mark.parametrize("wrapped", [False, True])
+@pytest.mark.parametrize("error_type", [TimeoutError, urllib.error.URLError, OSError, ValueError])
 def test_timeout_preserves_billing_and_classifies_deadline(
-    tmp_path, monkeypatch, deadline_expired, wrapped
+    tmp_path, monkeypatch, deadline_expired, error_type
 ):
     run = runner(tmp_path, price_in=1, price_out=1)
 
@@ -408,19 +408,17 @@ def test_timeout_preserves_billing_and_classifies_deadline(
         if deadline_expired:
             run.deadline = 0
         error = TimeoutError("response lost")
-        raise urllib.error.URLError(error) if wrapped else error
+        raise error_type(error)
 
     monkeypatch.setattr(native, "post", post)
     outcome, stats = run.run()
-    assert stats["is_error"] is True
-    assert outcome.returncode == 1
+    assert stats["is_error"] is (not deadline_expired)
+    assert outcome.returncode == int(not deadline_expired)
+    assert stats["failure_category"] == (None if deadline_expired else "infrastructure_failure")
     assert stats["result"] == (
-        "wall_clock"
-        if deadline_expired
-        else "provider_or_runner_error:URLError"
-        if wrapped
-        else "provider_or_runner_error:TimeoutError"
+        "wall_clock" if deadline_expired else f"provider_or_runner_error:{error_type.__name__}"
     )
+    assert stats["usage_complete"] is False
     assert stats["cost_usd"] is None and stats["total_tokens"] is None
     assert stats["work"]["provider_api_requests"] == 1
     assert stats["work"]["provider_retries"] == 0
