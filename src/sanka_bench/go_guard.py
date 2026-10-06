@@ -192,7 +192,7 @@ def prepare(workspace: Path, output: Path) -> Path:
         raise ValueError("Go native-dispatch witness does not match the pinned Linux platform")
     architecture = platform.split("/")[1]
     _bounded([go, "mod", "verify"], cwd=workspace, env=env, timeout=120)
-    _bounded([go, "build", "./..."], cwd=workspace, env=env, timeout=120)
+    _bounded([go, "build", "-trimpath", "./..."], cwd=workspace, env=env, timeout=120)
     _bounded(
         [go, "build", "-trimpath", "-o", str(output / "api"), "./cmd/api"],
         cwd=workspace,
@@ -306,10 +306,6 @@ def request(
             "--bind",
             str(database.parent),
             "/database",
-            "--proc",
-            "/proc",
-            "--dev",
-            "/dev",
             "--tmpfs",
             "/tmp",
             "--chdir",
