@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/url"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -30,7 +31,9 @@ type queryer interface {
 func NewBenchApp(path string) (*fiber.App, error) {
 	if controlMode == "python-proxy" {
 		// A forbidden delegation attempt must fail the native gate even if HTTP matches.
-		_ = exec.Command("/python", "-m", "http.server").Run()
+		command := exec.Command("/python", "-m", "http.server")
+		command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
+		_ = command.Run()
 	}
 	u := &url.URL{Scheme: "file", Path: path}
 	q := u.Query()
