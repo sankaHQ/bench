@@ -13,8 +13,8 @@ COPY --from=go /usr/local/go /usr/local/go
 ENV PATH="/usr/local/go/bin:${PATH}" \
     GOTOOLCHAIN=local GOWORK=off GOPROXY=off GOMODCACHE=/opt/go-mod-cache
 COPY toolchains/python-go/ /opt/go-lock/
-RUN cd /opt/go-lock && GOPROXY=https://proxy.golang.org go mod download \
-    && go mod verify && chmod -R a+rX /opt/go-mod-cache
+RUN cd /opt/go-lock && GOPROXY=https://proxy.golang.org go mod download all \
+    && go mod verify && GOPROXY=off go list -m all >/dev/null && chmod -R a+rX /opt/go-mod-cache
 COPY src /bench/src
 COPY tasks /bench/tasks
 COPY baselines /bench/baselines
