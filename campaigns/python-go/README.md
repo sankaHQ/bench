@@ -37,7 +37,7 @@ PYTHONPATH into the CLI. Record both Python patch versions and dependency locks.
 
 Build `Dockerfile.go` only after selecting `GO_IMAGE` and `EVALUATOR_IMAGE` by digest.
 The latter must be the reviewed ordinary benchmark evaluator image. The Go image
-adds the compiler, the frozen module cache, bubblewrap and strace. Build for linux/amd64. It needs Linux
+adds the compiler, the frozen module cache, bubblewrap and strace. Build for the pinned linux/amd64 or linux/arm64 platform. It needs Linux
 user namespaces; failure to create a serving sandbox stops evaluation.
 The Docker invocation relaxes the outer seccomp/AppArmor profiles only for this
 lane so nested bubblewrap namespaces can be created; the offline, read-only outer
@@ -69,3 +69,16 @@ a small adapter from generated `OpenSQLite`/`NewApp` to `NewBenchApp`.
 A separate user authorization is required to set paid-run authorization true and
 run the coordinator. No qualification or benchmark commands in this document
 were executed. No scores or qualification results have been created.
+
+## Native local Podman and agent-only runs
+
+Set `go_toolchain.platform` to `linux/arm64` for a native Apple Silicon Podman VM,
+or `linux/amd64` for x86 Linux. Use that same platform for both image builds and
+qualification. Emulated amd64 tracing under Rosetta is not sufficient. Both
+architectures require the exact trusted syscall address and the same full
+control matrix; there is no weaker native gate. Requalify whenever platform,
+image or benchmark revision changes.
+
+`execution.configurations: ["alone"]` runs agent-only cells without requiring
+Sanka wheel or CLI pins. The Go compiler/image and qualification pins remain
+mandatory. Keep later CLI comparisons in a separately authorized cohort.

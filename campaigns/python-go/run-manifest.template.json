@@ -47,7 +47,8 @@
     "go_version": "1.26.5",
     "fiber_version": "v3.5.0",
     "sqlite_version": "v1.57.0",
-    "evaluator_image": null
+    "evaluator_image": null,
+    "platform": "linux/amd64"
   },
   "go_qualification": {
     "path": null,

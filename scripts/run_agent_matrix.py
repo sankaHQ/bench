@@ -388,12 +388,13 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
 
         validate_campaign(manifest, execution=False)
     if manifest["execution"].get("configurations") not in (
+        ["alone"],
         ["alone", "with-sanka"],
         ["alone", "sanka-cli"],
         ["alone", "sanka-cli", "with-sanka"],
     ):
         raise ValueError(
-            "official v2 configurations must be alone paired with sanka-cli or with-sanka, "
+            "official v2 configurations must be alone, alone paired with sanka-cli or with-sanka, "
             "or the three-arm ablation"
         )
     if any(

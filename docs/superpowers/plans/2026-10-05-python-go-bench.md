@@ -9,7 +9,7 @@ with authorization to prepare **without running the benchmark**.
   33 scenarios are public to candidates. Historical 17-task trees and results
   remain unchanged. See [task contracts](../../../tasks/python-go/README.md).
 - Go/Fiber/SQLite schema, build and serving driver, independent state comparisons,
-  bounded process cleanup and a Linux/amd64 sandboxed test-client probe.
+  bounded process cleanup and a Linux/amd64 or Linux/arm64 sandboxed test-client probe.
 - Native harness extension selection, Go lifecycle, artifact promotion and public
   adapter. Test/Verify from the extension are advisory; independent grading owns
   the verdict. Generation ends completed_unverified until that grading occurs.
@@ -41,7 +41,7 @@ means successful compilation; scenario parity supplies the behavioral checks.
    3.12 patch versions and resolved dependency locks. Follow the campaign guide
    for separate CLI/source environments. Keep historical requirements-sanka.txt
    (CLI 0.2.7) unchanged.
-3. Build the dedicated Linux/amd64 evaluator with digest-pinned GO_IMAGE and
+3. Build the dedicated Linux/amd64 or Linux/arm64 evaluator with digest-pinned GO_IMAGE and
    EVALUATOR_IMAGE and the exact BENCH_SHA label. Freeze its resulting digest.
    User namespaces and external syscall tracing must work on the selected engine.
 4. Explicitly authorize and run the unscored qualification described in the

@@ -633,6 +633,9 @@ def evaluation_command(
 def evaluation_environment(manifest: dict[str, Any]) -> dict[str, str]:
     environment = isolated_environment(os.environ)
     if any(str(task).startswith("python-go-") for task in manifest["suite"]["tasks"]):
+        environment["SANKA_BENCH_GO_PLATFORM"] = manifest["go_toolchain"].get(
+            "platform", "linux/amd64"
+        )
         for name, key in (
             ("SANKA_BENCH_GO_IMAGE", "evaluator_image"),
             ("SANKA_BENCH_GO_VERSION", "go_version"),

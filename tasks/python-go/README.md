@@ -48,7 +48,7 @@ connections are observed by an external strace; attempts fail native grading.
 Native evidence comes from a dedicated syscall in the trusted probe after Fiber
 App.Test and response serialization, with a response digest and independently
 observed instruction address. Candidate stdout alone cannot attest dispatch.
-This requires Linux/amd64, non-PIE output and working user namespaces. It is a
+This requires Linux/amd64 or Linux/arm64, non-PIE output and working user namespaces. It is a
 benchmark harness, not a security boundary against arbitrary unsafe native-code
 control-flow hijacking. Unsupported sandbox/tracing environments fail closed.
 

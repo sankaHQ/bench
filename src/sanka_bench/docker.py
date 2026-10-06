@@ -35,6 +35,9 @@ def evaluate_docker(
     go_target = load_and_validate(task_dir / "task.yaml", "task")["lane"] == "python-go"
     go_options: list[str] = []
     if go_target:
+        platform = os.environ.get("SANKA_BENCH_GO_PLATFORM", "linux/amd64")
+        if platform not in {"linux/amd64", "linux/arm64"}:
+            raise DockerEvaluationError("unsupported Go evaluator platform")
         image_tag = os.environ.get("SANKA_BENCH_GO_IMAGE", "")
         if not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", image_tag):
             raise DockerEvaluationError("Go evaluation requires a prepared, digest-pinned image")
@@ -59,7 +62,9 @@ def evaluate_docker(
             raise DockerEvaluationError("Go evaluator image does not match this benchmark revision")
         go_options = [
             "--platform",
-            "linux/amd64",
+            platform,
+            "--env",
+            f"SANKA_BENCH_GO_PLATFORM={platform}",
             "--security-opt",
             "seccomp=unconfined",
             "--security-opt",

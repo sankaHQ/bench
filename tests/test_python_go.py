@@ -9,6 +9,25 @@ import pytest
 from sanka_bench.schema import SchemaError, load_and_validate, validate_payload
 
 
+def test_native_witness_pc_supports_both_linux_architectures() -> None:
+    from sanka_bench.go_guard import witness_pc
+
+    assert witness_pc("  0x412345  0f05  SYSCALL", "amd64") == 0x412347
+    assert witness_pc("  0x412340  d4000001  SVC $0", "arm64") == 0x412344
+    for code, architecture in (("", "arm64"), ("0x1234 0f05 SYSCALL", "arm64")):
+        with pytest.raises(ValueError, match="witness syscall"):
+            witness_pc(code, architecture)
+
+
+def test_go_agent_only_campaign_is_supported() -> None:
+    from sanka_bench.go_lane import TASKS, validate_campaign
+
+    validate_campaign(
+        {"suite": {"tasks": list(TASKS)}, "execution": {"configurations": ["alone"], "samples": 1}},
+        execution=False,
+    )
+
+
 def test_go_contract_rejects_python_target_and_escaping_entrypoint(repository_root: Path) -> None:
     path = repository_root / "tasks/python-go/python-go-001/task.yaml"
     task = load_and_validate(path, "task")

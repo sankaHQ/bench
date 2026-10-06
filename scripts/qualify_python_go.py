@@ -24,6 +24,7 @@ def qualify(root: Path, output: Path, pins: dict[str, Any], engine: str) -> None
         raise ValueError("qualification requires a clean, reviewed benchmark checkout")
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
     output.mkdir(parents=True)
+    os.environ["SANKA_BENCH_GO_PLATFORM"] = pins.get("platform", "linux/amd64")
     for key, name in (
         ("go_version", "SANKA_BENCH_GO_VERSION"),
         ("fiber_version", "SANKA_BENCH_FIBER_VERSION"),

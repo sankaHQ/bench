@@ -75,8 +75,9 @@ func main() {
 """
 
 # A dedicated syscall lets the external tracer distinguish the trusted probe's
-# post-dispatch witness from candidate stdout. Linux/amd64 is the frozen platform.
-WITNESS = """#include "textflag.h"
+# post-dispatch witness from candidate stdout on the campaign's pinned platform.
+WITNESS = {
+    "amd64": """#include "textflag.h"
 TEXT ·benchWitness(SB),NOSPLIT,$0-24
     MOVQ $1, AX
     MOVQ $1, DI
@@ -84,7 +85,28 @@ TEXT ·benchWitness(SB),NOSPLIT,$0-24
     MOVQ data_len+8(FP), DX
     SYSCALL
     RET
-"""
+""",
+    "arm64": """#include "textflag.h"
+TEXT ·benchWitness(SB),NOSPLIT,$0-24
+    MOVD $64, R8
+    MOVD $1, R0
+    MOVD data_base+0(FP), R1
+    MOVD data_len+8(FP), R2
+    SVC
+    RET
+""",
+}
+
+
+def witness_pc(instructions: str, architecture: str) -> int:
+    patterns = {"amd64": (r"0f05\s+SYSCALL", 2), "arm64": (r"d4000001\s+SVC", 4)}
+    if architecture not in patterns:
+        raise ValueError("unsupported native witness syscall architecture")
+    opcode, size = patterns[architecture]
+    addresses = re.findall(r"\b0x([0-9a-f]+)\s+" + opcode + r"\b", instructions)
+    if len(addresses) != 1:
+        raise ValueError("trusted dispatch witness syscall is missing or ambiguous")
+    return int(addresses[0], 16) + size
 
 
 def _bounded(argv: list[str], *, cwd: Path, env: dict[str, str], timeout: int) -> str:
@@ -165,8 +187,10 @@ def prepare(workspace: Path, output: Path) -> Path:
     expected_go = os.environ.get("SANKA_BENCH_GO_VERSION")
     if not expected_go or f" go{expected_go} " not in version:
         raise ValueError("Go compiler does not match the pinned evaluator")
-    if not version.strip().endswith("linux/amd64"):
-        raise ValueError("Go native-dispatch witness requires Linux/amd64")
+    platform = os.environ.get("SANKA_BENCH_GO_PLATFORM", "linux/amd64")
+    if platform not in {"linux/amd64", "linux/arm64"} or not version.strip().endswith(platform):
+        raise ValueError("Go native-dispatch witness does not match the pinned Linux platform")
+    architecture = platform.split("/")[1]
     _bounded([go, "mod", "verify"], cwd=workspace, env=env, timeout=120)
     _bounded([go, "build", "./..."], cwd=workspace, env=env, timeout=120)
     _bounded(
@@ -181,7 +205,7 @@ def prepare(workspace: Path, output: Path) -> Path:
     probe_dir.mkdir(parents=True)
     try:
         (probe_dir / "main.go").write_text(PROBE.replace("MODULE", module))
-        (probe_dir / "witness_amd64.s").write_text(WITNESS)
+        (probe_dir / f"witness_{architecture}.s").write_text(WITNESS[architecture])
         binary = output / "probe"
         _bounded(
             [
@@ -203,13 +227,10 @@ def prepare(workspace: Path, output: Path) -> Path:
             env=env,
             timeout=30,
         )
-        addresses = re.findall(r"\b0x([0-9a-f]+)\s+0f05\s+SYSCALL\b", instructions)
-        if len(addresses) != 1:
-            raise ValueError("trusted dispatch witness syscall is missing or ambiguous")
         binary.with_suffix(".witness.json").write_text(
             json.dumps(
                 {
-                    "pc": int(addresses[0], 16) + 2,
+                    "pc": witness_pc(instructions, architecture),
                 }
             )
         )

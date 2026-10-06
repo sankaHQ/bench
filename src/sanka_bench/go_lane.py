@@ -108,8 +108,13 @@ def validate_campaign(manifest: dict[str, Any], *, execution: bool) -> None:
     if tasks != list(TASKS):
         raise ValueError("Python-to-Go campaign requires exactly the four ordered Go task IDs")
     config = manifest.get("execution", {})
-    if config.get("configurations") != ["alone", "sanka-cli"] or config.get("samples", 1) != 1:
-        raise ValueError("Python-to-Go requires alone/sanka-cli and one pass@1 sample")
+    if (
+        config.get("configurations") not in (["alone"], ["alone", "sanka-cli"])
+        or config.get("samples", 1) != 1
+    ):
+        raise ValueError(
+            "Python-to-Go requires agent-only or alone/sanka-cli and one pass@1 sample"
+        )
     if not execution:
         return
     if (
@@ -152,6 +157,8 @@ def validate_campaign(manifest: dict[str, Any], *, execution: bool) -> None:
         if "sha256:" + hashlib.sha256(report.read_bytes()).hexdigest() != item["report_sha256"]:
             raise ValueError("Go qualification report changed")
     pins = manifest.get("go_toolchain", {})
+    if pins.get("platform", "linux/amd64") not in {"linux/amd64", "linux/arm64"}:
+        raise ValueError("Go evaluator platform must be Linux amd64 or arm64")
     for key, value in {
         "go_version": "1.26.5",
         "fiber_version": "v3.5.0",
@@ -169,6 +176,8 @@ def validate_campaign(manifest: dict[str, Any], *, execution: bool) -> None:
         raise ValueError("Go generation compiler requires an absolute binary path")
     if "sha256:" + hashlib.sha256(compiler.read_bytes()).hexdigest() != pins.get("go_bin_sha256"):
         raise ValueError("Go generation compiler digest mismatch")
+    if config["configurations"] == ["alone"]:
+        return  # No Sanka runtime is offered or required in the agent-only arm.
     toolchain = manifest.get("toolchain", {})
     release = release_pins()
     for key in ("sanka_cli", "extension_version", "marketplace_commit"):
