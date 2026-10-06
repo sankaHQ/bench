@@ -242,10 +242,24 @@ def prepare(workspace: Path, output: Path) -> Path:
 def trace_violations(trace: str) -> tuple[list[str], list[str]]:
     processes, sockets = [], []
     started = False
+    pending: set[str] = set()
     for line in trace.splitlines():
         if not started:
-            if 'execve("/target",' in line and line.endswith("= 0"):
-                started = True
+            event = re.fullmatch(r"\s*(\d+)\s+(?:\[[^\]]+\]\s+)?(.*)", line)
+            if not event:
+                continue
+            thread, call = event.groups()
+            if call.startswith("execve("):
+                pending.discard(thread)
+                if call.startswith('execve("/target",'):
+                    if call.endswith("= 0"):
+                        started = True
+                    elif call.endswith(" <unfinished ...>"):
+                        pending.add(thread)
+            elif call.startswith("<... execve resumed>"):
+                # Successful exec changes address space; match PID, not instruction PC.
+                started = thread in pending and call.endswith("= 0")
+                pending.discard(thread)
             continue
         if re.search(r"\b(execve|execveat|fork|vfork)\(", line) or (
             re.search(r"\bclone3?\(", line) and "CLONE_THREAD" not in line
