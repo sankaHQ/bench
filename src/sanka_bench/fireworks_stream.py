@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import socket
+import ssl
 import threading
 import time
 import urllib.error
@@ -21,6 +22,7 @@ def complete(
     # No environment proxies or redirect following; credentials stay on this host.
     connection = http.client.HTTPSConnection("api.fireworks.ai", timeout=min(timeout, 120))
     transport_socket = None
+    phase = "connect"
 
     def cancel() -> None:
         active = transport_socket or connection.sock
@@ -36,10 +38,23 @@ def complete(
     try:
         # DNS resolution follows the host resolver timeout. Never send a paid
         # request if connection establishment consumed the wall budget.
-        connection.connect()
+        for attempt in range(2):
+            try:
+                connection.connect()
+                break
+            except (ssl.SSLEOFError, ConnectionResetError, TimeoutError) as exc:
+                # No HTTP bytes were sent: one reconnect cannot duplicate inference.
+                if attempt or time.monotonic() >= deadline:
+                    raise
+                connection.close()
+                event("provider_connection_retry", category=type(exc).__name__)
+                connection = http.client.HTTPSConnection(
+                    "api.fireworks.ai", timeout=min(deadline - time.monotonic(), 120)
+                )
         if time.monotonic() >= deadline:
             raise TimeoutError("connection exceeded wall deadline")
         connection.sock.settimeout(min(deadline - time.monotonic(), 120))
+        phase = "send"
         connection.request(
             "POST",
             "/inference/v1/chat/completions",
@@ -47,6 +62,7 @@ def complete(
             {"Authorization": "Bearer " + key, "Content-Type": "application/json"},
         )
         transport_socket = connection.sock
+        phase = "headers"
         response = connection.getresponse()
         if response.status != 200:
             raise urllib.error.HTTPError(
@@ -58,10 +74,27 @@ def complete(
             )
         if "text/event-stream" not in response.getheader("Content-Type", ""):
             raise ValueError("provider did not return an event stream")
+        phase = "stream"
         with response:
             return read_stream(response, transport_socket, deadline, started, event)
-    except (http.client.HTTPException, KeyError, TypeError, AttributeError):
-        raise ValueError("provider HTTP stream interrupted or malformed") from None
+    except (
+        OSError,
+        ValueError,
+        http.client.HTTPException,
+        KeyError,
+        TypeError,
+        AttributeError,
+    ) as exc:
+        event(
+            "provider_transport_error",
+            phase=phase,
+            category=type(exc).__name__,
+            request_may_have_been_sent=phase != "connect",
+            request_elapsed_seconds=time.monotonic() - started,
+        )
+        if isinstance(exc, (http.client.HTTPException, KeyError, TypeError, AttributeError)):
+            raise ValueError("provider HTTP stream interrupted or malformed") from None
+        raise
     finally:
         timer.cancel()
         timer.join()
