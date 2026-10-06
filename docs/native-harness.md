@@ -23,9 +23,11 @@ and frozen candidates are never repaired or overwritten.
 - Fireworks uses SSE and assembles complete tool arguments before dispatch.
   Safe progress events record bytes, chunks and elapsed time, not credentials
   or partial arguments. Complete terminal usage is required; interrupted or
-  malformed responses keep final usage/cost unknown and are infrastructure
-  failures, including when the overall wall deadline expires. Only explicit
-  429 rejections retain the existing bounded retry policy.
+  malformed responses keep final usage/cost unknown. An idle timeout before
+  the task deadline is an infrastructure failure. At the task wall deadline,
+  freeze the files already produced and grade them under the unchanged gates;
+  incomplete billing remains unknown and no partial tool arguments execute.
+  Only explicit 429 rejections retain the existing bounded retry policy.
 - Active connections have a 120-second idle limit and wall-deadline socket
   cancellation. DNS resolution follows the host resolver timeout; if connection
   establishment outlasts the wall budget, no inference request is sent.

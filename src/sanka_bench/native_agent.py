@@ -694,6 +694,7 @@ class Runner:
                 raise
             except (OSError, ValueError):
                 self.usage_complete = False  # ambiguous response: never claim zero billed tokens
+                self.remaining()  # Deadline cancellation may surface as EOF or a closed socket.
                 raise
             except KeyboardInterrupt:
                 self.usage_complete = False
@@ -951,9 +952,9 @@ class Runner:
                     reason = "model_turns"
         except BudgetReached as exc:
             reason = str(exc)
-            # A deadline during an unreturned provider request is infrastructure failure,
-            # not a successfully generated candidate that merely used its time budget.
-            error = not self.usage_complete
+            # Billing completeness is independent of candidate grading: freeze work
+            # at our wall deadline even if the final response has unknown usage.
+            error = not self.usage_complete and reason != "wall_clock"
         except KeyboardInterrupt:
             reason, error = "interrupted", True
             raise

@@ -97,8 +97,9 @@ def test_isolated_environment_drops_host_secrets_and_global_tool_path() -> None:
     }
 
 
+@pytest.mark.parametrize("deadline_expired", [False, True])
 def test_native_adapter_freezes_candidate_without_claude_or_exposing_keys(
-    harness, tmp_path, monkeypatch
+    harness, tmp_path, monkeypatch, deadline_expired
 ):
     import shlex
 
@@ -143,6 +144,10 @@ def test_native_adapter_freezes_candidate_without_claude_or_exposing_keys(
         assert key == "native-test-key"
         assert payload["reasoning"]["effort"] == "high"
         requests.append(payload)
+        if deadline_expired and len(requests) == 2:
+            expired = native_agent.time.monotonic() + 10000
+            monkeypatch.setattr(native_agent.time, "monotonic", lambda: expired)
+            raise TimeoutError("task deadline during a response")
         return {
             "model": "test-model",
             "status": "completed",
@@ -164,7 +169,8 @@ def test_native_adapter_freezes_candidate_without_claude_or_exposing_keys(
     assert (out / "overlay/target_app.py").is_file()
     assert hidden.read_text() == "not visible"
     data = json.loads((out / "telemetry.json").read_text())
-    assert data["harness"] == "sanka-native" and data["usage"]["total_tokens"] == 24
+    assert data["harness"] == "sanka-native"
+    assert data["usage"]["total_tokens"] == (None if deadline_expired else 24)
     assert data["work"]["provider_api_requests"] == 2 and data["work"]["tool_calls"] == 1
     load_and_validate(out / "candidate.yaml", "candidate")
     assert "native-test-key" not in (out / "native/events.jsonl").read_text()
