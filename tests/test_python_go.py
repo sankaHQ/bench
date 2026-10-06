@@ -80,6 +80,17 @@ def test_dispatch_witness_rejects_candidate_stdout_and_duplicate_witnesses() -> 
     assert not dispatch_witness(forged, response, {"pc": 0x412345})
     assert not dispatch_witness("", response, {"pc": 0x412345})
     assert not dispatch_witness(trusted * 2, response, {"pc": 0x412345})
+    split = trusted.replace(
+        f") = {len(marker) + 1}",
+        " <unfinished ...>\n1 [0000000000412345] <... write resumed>) = " + str(len(marker) + 1),
+    )
+    assert dispatch_witness(split, response, {"pc": 0x412345})
+    assert not dispatch_witness(split.replace("\n1 [", "\n2 ["), response, {"pc": 0x412345})
+    assert not dispatch_witness(
+        split.replace("\n1 [0000000000412345]", "\n1 [0000000000500000]"),
+        response,
+        {"pc": 0x412345},
+    )
 
 
 def test_go_freeze_promotes_module_without_python_entrypoint(tmp_path: Path) -> None:

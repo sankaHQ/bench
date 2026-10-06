@@ -261,7 +261,19 @@ def trace_violations(trace: str) -> tuple[list[str], list[str]]:
 def dispatch_witness(trace: str, response: str, symbol: dict[str, int]) -> bool:
     marker = "SANKA_BENCH_ATTEST=" + hashlib.sha256(response.encode()).hexdigest()
     matches = 0
+    pending: dict[str, tuple[str, str]] = {}
     for line in trace.splitlines():
+        event = re.fullmatch(r"(\d+)\s+\[([0-9a-f]+)\]\s+(.*)", line)
+        if event:
+            thread, pc, call = event.groups()
+            if call.startswith("write(") and call.endswith(" <unfinished ...>"):
+                pending[thread] = (pc, call.removesuffix(" <unfinished ...>"))
+                continue
+            if call.startswith("<... write resumed>"):
+                start = pending.pop(thread, None)
+                if start is None or start[0] != pc:
+                    continue
+                line = f"[{pc}] {start[1]}{call.removeprefix('<... write resumed>')}"
         address = re.search(r"\[([0-9a-f]+)\]", line)
         if (
             address
