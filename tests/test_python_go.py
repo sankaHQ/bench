@@ -174,3 +174,26 @@ def test_go_multi_request_evidence_preserves_earlier_violations() -> None:
     assert merged["process_events"] == ["attempt"]
     schema = load_schema("result")["$defs"]["goNativeEvidence"]
     assert not list(Draft202012Validator(schema).iter_errors(merged))
+
+
+def test_go_trace_accepts_split_target_exec_but_keeps_delegation_guard() -> None:
+    from sanka_bench.go_guard import trace_violations
+
+    start = '12 [aaaa] execve("/target", ["/target"], 0x0 <unfinished ...>\n'
+    resume = "12 [bbbb] <... execve resumed>) = 0\n"
+    trace = start + "13 [cccc] wait4(12,  <unfinished ...>\n" + resume
+    assert trace_violations(trace) == ([], [])
+    for invalid in [
+        start,
+        resume,
+        start + resume.replace("12 [", "14 ["),
+        start + resume.replace("= 0", "= -1 ENOENT"),
+        start.replace("/target", "/other") + resume,
+        start + resume.replace("= 0", "= -1 ENOENT") + resume,
+        "12 [aaaa] write(1, 'execve(\"/target\", ...) = 0', 30) = 0\n",
+    ]:
+        assert trace_violations(invalid)[0] == ["target execution was not observed"]
+    assert trace_violations(trace + "12 clone(flags=CLONE_VM|CLONE_THREAD) = 15\n") == ([], [])
+    assert trace_violations(trace + '12 execve("/target", [], []) = -1 EPERM\n')[0]
+    assert trace_violations(trace + "12 fork( <unfinished ...>\n")[0]
+    assert trace_violations(trace + "12 connect(3, {}, 16 <unfinished ...>\n")[1]
