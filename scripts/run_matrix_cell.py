@@ -341,13 +341,15 @@ def validate_prerequisites(manifest: dict[str, Any], cell: Cell, paths: Paths) -
 
 
 def sanka_versions(
-    sanka_bin: Path, distribution: str = DRF_EXTENSION_DISTRIBUTION
+    sanka_bin: Path, distribution: str | None = DRF_EXTENSION_DISTRIBUTION
 ) -> tuple[str, str]:
     """(`sanka --version`, installed DRF extension version) for the pinned runtime env."""
     env = isolated_environment(os.environ)
     version = subprocess.run(
         [str(sanka_bin), "--version"], capture_output=True, text=True, check=False, env=env
     ).stdout.strip()
+    if distribution is None:
+        return version, ""
     python = sanka_bin.parent / "python"
     probe = subprocess.run(
         [
@@ -374,21 +376,28 @@ def check_sanka_toolchain(manifest: dict[str, Any], sanka_bin: Path) -> dict[str
         if framework == "python-go"
         else f"sanka-extension-drf-to-{framework}"
     )
-    version, extension = sanka_versions(sanka_bin, distribution)
+    version, extension = sanka_versions(
+        sanka_bin, None if framework == "python-go" else distribution
+    )
     expected_cli = str(manifest["toolchain"].get("sanka_cli", ""))
     expected_extension = str(manifest["toolchain"].get("extension_version", ""))
     if not expected_cli or version != expected_cli:
         raise ValueError(f"sanka CLI mismatch: expected {expected_cli!r}, got {version!r}")
+    if framework == "python-go":
+        from sanka_bench.go_lane import release_pins, verify_installed_wheels
+
+        pins = release_pins()
+        if version != pins["sanka_cli"] or expected_extension != pins["extension_version"]:
+            raise ValueError("Go campaign must use the selected CLI and extension release")
+        verify_installed_wheels(sanka_bin, manifest["toolchain"]["wheel_hashes"])
+        # Extension installation and lock readback happen in each isolated workspace.
+        return {"sanka_cli": version, "selected_extension_version": expected_extension}
     if not expected_extension or extension != expected_extension:
         raise ValueError(
             f"{distribution} mismatch: expected {expected_extension!r}, "
             f"installed {extension!r} (uv sync removes ad-hoc wheels; reinstall the "
             "release wheels into the runtime environment)"
         )
-    if framework == "python-go":
-        from sanka_bench.go_lane import verify_installed_wheels
-
-        verify_installed_wheels(sanka_bin, manifest["toolchain"]["wheel_hashes"])
     return {"sanka_cli": version, "extension_version": extension}
 
 

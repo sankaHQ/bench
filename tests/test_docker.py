@@ -51,11 +51,15 @@ def test_evaluator_image_uses_the_selected_container_engine(
 def test_podman_evaluator_mounts_a_candidate_outside_the_repository(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    repository_root: Path,
 ) -> None:
     root = tmp_path / "bench"
     task = root / "tasks" / "task-1"
     candidate = tmp_path / "run" / "candidate"
     task.mkdir(parents=True)
+    (task / "task.yaml").write_bytes(
+        (repository_root / "tasks/drf-fastapi/drf-fastapi-001/task.yaml").read_bytes()
+    )
     candidate.mkdir(parents=True)
     calls: list[list[str]] = []
     monkeypatch.setattr(docker, "repository_root", lambda: root)

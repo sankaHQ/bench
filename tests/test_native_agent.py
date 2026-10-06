@@ -155,6 +155,31 @@ def cli_response(argv, *, ok=True, **data):
     return subprocess.CompletedProcess(argv, 0 if ok else 1, text.rstrip(), "")
 
 
+def test_go_lifecycle_uses_sqlite_and_checks_before_promotion(tmp_path, monkeypatch):
+    commands = []
+
+    def execute(argv, **kwargs):
+        commands.append(argv)
+        return cli_response(argv)
+
+    run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    run.target = "fiber"
+
+    def promote():
+        assert [argv[1] for argv in commands] == ["scan", "plan", "apply", "test", "verify"]
+        return {"backend.go": "sha256:generated"}
+
+    monkeypatch.setattr(run, "promote", promote)
+    run.bootstrap_go()
+    plan = commands[1]
+    assert json.loads(plan[plan.index("--extension-config") + 1]) == {
+        "database_layer": "sqlite",
+        "target_framework": "fiber",
+    }
+    assert commands[2][commands[2].index("--plan-hash") + 1] == "sha256:reviewed"
+    assert run.generated == {"backend.go": "sha256:generated"}
+
+
 @pytest.mark.parametrize("target", ["fastapi", "flask"])
 def test_full_lifecycle_requires_no_model_call_when_verified(tmp_path, monkeypatch, target):
     commands = []

@@ -55,9 +55,9 @@
   },
   "toolchain": {
     "sanka_bin": null,
-    "sanka_cli": null,
-    "extension_version": null,
-    "marketplace_commit": null,
+    "sanka_cli": "sanka 0.3.9",
+    "extension_version": "0.1.0a17",
+    "marketplace_commit": "191bdaf9a92f567e74ac0af0b253b99e99158a4c",
     "wheel_hashes": {},
     "env_path": null,
     "native_bin_sha256": null,

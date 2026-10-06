@@ -86,3 +86,38 @@ def test_go_scenario_copies_preserve_pinned_bytes(repository_root: Path) -> None
             assert (actual / "scenarios.json").read_bytes() == (
                 repository_root / reference["path"]
             ).read_bytes()
+
+
+def test_go_extension_lock_requires_the_exact_release() -> None:
+    from sanka_bench.go_lane import EXTENSION, release_pins, validate_extension_lock
+
+    pins = release_pins()
+    record = {
+        "id": EXTENSION,
+        "version": pins["extension_version"],
+        "snapshot_digest": pins["marketplace_commit"],
+        "manifest_digest": pins["manifest_digest"],
+        "enabled": True,
+    }
+    validate_extension_lock(record, pins["marketplace_commit"])
+    for key in record:
+        changed = {**record, key: None}
+        with pytest.raises(ValueError, match="extension lock"):
+            validate_extension_lock(changed, pins["marketplace_commit"])
+    with pytest.raises(ValueError, match="extension lock"):
+        validate_extension_lock(record, "f" * 40)
+
+
+def test_go_template_pins_releases_but_keeps_execution_disabled(repository_root: Path) -> None:
+    from sanka_bench.go_lane import release_pins, validate_campaign
+
+    manifest = json.loads(
+        (repository_root / "campaigns/python-go/run-manifest.template.json").read_text()
+    )
+    for key in ("sanka_cli", "extension_version", "marketplace_commit"):
+        assert manifest["toolchain"][key] == release_pins()[key]
+    assert manifest["authorization"]["paid_run_authorized"] is False
+    assert manifest["models"] == []
+    validate_campaign(manifest, execution=False)
+    with pytest.raises(ValueError, match="qualification"):
+        validate_campaign(manifest, execution=True)

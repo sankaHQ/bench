@@ -520,9 +520,15 @@ def _enable_sanka_extension(
     records = _cli_data(enabled.stdout).get("records")
     for record in records if isinstance(records, list) else []:
         if isinstance(record, dict) and record.get("id") == extension_id:
+            if framework == "fiber":
+                from sanka_bench.go_lane import validate_extension_lock
+
+                validate_extension_lock(record, marketplace_revision)
             commands = record.get("commands")
             if isinstance(commands, list) and all(isinstance(item, str) for item in commands):
                 return commands
+    if framework == "fiber":
+        raise ValueError("Sanka did not return the installed Go extension lock")
     return []
 
 

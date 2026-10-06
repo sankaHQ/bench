@@ -1,6 +1,7 @@
 # Python-to-Go benchmark implementation and deferred run plan
 
-Updated 2026-10-05 after authorization to implement **without running**.
+Updated 2026-10-06 for CLI 0.3.9 and Python-to-Go extension 0.1.0a17,
+with authorization to prepare **without running the benchmark**.
 
 ## Implemented locally
 
@@ -13,11 +14,12 @@ Updated 2026-10-05 after authorization to implement **without running**.
   adapter. Test/Verify from the extension are advisory; independent grading owns
   the verdict. Generation ends completed_unverified until that grading occurs.
 - Equal dependency locks in both arms, exact four-task admission, CLI/extension/SDK
-  wheel payload checks, immutable marketplace revision and image/SHA qualification.
+  wheel hashes, installed CLI payload checks, exact cached-extension lock readback,
+  immutable marketplace revision and image/SHA qualification.
 - Independently authored native reference, negative controls and an explicitly
   invoked qualification script. No positive outcome has been assumed.
 - Incomplete [campaign template](../../../campaigns/python-go/run-manifest.template.json),
-  with authorization false and no models or invented Sanka release pins.
+  with authorization false, no models, and verified selected release pins.
 - Separate sanka-public preview: Python → Go — Not run, with historical versions
   and the existing Flask upload-rerun exception. It adds no result rows or scores.
 
@@ -29,13 +31,16 @@ means successful compilation; scenario parity supplies the behavioral checks.
 
 ## Still required before execution
 
-1. Review and land the final source. Complete ordinary focused/CI runtime checks
-   when authorized; none ran during this implementation. Fix any findings without
-   weakening scenarios, then freeze the reviewed benchmark commit.
-2. Select newer immutable Sanka CLI, Python-to-Go extension and SDK wheels. Record
-   versions, wheel hashes, marketplace commit, harness binaries and Python locks.
-   Keep historical requirements-sanka.txt (CLI 0.2.7) unchanged. Confirm the release
-   still implements the inspected Scan/Plan/Apply/Test/Verify and artifact contract.
+1. Review and land the final source, then freeze the reviewed benchmark commit.
+   Static and mocked preparation checks are separate from runtime qualification.
+2. Use the selected [release lock](../../../src/sanka_bench/python_go_release.json):
+   CLI 0.3.9, Python-to-Go a17 from api-converters-v0.1.0a17, extension SDK a4,
+   connector SDK a12, code migration a4 and HTTP replay a2. Downloaded wheel
+   hashes, marketplace manifest, lifecycle configuration and generated adapter
+   signatures were inspected. Record host wheel paths, harness binaries, Python
+   3.12 patch versions and resolved dependency locks. Follow the campaign guide
+   for separate CLI/source environments. Keep historical requirements-sanka.txt
+   (CLI 0.2.7) unchanged.
 3. Build the dedicated Linux/amd64 evaluator with digest-pinned GO_IMAGE and
    EVALUATOR_IMAGE and the exact BENCH_SHA label. Freeze its resulting digest.
    User namespaces and external syscall tracing must work on the selected engine.
@@ -62,7 +67,9 @@ means successful compilation; scenario parity supplies the behavioral checks.
 
 The original inspected bench base is 10860b35a6cf008bad331e33e75e56aa93f7439f.
 Destination dependency locks came from extensions commit
-10fb419e67b9f524406d999d4e3883494c3be8ce; that is **not** a selected Sanka release.
+10fb419e67b9f524406d999d4e3883494c3be8ce and match the selected a17 release
+wheel byte for byte. The selected marketplace commit is
+191bdaf9a92f567e74ac0af0b253b99e99158a4c.
 The historical September 12 results record CLI 0.2.7 and extensions 0.1.0a16,
 except eight drf-flask-002 CLI upload reruns at unreleased extension commit
 c1d60b4b4bd26778dd56e85331e4a5cedfbd03a6. Preserve that exception.
@@ -87,16 +94,27 @@ required before publication. Local implementation is not a published benchmark.
 
 ## Validation boundary
 
-Only static provenance/schema, syntax, lint, type and design checks are permitted
-for this implementation request. Written runtime tests, reference controls, Go
-builds, containers, source/target apps, migrations and model calls remain unrun.
-Do not report qualification, test execution or operational readiness as passed.
+Preparation uses static provenance/schema, syntax, lint and type checks plus
+focused pure or mocked unit tests. No source/target applications, migrations,
+Go compilation, container builds, qualification controls or model calls were
+launched. The four tasks and reference implementation remain **unqualified**.
 
-Static checks completed: provenance and scenario copies verified; schema validation
-accepted 21 tasks, 64 candidate definitions and three schemas; repository Ruff
-format/lint and focused mypy (eight changed source files) passed; Python AST and
-Go/gofmt syntax passed. Historical task/result/toolchain files have no diff.
-The public page's design-token check passed. Full mypy could not complete because
-the existing environment lacks Flask/Werkzeug; TSX compilation was unavailable
-because TypeScript is absent. No dependencies were installed to bypass that hold.
-Runtime tests, Go compilation, container builds and browser checks remain pending.
+The initial PR's ordinary GitHub CI passed the 17 historical local and Docker
+fixture shards; its unit job failed because a mocked Docker fixture omitted
+task.yaml. That fixture is corrected without invoking Docker locally. Static
+review also found and fixed the old assumption that the extension is installed
+inside the CLI environment: CLI 0.3.9 owns a separate sealed extension runtime.
+The preflight now checks the CLI payload and each candidate setup validates the
+exact released extension lock. No historical scored results were rerun or changed.
+
+Focused preparation checks cover task schemas and copied scenarios, campaign
+execution holds, native witness rejection, generated-file promotion, release
+lock matching, mocked Docker calls, and mocked Go lifecycle ordering. Published
+release files were downloaded and inspected, without installation or execution.
+The website remains a separate draft PR; no page has been deployed here.
+
+Latest preparation validation: 42 focused pure/mocked tests passed; all 21 task
+manifests, 64 candidate definitions and three schemas validated; provenance,
+repository Ruff lint/format and focused go_lane mypy passed. Independent static
+review reported no additional actionable findings. These checks do not qualify
+the runtime or establish migration quality.

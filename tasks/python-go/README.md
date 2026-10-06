@@ -59,11 +59,13 @@ runs. No unsupported scenario may be deleted to improve results.
 
 ## Execution hold
 
-New Sanka CLI and extension releases, models, budgets and evaluator image digest
-remain unselected. Destination dependency locks are already frozen; changing them
+Sanka CLI 0.3.9 and Python-to-Go extension 0.1.0a17 are selected in the
+[release lock](../../src/sanka_bench/python_go_release.json). Models, budgets,
+host paths and evaluator image digest remain unselected.
+Destination dependency locks are already frozen; changing them
 requires changing the public contract and requalifying. Runtime wheel payloads
-must match the pinned CLI, Python-to-Go extension and SDK wheels. Marketplace
-installation uses an immutable revision.
+must match all six pinned release wheels. Marketplace installation uses an
+immutable revision and the returned extension lock is checked before generation.
 
 See the [implementation/run plan](../../docs/superpowers/plans/2026-10-05-python-go-bench.md)
 and [campaign instructions](../../campaigns/python-go/README.md). Do not run the

@@ -531,6 +531,30 @@ def test_flask_lane_selects_its_own_extension_distribution(driver, monkeypatch):
     assert observed == ["sanka-extension-drf-to-flask"]
 
 
+def test_go_preflight_does_not_require_extensions_in_cli_environment(driver, monkeypatch):
+    from sanka_bench import go_lane
+
+    manifest = _manifest(samples=1)
+    manifest["suite"]["tasks"] = list(go_lane.TASKS)
+    manifest["toolchain"].update(
+        sanka_cli="sanka 0.3.9", extension_version="0.1.0a17", wheel_hashes={}
+    )
+    observed = []
+
+    def versions(binary, distribution):
+        assert distribution is None  # Extension wheels live in the CLI-managed cache.
+        return "sanka 0.3.9", ""
+
+    monkeypatch.setattr(driver, "sanka_versions", versions)
+    monkeypatch.setattr(
+        go_lane, "verify_installed_wheels", lambda binary, wheels: observed.append(binary)
+    )
+    binary = Path("/tools/sanka")
+    result = driver.check_sanka_toolchain(manifest, binary)
+    assert observed == [binary]
+    assert result == {"sanka_cli": "sanka 0.3.9", "selected_extension_version": "0.1.0a17"}
+
+
 def test_codex_openai_route_only_inherits_platform_key_and_explicit_effort(
     driver: object, tmp_path: Path
 ) -> None:

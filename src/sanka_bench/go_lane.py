@@ -15,8 +15,31 @@ from typing import Any
 TASKS = tuple(f"python-go-{index:03d}" for index in range(1, 5))
 EXTENSION = "sanka/python-to-golang"
 DISTRIBUTION = "sanka-extension-python-to-golang"
-REQUIRED_WHEELS = {"sanka-cli", DISTRIBUTION, "sanka-extension-sdk"}
 ARTIFACT = ".sanka/extensions/sanka/python-to-golang/golang"
+
+
+def release_pins() -> dict[str, Any]:
+    pins: dict[str, Any] = json.loads(
+        Path(__file__).with_name("python_go_release.json").read_text()
+    )
+    return pins
+
+
+def validate_extension_lock(record: dict[str, Any], revision: str | None) -> None:
+    """Bind the CLI-managed, hash-verified environment to the selected release."""
+    pins = release_pins()
+    if revision != pins["marketplace_commit"] or any(
+        record.get(key) != value
+        for key, value in {
+            "id": EXTENSION,
+            "version": pins["extension_version"],
+            "snapshot_digest": revision,
+            "manifest_digest": pins["manifest_digest"],
+            "enabled": True,
+        }.items()
+    ):
+        raise ValueError("installed Go extension lock differs from the selected release")
+
 
 PROMPT = """Migrate the supplied DRF application to native Go/Fiber v3 and SQLite.
 Keep source files intact. Preserve responses, JSON types, selected headers, database
@@ -147,11 +170,25 @@ def validate_campaign(manifest: dict[str, Any], *, execution: bool) -> None:
     if "sha256:" + hashlib.sha256(compiler.read_bytes()).hexdigest() != pins.get("go_bin_sha256"):
         raise ValueError("Go generation compiler digest mismatch")
     toolchain = manifest.get("toolchain", {})
+    release = release_pins()
+    for key in ("sanka_cli", "extension_version", "marketplace_commit"):
+        if toolchain.get(key) != release[key]:
+            raise ValueError(f"Go campaign {key} differs from the selected release")
     if not re.fullmatch(r"[0-9a-f]{40}", str(toolchain.get("marketplace_commit", ""))):
         raise ValueError("Go campaign requires an immutable marketplace commit")
     wheels = toolchain.get("wheel_hashes", {})
     if not wheels:
         raise ValueError("Go campaign requires CLI, extension and SDK wheel hashes")
+    expected_wheels = {
+        item["filename"]: item["sha256"]
+        for item in release["artifacts"]
+        if item["filename"].endswith(".whl")
+    }
+    if (
+        len(wheels) != len(expected_wheels)
+        or {Path(path).name: digest for path, digest in wheels.items()} != expected_wheels
+    ):
+        raise ValueError("Go wheel pins must match the complete selected release")
     identities = set()
     for filename, expected_hash in wheels.items():
         wheel = Path(filename)
@@ -168,14 +205,17 @@ def validate_campaign(manifest: dict[str, Any], *, execution: bool) -> None:
             if identity in identities:
                 raise ValueError("duplicate wheel distribution")
             identities.add(identity)
-    if not identities >= REQUIRED_WHEELS:
-        raise ValueError(
-            "wheel pins must include sanka-cli, Python-to-Go extension and extension SDK"
-        )
 
 
 def verify_installed_wheels(sanka_bin: Path, wheels: dict[str, str]) -> None:
-    """Compare actual runtime files with pinned wheel payloads in the CLI interpreter."""
+    """Check CLI payload; the CLI seals extension payloads in its separate cache."""
+    cli = next(
+        item for item in release_pins()["artifacts"] if item["filename"].startswith("sanka_cli-")
+    )
+    if [digest for path, digest in wheels.items() if Path(path).name == cli["filename"]] != [
+        cli["sha256"]
+    ]:
+        raise ValueError("installed CLI check requires its selected release wheel")
     script = """
 import hashlib, importlib.metadata as metadata, json, pathlib, sys, zipfile
 from email.parser import BytesParser
@@ -186,6 +226,8 @@ for filename, expected in json.loads(sys.argv[1]).items():
         names = archive.namelist()
         info = next(name for name in names if name.endswith(".dist-info/METADATA"))
         package = BytesParser().parsebytes(archive.read(info))["Name"]
+        if package != "sanka-cli":
+            continue
         installed = metadata.distribution(package)
         roots, expected_files = set(), set()
         for name in names:
