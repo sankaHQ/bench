@@ -55,7 +55,15 @@ Fiber App.Test, and observes persistent state independently. It supplies no
 Python interpreter or external network inside the Go serving sandbox.
 Candidate assembly, object files and go:linkname directives are forbidden.
 Use DATABASE_URL for the standalone server and PORT for its port.
-{grading_scope} One attempt; {max_turns} turns and {wall_seconds} seconds maximum.
+{grading_scope}
+Execution budget: at most {max_turns} model responses AND {max_turns} individual
+tool calls, and {wall_seconds} seconds. Multiple tools in one response each count.
+Create a bootable cmd/api/main.go and NewBenchApp early, within roughly the first
+sixth of the tool budget. Implement and compare public scenarios incrementally;
+reserve the final sixth for build checks and repairs. Improve a running candidate
+instead of investigating every possible edge case before writing any Go code.
+Use the supplied Python interpreter ({python}) to inspect source behavior.
+Leave the best runnable candidate at the budget limit. One attempt only.
 """
 
 ADAPTER = """// SPDX-License-Identifier: Apache-2.0

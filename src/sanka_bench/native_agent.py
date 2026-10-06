@@ -17,7 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-VERSION = "sanka-native/1"
+VERSION = "sanka-native/2"
 ROUTES = {
     "anthropic": ("https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY"),
     "openai": ("https://api.openai.com/v1/responses", "OPENAI_API_KEY"),
@@ -30,7 +30,10 @@ MAX_REPAIRS = 3
 
 
 def version() -> str:
-    return VERSION + "+" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    inputs = (
+        Path(__file__).read_bytes() + Path(__file__).with_name("fireworks_stream.py").read_bytes()
+    )
+    return VERSION + "+" + hashlib.sha256(inputs).hexdigest()
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -603,8 +606,23 @@ class Runner:
             + self.cache_write_input_tokens * self.price_in * 0.25
         ) / 1_000_000
 
+    def fireworks_request(self, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
+        from sanka_bench.fireworks_stream import complete
+
+        return complete(payload, self.key, timeout, self.event)
+
     def request(self) -> dict[str, Any]:
+        # A fresh status replaces the previous one; never grow history with stale budgets.
+        status = (
+            f"Budget remaining: {self.max_turns - self.turns} model responses, "
+            f"{self.max_turns - self.tool_calls} individual tool calls, "
+            f"{max(0, int(self.deadline - time.monotonic()))} seconds. "
+            "Each tool in a multi-tool response counts separately. "
+            "Leave runnable files before the budget ends."
+        )
         payload = self.payload()
+        history_key = "input" if self.provider == "openai" else "messages"
+        payload[history_key] = [*payload[history_key], {"role": "user", "content": status}]
         size = len(json.dumps(payload).encode())
         if size > self.max_context_bytes:
             raise BudgetReached("context_bytes")
@@ -635,6 +653,8 @@ class Runner:
                 result = (
                     self.exchange(self)
                     if self.exchange
+                    else self.fireworks_request(payload, timeout)
+                    if self.provider == "fireworks"
                     else post(ROUTES[self.provider][0], self.key, payload, timeout)
                 )
                 self.turns += 1
@@ -876,6 +896,8 @@ class Runner:
                 reason = "verified"
             else:
                 for _ in range(self.max_turns):
+                    if self.tool_calls >= self.max_turns:
+                        raise BudgetReached("tool_calls")
                     self.remaining()
                     calls = self.receive(self.request())
                     if not calls:
@@ -929,6 +951,9 @@ class Runner:
                     reason = "model_turns"
         except BudgetReached as exc:
             reason = str(exc)
+            # A deadline during an unreturned provider request is infrastructure failure,
+            # not a successfully generated candidate that merely used its time budget.
+            error = not self.usage_complete
         except KeyboardInterrupt:
             reason, error = "interrupted", True
             raise

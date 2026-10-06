@@ -615,6 +615,11 @@ def validate_official_manifest(manifest: dict[str, Any], root: Path) -> None:
             and evidence.get("reasoning_effort") != model["reasoning_effort"]
         ):
             raise ValueError("qualification reasoning effort does not match the manifest")
+        if harness == "sanka-native" and agent_version.startswith("sanka-native/2+"):
+            limits = evidence.get("stats", {}).get("limits", {})
+            for name, default in (("max_output_tokens", 8192), ("max_context_bytes", 120000)):
+                if limits.get(name) != manifest["execution"].get(name, default):
+                    raise ValueError(f"qualification {name} differs from campaign settings")
         if harness == "codex":
             if evidence.get("reasoning_effort") != model["reasoning_effort"]:
                 raise ValueError("qualification reasoning effort does not match the manifest")

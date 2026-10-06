@@ -209,6 +209,16 @@ def test_native_matrix_pins_route_effort_and_runner(tmp_path, provider, route):
     path.write_text(json.dumps(evidence))
     model["qualification_sha256"] = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
     validate_official_manifest(value, tmp_path)
+    value["toolchain"]["native_version"] = "sanka-native/2+test"
+    evidence["native"]["version"] = "sanka-native/2+test"
+    evidence["stats"] = {"limits": {"max_output_tokens": 8192, "max_context_bytes": 120000}}
+    path.write_text(json.dumps(evidence))
+    model["qualification_sha256"] = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    validate_official_manifest(value, tmp_path)
+    value["execution"]["max_output_tokens"] = 32768
+    with pytest.raises(ValueError, match="qualification max_output_tokens"):
+        validate_official_manifest(value, tmp_path)
+    value["execution"].pop("max_output_tokens")
     model.update(price_in=1, price_out=2, price_cached=0.1)
     validate_official_manifest(value, tmp_path)
     for invalid in (-1, float("nan"), float("inf"), True, 2):

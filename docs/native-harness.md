@@ -8,6 +8,39 @@ and `--agent codex` remain available to reproduce historical runs.
 Only the harness changes. Tasks, public/hidden scenarios, candidate schema,
 grader, pass@1 definition, and existing scores are unchanged.
 
+## Native harness v2 run recovery
+
+Use a new run directory and fresh route qualifications for `sanka-native/2`.
+The version fingerprint includes the Fireworks transport. Existing pass@1 records
+and frozen candidates are never repaired or overwritten.
+
+- Go instructions now require an early bootable `cmd/api/main.go` and
+  `NewBenchApp`, followed by incremental public-scenario verification. Both
+  the model-response and individual-tool-call caps are explicit.
+- Direct API requests include fresh remaining response/tool/time budgets.
+  No extra request is sent after the tool budget expires. Managed subscription
+  transports keep their existing feedback behavior.
+- Fireworks uses SSE and assembles complete tool arguments before dispatch.
+  Safe progress events record bytes, chunks and elapsed time, not credentials
+  or partial arguments. Complete terminal usage is required; interrupted or
+  malformed responses keep final usage/cost unknown and are infrastructure
+  failures, including when the overall wall deadline expires. Only explicit
+  429 rejections retain the existing bounded retry policy.
+- Active connections have a 120-second idle limit and wall-deadline socket
+  cancellation. DNS resolution follows the host resolver timeout; if connection
+  establishment outlasts the wall budget, no inference request is sent.
+- New v2 admission rejects qualifications whose output/context limits differ
+  from the campaign. Pass the same `--max-output-tokens` and
+  `--max-context-bytes` to qualification and candidate execution.
+
+A tiny route probe establishes protocol compatibility, not long-request
+reliability. Before another four-way GLM wave, run one separately authorized,
+representative coding qualification at the intended settings and inspect its
+stream timing and terminal usage. Changing reasoning, token/tool budgets, or
+prompts creates a new experiment; it does not replace earlier results. Offline
+transport tests do not establish that provider timeouts or model-quality
+failures are resolved.
+
 ## Execution
 
 Both Sanka arms run `scan → plan → apply → test → verify` automatically.
