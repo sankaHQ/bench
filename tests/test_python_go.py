@@ -151,3 +151,26 @@ def test_go_template_pins_releases_but_keeps_execution_disabled(repository_root:
     validate_campaign(manifest, execution=False)
     with pytest.raises(ValueError, match="qualification"):
         validate_campaign(manifest, execution=True)
+
+
+def test_go_multi_request_evidence_preserves_earlier_violations() -> None:
+    from jsonschema import Draft202012Validator
+
+    from sanka_bench.go_driver import merge_native
+    from sanka_bench.schema import load_schema
+
+    good = {
+        "app_is_fiber": True,
+        "fiber_dispatch_observed": True,
+        "endpoint_in_workspace": True,
+        "binary_sha256": "a" * 64,
+        "forbidden_imports": [],
+        "process_events": [],
+        "socket_events": [],
+    }
+    bad = dict(good, fiber_dispatch_observed=False, process_events=["attempt"])
+    merged = merge_native([bad, good])
+    assert merged["fiber_dispatch_observed"] is False
+    assert merged["process_events"] == ["attempt"]
+    schema = load_schema("result")["$defs"]["goNativeEvidence"]
+    assert not list(Draft202012Validator(schema).iter_errors(merged))

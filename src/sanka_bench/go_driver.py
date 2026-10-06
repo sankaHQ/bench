@@ -12,6 +12,15 @@ from sanka_bench.go_guard import request
 from sanka_bench.workspace_effects import workspace_snapshot
 
 
+def merge_native(evidences: list[dict[str, Any]]) -> dict[str, Any]:
+    native = dict(evidences[-1])
+    for key in ("app_is_fiber", "fiber_dispatch_observed", "endpoint_in_workspace"):
+        native[key] = all(item.get(key) is True for item in evidences)
+    for key in ("forbidden_imports", "process_events", "socket_events"):
+        native[key] = sorted({event for item in evidences for event in item.get(key) or []})
+    return native
+
+
 def main(evaluation: Path) -> int:
     spec = importlib.util.spec_from_file_location("bench_go_oracle", evaluation / "oracle.py")
     if spec is None or spec.loader is None:
@@ -30,15 +39,7 @@ def main(evaluation: Path) -> int:
 
         oracle._guarded_candidate_request = guarded
         if hasattr(oracle, "_merge_native"):
-            original_merge = oracle._merge_native
-
-            def merge(evidences: list[dict[str, Any]]) -> dict[str, Any]:
-                native = original_merge(evidences)
-                for key in ("app_is_fiber", "fiber_dispatch_observed"):
-                    native[key] = all(item.get(key) is True for item in evidences)
-                return dict(native)
-
-            oracle._merge_native = merge
+            oracle._merge_native = merge_native
         oracle.workspace_snapshot = lambda _path: workspace_snapshot(workspace)
     # Never import candidate-modified Python models, migrations, or settings.
     index = sys.argv.index("--workspace")
