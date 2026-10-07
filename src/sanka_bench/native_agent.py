@@ -982,9 +982,15 @@ class Runner:
                     reason = "model_turns"
         except BudgetReached as exc:
             reason = str(exc)
-            # Billing completeness is independent of candidate grading: freeze work
-            # at our wall deadline even if the final response has unknown usage.
-            error = not self.usage_complete and reason != "wall_clock"
+            # Our budget stops preserve candidates even when an interrupted managed
+            # response has unknown usage. Provider-incomplete responses stay distinct.
+            error = not self.usage_complete and reason not in {
+                "wall_clock",
+                "tool_calls",
+                "model_turns",
+                "context_bytes",
+                "cost_reservation",
+            }
         except KeyboardInterrupt:
             reason, error = "interrupted", True
             raise

@@ -822,7 +822,18 @@ def test_seed_media_configuration_error_is_repairable(tmp_path):
     assert run.stages["verify"]["failure_category"] == "coverage_incomplete"
 
 
-def test_interrupted_subscription_keeps_observed_api_cost(tmp_path):
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "wall_clock",
+        "tool_calls",
+        "model_turns",
+        "context_bytes",
+        "cost_reservation",
+        "incomplete_response",
+    ],
+)
+def test_interrupted_subscription_keeps_observed_api_cost(tmp_path, reason):
     def exchange(run):
         usage = {
             "inputTokens": 100,
@@ -837,11 +848,16 @@ def test_interrupted_subscription_keeps_observed_api_cost(tmp_path):
                 "params": {"threadId": "test", "tokenUsage": {"total": usage, "last": usage}},
             },
         )
-        raise native.BudgetReached("tool_calls")
+        raise native.BudgetReached(reason)
 
     run = runner(tmp_path, exchange=exchange)
     run.model = "gpt-5.6-luna"
-    _, stats = run.run()
+    outcome, stats = run.run()
+    assert outcome.returncode == int(reason == "incomplete_response")
+    assert stats["failure_category"] == (
+        "infrastructure_failure" if reason == "incomplete_response" else None
+    )
+    assert stats["usage_complete"] is False
     assert stats["api_equivalent"]["cost_status"] == "lower_bound"
     assert stats["api_equivalent"]["estimated_api_cost_usd"] == pytest.approx(0.0000368)
     assert stats["cost_usd"] is None and stats["total_tokens"] is None
