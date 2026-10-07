@@ -448,6 +448,57 @@ def test_timeout_preserves_billing_and_classifies_deadline(
     assert stats["work"]["provider_retries"] == 0
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "timeout",
+        "missing-output",
+        "invalid-cache",
+        "invalid-details",
+        "empty-details",
+        "false-details",
+        "zero-details",
+    ],
+)
+def test_incomplete_run_reports_only_valid_response_usage(tmp_path, monkeypatch, failure):
+    run = runner(tmp_path, provider="fireworks", price_in=1, price_out=2, price_cached=0.1)
+    first = response("fireworks", calls=[("exec", {"command": "inspect"})])
+    first["usage"]["completion_tokens_details"] = {"reasoning_tokens": 5}
+    broken = response("fireworks")
+    if failure == "missing-output":
+        del broken["usage"]["completion_tokens"]
+    elif failure == "invalid-cache":
+        broken["usage"]["prompt_tokens_details"]["cached_tokens"] = 101
+    elif failure.endswith("details"):
+        broken["usage"]["prompt_tokens_details"] = {
+            "invalid-details": [40],
+            "empty-details": [],
+            "false-details": False,
+            "zero-details": 0,
+        }[failure]
+
+    def post(*args):
+        if run.requests == 1:
+            return first
+        if failure == "timeout":
+            raise TimeoutError("response lost")
+        return broken
+
+    monkeypatch.setattr(native, "post", post)
+    _, stats = run.run()
+    assert stats["usage_complete"] is False
+    assert stats["cost_usd"] is None and stats["total_tokens"] is None
+    assert stats["observed_usage"] == {
+        "input_tokens": 100,
+        "cache_read_input_tokens": 40,
+        "output_tokens": 20,
+        "reasoning_output_tokens": 5,
+        "total_tokens": 120,
+        "estimated_cost_usd": pytest.approx(0.000104),
+    }
+    assert json.loads((run.artifacts / "state.json").read_text())["stats"] == stats
+
+
 def test_repeated_verification_uses_result_until_command_invalidates_it(tmp_path):
     def execute(argv, **kw):
         result = cli_response(argv)

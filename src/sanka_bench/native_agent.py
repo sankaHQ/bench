@@ -622,8 +622,12 @@ class Runner:
             "max_tokens": self.max_output_tokens,
         }
 
-    def cost(self) -> float | None:
-        if not self.usage_complete or self.price_in is None or self.price_out is None:
+    def cost(self, *, observed: bool = False) -> float | None:
+        if (
+            (not observed and not self.usage_complete)
+            or self.price_in is None
+            or self.price_out is None
+        ):
             return None
         # Anthropic uses five-minute cache writes, charged at 1.25x base input.
         # Discount only cache reads actually reported; future requests reserve full input.
@@ -754,12 +758,13 @@ class Runner:
             except (ValueError, KeyError, TypeError, AttributeError):
                 self.usage_complete = False
                 raise
-            self.cache_write_input_tokens += response["usage"]["cache_creation_input_tokens"]
         usage = response.get("usage")
         if not isinstance(usage, dict):
             self.usage_complete = False
             raise ValueError("provider omitted token usage")
         is_openai = self.provider == "openai"
+        received: dict[str, int] = {}
+        missing_details: set[str] = set()
         for name, field in (
             ("input_tokens", "input_tokens" if is_openai else "prompt_tokens"),
             ("output_tokens", "output_tokens" if is_openai else "completion_tokens"),
@@ -768,19 +773,20 @@ class Runner:
             if type(value) is not int or value < 0:
                 self.usage_complete = False
                 raise ValueError("provider omitted valid token usage")
-            self.usage[name] += value
-        cached = usage.get("input_tokens_details" if is_openai else "prompt_tokens_details") or {}
-        reasoning = (
-            usage.get("output_tokens_details" if is_openai else "completion_tokens_details") or {}
-        )
+            received[name] = value
+        cached = usage.get("input_tokens_details" if is_openai else "prompt_tokens_details")
+        reasoning = usage.get("output_tokens_details" if is_openai else "completion_tokens_details")
+        cached = {} if cached is None else cached
+        reasoning = {} if reasoning is None else reasoning
         if not isinstance(cached, dict) or not isinstance(reasoning, dict):
+            self.usage_complete = False
             raise ValueError("invalid token details")
         for name, value in (
             ("cache_read_input_tokens", cached.get("cached_tokens")),
             ("reasoning_output_tokens", reasoning.get("reasoning_tokens")),
         ):
             if value is None:
-                self.missing_details.add(name)
+                missing_details.add(name)
                 continue
             total = (
                 usage["input_tokens" if is_openai else "prompt_tokens"]
@@ -790,7 +796,13 @@ class Runner:
             if type(value) is not int or not 0 <= value <= total:
                 self.usage_complete = False
                 raise ValueError("invalid token detail")
+            received[name] = value
+        # Publish only fully validated response usage, even if a later response is lost.
+        for name, value in received.items():
             self.usage[name] += value
+        self.missing_details.update(missing_details)
+        if self.provider == "anthropic" and not self.exchange:
+            self.cache_write_input_tokens += usage["cache_creation_input_tokens"]
         if response.get("model") != self.expected_model:
             raise ValueError("provider returned a different model; qualify the exact route first")
         if is_openai:
@@ -1035,6 +1047,14 @@ class Runner:
                 if self.usage_complete
                 else None,
                 "cost_usd": self.cost(),
+                "observed_usage": {
+                    **{
+                        k: v if k not in self.missing_details else None
+                        for k, v in self.usage.items()
+                    },
+                    "total_tokens": self.usage["input_tokens"] + self.usage["output_tokens"],
+                    "estimated_cost_usd": self.cost(observed=True),
+                },
                 "cost_basis": "subscription-billing-unreported"
                 if self.exchange
                 else "provided-rates-cache-aware-upper-estimate"

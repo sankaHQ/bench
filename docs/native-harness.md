@@ -136,7 +136,16 @@ policy does not replace independent grading or establish full-suite accuracy.
   The matrix retains its existing resume rules for completed cells. Mid-call
   execution is not resumed automatically; interrupted mutations are not replayed.
 - Usage comes from provider responses. Cached input is a subset of input,
-  not added twice. Missing details or ambiguous usage remain null. No prices
+  not added twice. Missing details or ambiguous full-run usage remain null.
+  `observed_usage` in native results (also `usage.observed` in telemetry and
+  matrix report rows) retains validated returned-response token subtotals and
+  `estimated_cost_usd`; `usage_complete` (`usage.complete` in telemetry) says
+  whether the full run is known. Unreturned or malformed usage is excluded.
+  These token subtotals are a lower bound when usage is incomplete; the cost is
+  a supplied-rate estimate, not a bill. Missing cache details use the existing
+  undiscounted estimate, so the cost is not necessarily a billing lower bound.
+  Keep full unknown-attempt reservations; do not replace them with or add these
+  subtotals to reservations. No prices
   are guessed. With explicit `--price-in` and `--price-out` (USD/million), cost
   is a conservative estimate. Optional `--price-cached` (`price_cached` on the
   manifest model) discounts only cache reads reported by completed requests.
