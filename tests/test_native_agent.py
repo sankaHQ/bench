@@ -297,6 +297,30 @@ def test_json_seed_is_recoverable_tool_error_before_cli_execution(tmp_path):
     assert run.seed == "seed.py"
 
 
+@pytest.mark.parametrize("persistent", [False, True])
+def test_verify_refreshes_stale_plan_once_without_reapplying(tmp_path, persistent):
+    commands = []
+
+    def execute(argv, **kwargs):
+        commands.append(argv)
+        if argv[1] == "verify" and (persistent or len(commands) == 1):
+            return cli_response(argv, ok=False, error={"code": "SANKA_FINGERPRINT_STALE"})
+        result = cli_response(argv)
+        if argv[1] == "verify":
+            result.stdout += "\nok=true\n"
+        return result
+
+    run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    if persistent:
+        with pytest.raises(RuntimeError, match="verification infrastructure"):
+            run.verify(None)
+    else:
+        run.verify(None)
+        assert run.verified
+    assert [argv[1] for argv in commands] == ["verify", "scan", "plan", "verify"]
+    assert run.requests == 0
+
+
 def test_verify_warning_explains_rejection_and_seeded_tool_rechecks(tmp_path):
     commands = []
 

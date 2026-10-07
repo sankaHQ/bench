@@ -533,24 +533,54 @@ class Runner:
             return self.verification_summary
         self.seed = seed
         self.verified = False
-        _, summary = self.lifecycle(
-            "verify",
-            [
-                ".",
-                "--to",
-                self.target,
-                "--scenarios",
-                "public-tests/scenarios.json",
-                "--candidate",
-                ".",
-                "--entrypoint",
-                "target_app.py",
-                "--db-env",
-                "BENCH_DB_PATH",
-                "--edge-probes",
-                *(["--seed", seed] if seed else []),
-            ],
-        )
+        arguments = [
+            ".",
+            "--to",
+            self.target,
+            "--scenarios",
+            "public-tests/scenarios.json",
+            "--candidate",
+            ".",
+            "--entrypoint",
+            "target_app.py",
+            "--db-env",
+            "BENCH_DB_PATH",
+            "--edge-probes",
+            *(["--seed", seed] if seed else []),
+        ]
+        try:
+            _, summary = self.lifecycle("verify", arguments)
+        except RuntimeError:
+            data = self.stages.get("verify", {}).get("data", {})
+            if data.get("error", {}).get("code") != "SANKA_FINGERPRINT_STALE":
+                raise
+            # Scoped CLI plans reject files promoted or edited since planning. Refresh
+            # through normal CLI commands; never reapply over the agent candidate.
+            for stage, refresh_arguments in (
+                ("scan", ["."]),
+                (
+                    "plan",
+                    [
+                        ".",
+                        "--to",
+                        self.target,
+                        "--strategy",
+                        "native",
+                        "--generation",
+                        "minimal",
+                        "--package-manager",
+                        "pip",
+                        "--output",
+                        f".sanka/output/{self.target}",
+                    ],
+                ),
+            ):
+                self.lifecycle(stage, refresh_arguments)
+                if not self.stages[stage]["ok"]:
+                    raise RuntimeError(
+                        "verification plan refresh failed; inspect saved command output"
+                    ) from None
+            _, summary = self.lifecycle("verify", arguments)
         self.verified = self.stages["verify"]["ok"]
         self.verification_summary = summary
         if self.verified and self.on_verified is not None:
