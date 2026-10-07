@@ -23,6 +23,15 @@ def complete(
     connection = http.client.HTTPSConnection("api.fireworks.ai", timeout=min(timeout, 120))
     transport_socket = None
     phase = "connect"
+    phase_started = started
+    phase_seconds: dict[str, float] = {}
+    body = json.dumps({**payload, "stream": True, "stream_options": {"include_usage": True}})
+    event(
+        "provider_request_start",
+        started_at_unix=time.time(),
+        request_bytes=len(body.encode("utf-8")),
+        idle_timeout_seconds=120,
+    )
 
     def cancel() -> None:
         active = transport_socket or connection.sock
@@ -54,15 +63,19 @@ def complete(
         if time.monotonic() >= deadline:
             raise TimeoutError("connection exceeded wall deadline")
         connection.sock.settimeout(min(deadline - time.monotonic(), 120))
-        phase = "send"
+        now = time.monotonic()
+        phase_seconds[phase] = now - phase_started
+        phase, phase_started = "send", now
         connection.request(
             "POST",
             "/inference/v1/chat/completions",
-            json.dumps({**payload, "stream": True, "stream_options": {"include_usage": True}}),
+            body,
             {"Authorization": "Bearer " + key, "Content-Type": "application/json"},
         )
         transport_socket = connection.sock
-        phase = "headers"
+        now = time.monotonic()
+        phase_seconds[phase] = now - phase_started
+        phase, phase_started = "headers", now
         response = connection.getresponse()
         if response.status != 200:
             raise urllib.error.HTTPError(
@@ -74,7 +87,15 @@ def complete(
             )
         if "text/event-stream" not in response.getheader("Content-Type", ""):
             raise ValueError("provider did not return an event stream")
-        phase = "stream"
+        now = time.monotonic()
+        phase_seconds[phase] = now - phase_started
+        event(
+            "provider_response_headers",
+            status=response.status,
+            phase_seconds=dict(phase_seconds),
+            request_elapsed_seconds=now - started,
+        )
+        phase, phase_started = "stream", now
         with response:
             return read_stream(response, transport_socket, deadline, started, event)
     except (
@@ -85,12 +106,14 @@ def complete(
         TypeError,
         AttributeError,
     ) as exc:
+        now = time.monotonic()
         event(
             "provider_transport_error",
             phase=phase,
             category=type(exc).__name__,
             request_may_have_been_sent=phase != "connect",
-            request_elapsed_seconds=time.monotonic() - started,
+            request_elapsed_seconds=now - started,
+            phase_seconds={**phase_seconds, phase: now - phase_started},
         )
         if isinstance(exc, (http.client.HTTPException, KeyError, TypeError, AttributeError)):
             raise ValueError("provider HTTP stream interrupted or malformed") from None
@@ -110,6 +133,7 @@ def read_stream(
 ) -> dict[str, Any]:
     message: dict[str, Any] = {"role": "assistant", "content": "", "reasoning_content": ""}
     calls: dict[int, dict[str, Any]] = {}
+    metadata: dict[str, Any] = {}
     model = None
     usage = None
     finish = None
@@ -142,6 +166,7 @@ def read_stream(
             if calls:
                 message["tool_calls"] = [calls[index] for index in sorted(calls)]
             return {
+                **metadata,
                 "model": model,
                 "choices": [{"finish_reason": finish, "message": message}],
                 "usage": usage,
@@ -149,6 +174,17 @@ def read_stream(
         chunk = json.loads(record)
         if not isinstance(chunk, dict) or "error" in chunk:
             raise ValueError("invalid provider stream chunk")
+        # Preserve correlation evidence even when a later read fails before DONE.
+        new_metadata: dict[str, Any] = {}
+        identifier = chunk.get("id")
+        if "id" not in metadata and isinstance(identifier, str) and 0 < len(identifier) <= 256:
+            new_metadata["id"] = identifier
+        created = chunk.get("created")
+        if "created" not in metadata and type(created) is int and created >= 0:
+            new_metadata["created"] = created
+        if new_metadata:
+            metadata.update(new_metadata)
+            event("provider_response_metadata", **metadata)
         if chunk.get("model"):
             if model is not None and model != chunk["model"]:
                 raise ValueError("provider model changed within stream")
