@@ -648,3 +648,20 @@ def test_native_subscription_environment_has_no_api_keys(driver):
         {"OPENAI_API_KEY": "secret", "FIREWORKS_API_KEY": "other", "PATH": "/bin"}, cell
     )
     assert env == {"PATH": "/bin"}
+
+
+@pytest.mark.parametrize(
+    "output,expected",
+    [
+        ("sanka, version 0.3.9", "sanka 0.3.9"),
+        ("sanka 0.3.9", "sanka 0.3.9"),
+        ("sanka, version 0.4.0", "sanka 0.4.0"),
+    ],
+)
+def test_sanka_versions_normalizes_click_without_changing_release(
+    driver, tmp_path, output, expected
+):
+    binary = tmp_path / "sanka"
+    binary.write_text(f"#!{sys.executable}\nprint({output!r})\n")
+    binary.chmod(0o755)
+    assert driver.sanka_versions(binary, None) == (expected, "")
