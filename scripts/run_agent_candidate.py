@@ -1611,16 +1611,20 @@ def main() -> int:
                 "first_target_file_seconds": first_target_seconds,
             },
             "usage": {
-                key: stats.get(key)
-                for key in (
-                    "input_tokens",
-                    "cache_creation_input_tokens",
-                    "cache_read_input_tokens",
-                    "output_tokens",
-                    "total_tokens",
-                    "model_usage",
-                    "reasoning_output_tokens",
-                )
+                "complete": stats.get("usage_complete"),
+                "observed": stats.get("observed_usage"),
+                **{
+                    key: stats.get(key)
+                    for key in (
+                        "input_tokens",
+                        "cache_creation_input_tokens",
+                        "cache_read_input_tokens",
+                        "output_tokens",
+                        "total_tokens",
+                        "model_usage",
+                        "reasoning_output_tokens",
+                    )
+                },
             },
             "cost": {
                 "agent_estimate_limit_usd": args.max_agent_cost_usd,
