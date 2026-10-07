@@ -27,7 +27,15 @@ and frozen candidates are never repaired or overwritten.
   the task deadline is an infrastructure failure. At the task wall deadline,
   freeze the files already produced and grade them under the unchanged gates;
   incomplete billing remains unknown and no partial tool arguments execute.
-  Only explicit 429 rejections retain the existing bounded retry policy.
+  Only explicit 429 rejections permit resending an HTTP inference request.
+  Before sending any HTTP bytes, a transient TLS EOF, connection reset, or
+  connection timeout permits one fresh connection attempt within the same wall
+  deadline. Certificate validation failures are never retried. These reconnects
+  emit `provider_connection_retry`; they are not additional API requests or
+  `provider_retries`. No reconnect/replay occurs after sending begins.
+  `provider_transport_error` records connect/send/headers/stream phase, exception
+  type, elapsed time, and whether a request may have been sent, without secrets
+  or exception text. A failed connection recovery still stops the attempt.
 - Active connections have a 120-second idle limit and wall-deadline socket
   cancellation. DNS resolution follows the host resolver timeout; if connection
   establishment outlasts the wall budget, no inference request is sent.

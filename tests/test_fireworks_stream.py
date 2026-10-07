@@ -1,5 +1,6 @@
 import io
 import json
+import ssl
 import time
 from types import SimpleNamespace
 
@@ -222,3 +223,113 @@ def test_late_connection_never_sends_request(monkeypatch):
     monkeypatch.setattr(fireworks_stream.http.client, "HTTPSConnection", Connection)
     with pytest.raises(TimeoutError, match="connection exceeded"):
         fireworks_stream.complete({}, "fake", 0.01, lambda *a, **k: None)
+
+
+@pytest.mark.parametrize(
+    "phase,failures,error",
+    [
+        ("connect", 1, ssl.SSLEOFError),
+        ("connect", 2, ssl.SSLEOFError),
+        ("connect", 1, ssl.SSLCertVerificationError),
+        ("connect", 1, TimeoutError),
+        ("connect", 1, ConnectionResetError),
+        ("send", 1, ssl.SSLEOFError),
+        ("headers", 1, ssl.SSLEOFError),
+        ("stream", 1, ssl.SSLEOFError),
+    ],
+)
+def test_disconnect_retries_only_before_sending(monkeypatch, phase, failures, error):
+
+    from sanka_bench import fireworks_stream
+
+    events = []
+    connections = []
+    sent = []
+    remaining_failures = failures
+    certificate = error is ssl.SSLCertVerificationError
+
+    def fail(where):
+        nonlocal remaining_failures
+        if phase == where and remaining_failures:
+            remaining_failures -= 1
+            raise error("sensitive diagnostic must not enter events")
+
+    class Response(io.BytesIO):
+        status = 200
+
+        def getheader(self, *args):
+            return "text/event-stream"
+
+        def readline(self, *args):
+            fail("stream")
+            return super().readline(*args)
+
+    class Connection:
+        sock = SimpleNamespace(settimeout=lambda value: None)
+
+        def __init__(self, *args, **kwargs):
+            self.closed = False
+            connections.append(self)
+
+        def connect(self):
+            fail("connect")
+
+        def request(self, *args):
+            sent.append(args)
+            fail("send")
+
+        def getresponse(self):
+            fail("headers")
+            return Response(stream().getvalue())
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(fireworks_stream.http.client, "HTTPSConnection", Connection)
+
+    def emit(kind, **data):
+        events.append((kind, data))
+
+    if phase == "connect" and failures == 1 and not certificate:
+        result = fireworks_stream.complete({}, "secret-key", 5, emit)
+        assert result["usage"]["completion_tokens"] == 5
+        assert len(connections) == 2 and len(sent) == 1
+    else:
+        with pytest.raises(error):
+            fireworks_stream.complete({}, "secret-key", 5, emit)
+        assert len(connections) == (2 if phase == "connect" and not certificate else 1)
+        assert len(sent) == (0 if phase == "connect" else 1)
+        diagnostic = [data for kind, data in events if kind == "provider_transport_error"][-1]
+        assert diagnostic["phase"] == phase
+        assert diagnostic["request_may_have_been_sent"] is (phase != "connect")
+    assert all(connection.closed for connection in connections)
+    assert "secret-key" not in str(events) and "sensitive diagnostic" not in str(events)
+
+
+@pytest.mark.parametrize("late_failure", [False, True])
+def test_connection_recovery_never_extends_wall_deadline(monkeypatch, late_failure):
+    from sanka_bench import fireworks_stream
+
+    attempts = []
+
+    class Connection:
+        sock = None
+
+        def __init__(self, *a, **kw):
+            attempts.append(self)
+
+        def connect(self):
+            if late_failure or len(attempts) == 2:
+                time.sleep(0.03)
+            raise ssl.SSLEOFError("connection closed")
+
+        def request(self, *args):
+            pytest.fail("must not send an inference request")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(fireworks_stream.http.client, "HTTPSConnection", Connection)
+    with pytest.raises(ssl.SSLEOFError):
+        fireworks_stream.complete({}, "fake", 0.01, lambda *a, **k: None)
+    assert len(attempts) == (1 if late_failure else 2)
