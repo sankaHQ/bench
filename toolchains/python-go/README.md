@@ -9,3 +9,14 @@ match the released Python-to-Go 0.1.0a17 wheel byte for byte (verified 2026-10-0
 Release wheels were downloaded for static inspection; no Go download or build has run.
 Read versions from go.mod; a campaign selecting different versions needs new locks,
 new image digests, and fresh Go control qualification. Never update the old CLI pins.
+
+## Offline cache coverage
+
+These checked-in locks are also supplied to both model arms; do not change them
+just to expand evaluator cache coverage. During image preparation, `Dockerfile.go`
+promotes the already locked Testify version to a root in its private copy, then
+downloads its transitive requirements. This covers candidates whose module graph
+exposes test dependencies omitted by the reference application's pruned graph.
+The image runs `scripts/check_go_module_cache.sh` against a standalone Testify
+graph with network lookup disabled. Candidate grading remains offline, and
+historical source/baseline locks and images remain unchanged.
