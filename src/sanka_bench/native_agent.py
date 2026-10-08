@@ -515,6 +515,10 @@ class Runner:
             summaries.append(summary)
             if self.stages["apply"]["ok"]:
                 self.generated = self.promote()
+        outcome, summary = self.command(["go", "mod", "download"], phase="dependencies")
+        summaries.append(summary)
+        if outcome.returncode:
+            raise RuntimeError("Go dependency preparation failed; inspect saved command output")
         summaries.append(self.verify(None))
         return "\n".join(summaries)
 
