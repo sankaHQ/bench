@@ -1,48 +1,53 @@
 {
-  "sanka_cli": "sanka 0.3.9",
-  "extension_version": "0.1.0a17",
-  "marketplace_commit": "191bdaf9a92f567e74ac0af0b253b99e99158a4c",
-  "manifest_digest": "sha256:3246964f44686a620c6d0e6f111275c531f6c84108e8e42029f20c7346f6c64c",
+  "sanka_cli": "sanka 0.3.11",
+  "extension_version": "0.1.0a20",
+  "marketplace_commit": "4cbcf8325f8f5a5d2dc03c9bcaf427ff2dcfdb73",
+  "manifest_digest": "sha256:bfcb1c33df146409eae06244d4314ec032db623273ea9327220e255e2b560281",
   "artifacts": [
     {
       "filename": "marketplace.json",
-      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a17/marketplace.json",
+      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a20/marketplace.json",
       "sha256": "sha256:b9bb0682b6b53d30d0f30a54c50667ee92b798ba6ceb88653eedf55d53314385"
     },
     {
       "filename": "sanka-extension-python-to-golang.json",
-      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a17/sanka-extension-python-to-golang.json",
-      "sha256": "sha256:bfc72ad46a86d431ee2baf2e7c9ac7474fd091c22c680030d0fa04129e8e7bf9"
+      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a20/sanka-extension-python-to-golang.json",
+      "sha256": "sha256:9f251354006c8dd157041463d9d92205ebf7cba9ff7a450ff4cdf5be41392c95"
     },
     {
-      "filename": "sanka_code_migration-0.1.0a4-py3-none-any.whl",
-      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a17/sanka_code_migration-0.1.0a4-py3-none-any.whl",
-      "sha256": "sha256:a5f0bc3022ff3533db4ca8d9df813a6021f8c04a7ab9d03d3495cc0cd9bab12d"
-    },
-    {
-      "filename": "sanka_connector_sdk-0.1.0a12-py3-none-any.whl",
-      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a17/sanka_connector_sdk-0.1.0a12-py3-none-any.whl",
-      "sha256": "sha256:34da5c35aaa60fc19258e76b72a3eca58bf52fff96e2ccf9a0aa1115f8878d8e"
-    },
-    {
-      "filename": "sanka_extension_python_to_golang-0.1.0a17-py3-none-any.whl",
-      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a17/sanka_extension_python_to_golang-0.1.0a17-py3-none-any.whl",
-      "sha256": "sha256:dfd3a589c18622efece3098e92efbc73971d8ecc3fe5aa88b389b818a98ca28d"
-    },
-    {
-      "filename": "sanka_extension_sdk-0.1.0a4-py3-none-any.whl",
-      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a17/sanka_extension_sdk-0.1.0a4-py3-none-any.whl",
-      "sha256": "sha256:f1a6655095ab81e549137e1d9604492bda2a31677d674c6359b0a39a2da96307"
+      "filename": "sanka_extension_python_to_golang-0.1.0a20-py3-none-any.whl",
+      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a20/sanka_extension_python_to_golang-0.1.0a20-py3-none-any.whl",
+      "sha256": "sha256:1e638314343815bdbe443591b237c9dce0b34808a648f2270731d3da78beaa91"
     },
     {
       "filename": "sanka_http_replay-0.1.0a2-py3-none-any.whl",
-      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a17/sanka_http_replay-0.1.0a2-py3-none-any.whl",
+      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a20/sanka_http_replay-0.1.0a2-py3-none-any.whl",
       "sha256": "sha256:df9e62cd4fec94a4b2c454a5273efa2abfa8e56032e6d7a2e0a1491adad995b4"
     },
     {
-      "filename": "sanka_cli-0.3.9-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/96/ba/395c77a5bd1903e8f6b7690f7a25a28f8b3d4cb2e71cde1d5954de5326b5/sanka_cli-0.3.9-py3-none-any.whl",
-      "sha256": "sha256:1708636ba6c6b1f17c9fea90a75e72bc7215e61c4bea7377fa2c6057d95f1e2e"
+      "filename": "sanka_code_migration-0.1.0a4-py3-none-any.whl",
+      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a20/sanka_code_migration-0.1.0a4-py3-none-any.whl",
+      "sha256": "sha256:a5f0bc3022ff3533db4ca8d9df813a6021f8c04a7ab9d03d3495cc0cd9bab12d"
+    },
+    {
+      "filename": "sanka_drf_replay-0.1.0a7-py3-none-any.whl",
+      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a20/sanka_drf_replay-0.1.0a7-py3-none-any.whl",
+      "sha256": "sha256:ed599d02ea7452d95973414a9e71aa0cf38baf0bfa02855a79d4af23103de27a"
+    },
+    {
+      "filename": "sanka_extension_sdk-0.1.0a4-py3-none-any.whl",
+      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a20/sanka_extension_sdk-0.1.0a4-py3-none-any.whl",
+      "sha256": "sha256:f1a6655095ab81e549137e1d9604492bda2a31677d674c6359b0a39a2da96307"
+    },
+    {
+      "filename": "sanka_connector_sdk-0.1.0a12-py3-none-any.whl",
+      "url": "https://github.com/sankaHQ/extensions/releases/download/api-converters-v0.1.0a20/sanka_connector_sdk-0.1.0a12-py3-none-any.whl",
+      "sha256": "sha256:34da5c35aaa60fc19258e76b72a3eca58bf52fff96e2ccf9a0aa1115f8878d8e"
+    },
+    {
+      "filename": "sanka_cli-0.3.11-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/b6/ac/0461bbd8efeb291adb8b722ff6bad998f7cce10a12dcdfbd21ce7ea82c03/sanka_cli-0.3.11-py3-none-any.whl",
+      "sha256": "sha256:f2e073f06cfcaff6b26f766f2b604447bee7920e435d91013401d00096a3e726"
     }
   ]
 }
