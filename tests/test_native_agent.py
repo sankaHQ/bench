@@ -167,18 +167,28 @@ def cli_response(argv, *, ok=True, **data):
     return subprocess.CompletedProcess(argv, 0 if ok else 1, text.rstrip(), "")
 
 
-def test_go_lifecycle_uses_sqlite_and_checks_before_promotion(tmp_path, monkeypatch):
+def test_go_lifecycle_verifies_promoted_candidate(tmp_path, monkeypatch):
     commands = []
 
     def execute(argv, **kwargs):
         commands.append(argv)
-        return cli_response(argv)
+        return (
+            cli_response(argv)
+            if argv[1] != "verify"
+            else subprocess.CompletedProcess(
+                argv,
+                0,
+                "sanka-compact/v1 verify success verified\nok=true\n"
+                'summary={"scenarios":1,"matched":1}',
+                "",
+            )
+        )
 
     run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
     run.target = "fiber"
 
     def promote():
-        assert [argv[1] for argv in commands] == ["scan", "plan", "apply", "test", "verify"]
+        assert [argv[1] for argv in commands] == ["scan", "plan", "apply"]
         return {"backend.go": "sha256:generated"}
 
     monkeypatch.setattr(run, "promote", promote)
@@ -190,6 +200,9 @@ def test_go_lifecycle_uses_sqlite_and_checks_before_promotion(tmp_path, monkeypa
     }
     assert commands[2][commands[2].index("--plan-hash") + 1] == "sha256:reviewed"
     assert run.generated == {"backend.go": "sha256:generated"}
+    assert run.verified
+    assert commands[-1][1] == "verify"
+    assert commands[-1][commands[-1].index("--entrypoint") + 1] == "cmd/api/main.go"
 
 
 @pytest.mark.parametrize("target", ["fastapi", "flask"])
@@ -321,7 +334,8 @@ def test_verify_refreshes_stale_plan_once_without_reapplying(tmp_path, persisten
     assert run.requests == 0
 
 
-def test_verify_warning_explains_rejection_and_seeded_tool_rechecks(tmp_path):
+@pytest.mark.parametrize("target", ["fastapi", "fiber"])
+def test_verify_warning_explains_rejection_and_seeded_tool_rechecks(tmp_path, target):
     commands = []
 
     def execute(argv, **kw):
@@ -334,6 +348,7 @@ def test_verify_warning_explains_rejection_and_seeded_tool_rechecks(tmp_path):
         return result
 
     run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    run.target = target
     summary = run.verify(None)
     assert not run.verified
     assert "Harness verification not accepted" in summary
@@ -958,17 +973,26 @@ def test_first_verified_callback_excludes_warnings_and_survives_later_edits(tmp_
         ("seed.py", "prepare", "django.db.utils.OperationalError: unable to open database", False),
     ],
 )
-def test_seed_constraint_failure_returns_repair_feedback(tmp_path, seed, side, error, repairable):
+@pytest.mark.parametrize("target", ["fastapi", "fiber"])
+def test_seed_constraint_failure_returns_repair_feedback(
+    tmp_path, seed, side, error, repairable, target
+):
     def execute(argv, **kw):
         failure = {
             "code": "SANKA_EXTENSION_REPLAY_INVALID",
             "message": f"{side} process failed: {error}",
+            **(
+                {"details": {"failure_category": "infrastructure_failure"}}
+                if target == "fiber"
+                else {}
+            ),
         }
         return subprocess.CompletedProcess(
             argv, 1, "sanka-compact/v1 verify error failed\nerror=" + json.dumps(failure), ""
         )
 
     run = runner(tmp_path, sanka=Path("/sanka"), execute=execute)
+    run.target = target
     if seed:
         (run.workspace / seed).write_text("# model-generated seed\n")
     call = {"name": "verify", "arguments": json.dumps({"seed": seed})}

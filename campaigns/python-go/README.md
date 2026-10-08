@@ -82,3 +82,19 @@ image or benchmark revision changes.
 `execution.configurations: ["alone"]` runs agent-only cells without requiring
 Sanka wheel or CLI pins. The Go compiler/image and qualification pins remain
 mandatory. Keep later CLI comparisons in a separately authorized cohort.
+
+### Go candidate replay methodology
+
+The model + CLI native runner now promotes generated files before public replay,
+exposes the verification tool to Go agents, and verifies the current `cmd/api`
+server against public scenarios and a source-derived seed. Known capture gaps
+skip apply; they do not prevent independent candidate verification. The existing
+response/tool/wall budgets and repair limits remain in force. Hidden grading and
+final native compliance remain independent and unchanged.
+
+This is a new assistance methodology; do not replace historical results or compare
+its timings as the same cohort. It requires a released CLI with full-selection
+replay and a Go extension with candidate replay (shared replay >=0.1.0a6). Pin
+qualified released wheels before any paid run; the current historical release
+pins are intentionally unchanged by this harness patch. No paid runs were used
+to validate this change.
