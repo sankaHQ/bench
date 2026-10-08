@@ -13,8 +13,12 @@ COPY --from=go /usr/local/go /usr/local/go
 ENV PATH="/usr/local/go/bin:${PATH}" \
     GOTOOLCHAIN=local GOWORK=off GOPROXY=off GOMODCACHE=/opt/go-mod-cache
 COPY toolchains/python-go/ /opt/go-lock/
+COPY scripts/check_go_module_cache.sh /opt/go-lock/check-cache.sh
 RUN cd /opt/go-lock && GOPROXY=https://proxy.golang.org go mod download all \
-    && go mod verify && GOPROXY=off go list -m all >/dev/null && chmod -R a+rX /opt/go-mod-cache
+    && go mod edit -require="$(go list -m -f '{{.Path}}@{{.Version}}' github.com/stretchr/testify)" \
+    && GOPROXY=https://proxy.golang.org go mod download all \
+    && go mod verify && GOPROXY=off go list -m all >/dev/null \
+    && sh /opt/go-lock/check-cache.sh /opt/go-lock && chmod -R a+rX /opt/go-mod-cache
 COPY src /bench/src
 COPY tasks /bench/tasks
 COPY baselines /bench/baselines
