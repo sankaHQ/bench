@@ -101,9 +101,11 @@ def test_go_freeze_promotes_module_without_python_entrypoint(tmp_path: Path) -> 
     (generated / "go.mod").write_text("module example.test/backend\n")
     (generated / "go.sum").write_text("locked\n")
     (generated / "backend.go").write_text("package backend\n")
+    (generated / "contract.json").write_text('{"routes": [{"path": "/widgets/"}]}')
     (generated / "cmd/api/main.go").write_text("package main\n")
     promoted = promote(tmp_path)
     assert "go.mod" in promoted and "cmd/api/main.go" in promoted
+    assert json.loads((tmp_path / "contract.json").read_text())["routes"] == [{"path": "/widgets/"}]
     assert (tmp_path / "bench_adapter.go").is_file()
     assert not (tmp_path / "target_app.py").exists()
 

@@ -96,7 +96,10 @@ def promote(workspace: Path) -> dict[str, str]:
         if not path.is_file():
             continue
         relative = path.relative_to(generated)
-        if path.suffix not in {".go", ".sql"} and relative.name not in {"go.mod", "go.sum"}:
+        if path.suffix not in {".go", ".sql", ".json"} and relative.name not in {
+            "go.mod",
+            "go.sum",
+        }:
             continue
         target = workspace / relative
         if target.is_symlink() or not target.resolve().is_relative_to(workspace.resolve()):
