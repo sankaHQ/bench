@@ -348,7 +348,7 @@ class Runner:
             raise RuntimeError("invalid lifecycle protocol; inspect saved command output") from None
         ok = outcome.returncode == 0 and data["outcome"] == "success"
         failure_category = None if ok else "infrastructure_failure"
-        if stage == "verify" and self.target != "fiber":
+        if stage == "verify":
             # Coverage is separate from parity: matching all-404 responses is not proof.
             if data.get("error", {}).get("code") == "SANKA_EXTENSION_REPLAY_INVALID" and (
                 (
@@ -375,6 +375,10 @@ class Runner:
             ):
                 # A supplied seed violating schema constraints needs model repair.
                 failure_category = "coverage_incomplete"
+            elif self.target == "fiber" and data.get("error", {}).get("details", {}).get(
+                "failure_category"
+            ) in {"candidate_failure", "infrastructure_failure"}:
+                failure_category = data["error"]["details"]["failure_category"]
             elif data.get("ok") is False:
                 counts = data.get("summary", {})
                 source_only = counts.get("source_expectation_mismatches", 0) > 0 and not any(
@@ -416,11 +420,7 @@ class Runner:
             "failure_category": failure_category,
         }
         self.event("lifecycle", stage=stage, ok=ok, result=data, failure_category=failure_category)
-        if (
-            stage == "verify"
-            and self.target != "fiber"
-            and failure_category == "infrastructure_failure"
-        ):
+        if stage == "verify" and failure_category == "infrastructure_failure":
             raise RuntimeError("verification infrastructure failed; inspect saved command output")
         return data, summary
 
@@ -509,17 +509,13 @@ class Runner:
         plan_hash = self.stages["plan"]["data"].get("plan_hash")
         if not isinstance(plan_hash, str) or not plan_hash.startswith("sha256:"):
             raise ValueError("Go plan did not return a reviewed core plan hash")
-        _, summary = self.lifecycle("apply", ["--root", ".", "--plan-hash", plan_hash])
-        summaries.append(summary)
-        if self.stages["apply"]["ok"]:
-            for stage in ("test", "verify"):
-                _, summary = self.lifecycle(stage, [".", "--to", "fiber"])
-                summaries.append(summary)
-            self.generated = self.promote()
-        summaries.append(
-            "Go extension checks are advisory; repair the root Go candidate against public "
-            "scenarios, then finish. The independent benchmark grades the frozen candidate."
-        )
+        capture = self.stages["plan"]["data"].get("capture", {})
+        if capture.get("generation_ready") is not False and not capture.get("gaps"):
+            _, summary = self.lifecycle("apply", ["--root", ".", "--plan-hash", plan_hash])
+            summaries.append(summary)
+            if self.stages["apply"]["ok"]:
+                self.generated = self.promote()
+        summaries.append(self.verify(None))
         return "\n".join(summaries)
 
     def verify(self, seed: str | None) -> str:
@@ -542,7 +538,7 @@ class Runner:
             "--candidate",
             ".",
             "--entrypoint",
-            "target_app.py",
+            "cmd/api/main.go" if self.target == "fiber" else "target_app.py",
             "--db-env",
             "BENCH_DB_PATH",
             "--edge-probes",
@@ -589,7 +585,7 @@ class Runner:
         return summary
 
     def payload(self) -> dict[str, Any]:
-        specs = tools(self.sanka is not None and self.target != "fiber")
+        specs = tools(self.sanka is not None)
         if self.provider == "anthropic" and not self.exchange:
             from sanka_bench.anthropic_api import payload
 
@@ -877,12 +873,7 @@ class Runner:
                 self.verified = False  # Never reuse verification after an arbitrary command.
                 self.verification_summary = None
                 return self.command(["/bin/sh", "-c", command])[1]
-            if (
-                call["name"] == "verify"
-                and self.sanka
-                and self.target != "fiber"
-                and set(arguments) == {"seed"}
-            ):
+            if call["name"] == "verify" and self.sanka and set(arguments) == {"seed"}:
                 seed = arguments["seed"]
                 if seed is not None and not isinstance(seed, str):
                     raise ValueError("seed must be a path or null")
@@ -912,7 +903,7 @@ class Runner:
             provider=self.provider,
             model=self.model,
             effort=self.effort,
-            tools=tools(self.sanka is not None and self.target != "fiber"),
+            tools=tools(self.sanka is not None),
         )
         try:
             if self.sanka:
@@ -922,9 +913,7 @@ class Runner:
                         "role": "user",
                         "content": (
                             (
-                                "Go lifecycle results follow. Repair the module, then finish. "
-                                if self.target == "fiber"
-                                else "Reuse generated Sanka files; repair only gaps. "
+                                "Reuse generated Sanka files; repair only gaps. "
                                 "Do not repeat scan/plan/apply; scaffold tests are retained. "
                                 "Call the verify tool after repairs, not exec with a shell verify "
                                 "command. Public replay is not a benchmark score. "
@@ -944,7 +933,7 @@ class Runner:
                     self.remaining()
                     calls = self.receive(self.request())
                     if not calls:
-                        if self.sanka and not self.verified and self.target != "fiber":
+                        if self.sanka and not self.verified:
                             summary = self.dispatch(
                                 {"name": "verify", "arguments": json.dumps({"seed": self.seed})}
                             )
