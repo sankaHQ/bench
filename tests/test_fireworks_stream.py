@@ -12,6 +12,8 @@ from sanka_bench.fireworks_stream import read_stream
 def stream(*, done=True, usage=True):
     chunks = [
         {
+            "id": "chatcmpl-fixture",
+            "created": 1791356400,
             "model": "test",
             "choices": [
                 {
@@ -68,20 +70,31 @@ def test_stream_assembles_complete_tools_and_usage_with_safe_progress():
     }
     assert message["reasoning_content"] == "thinking"
     assert result["usage"]["completion_tokens"] == 5
+    assert result["id"] == "chatcmpl-fixture"
+    assert result["created"] == 1791356400
+    assert (
+        "provider_response_metadata",
+        {"id": "chatcmpl-fixture", "created": 1791356400},
+    ) in events
     assert events and "thinking" not in str(events) and "command" not in str(events)
     assert all(0 < timeout <= 30 for timeout in timeouts)
 
 
 @pytest.mark.parametrize("done,usage", [(False, True), (True, False)])
 def test_incomplete_stream_never_returns_partial_tools(done, usage):
+    events = []
     with pytest.raises(ValueError):
         read_stream(
             stream(done=done, usage=usage),
             None,
             time.monotonic() + 30,
             time.monotonic(),
-            lambda *args, **kw: None,
+            lambda kind, **data: events.append((kind, data)),
         )
+    assert (
+        "provider_response_metadata",
+        {"id": "chatcmpl-fixture", "created": 1791356400},
+    ) in events
 
 
 def test_stream_respects_absolute_deadline():
@@ -302,6 +315,20 @@ def test_disconnect_retries_only_before_sending(monkeypatch, phase, failures, er
         diagnostic = [data for kind, data in events if kind == "provider_transport_error"][-1]
         assert diagnostic["phase"] == phase
         assert diagnostic["request_may_have_been_sent"] is (phase != "connect")
+        assert set(diagnostic["phase_seconds"]) == set(
+            ["connect", "send", "headers", "stream"][
+                : ["connect", "send", "headers", "stream"].index(phase) + 1
+            ]
+        )
+        assert sum(diagnostic["phase_seconds"].values()) == pytest.approx(
+            diagnostic["request_elapsed_seconds"]
+        )
+    request_start = next(data for kind, data in events if kind == "provider_request_start")
+    assert request_start["started_at_unix"] > 0
+    assert request_start["request_bytes"] == len(
+        json.dumps({"stream": True, "stream_options": {"include_usage": True}}).encode()
+    )
+    assert request_start["idle_timeout_seconds"] == 120
     assert all(connection.closed for connection in connections)
     assert "secret-key" not in str(events) and "sensitive diagnostic" not in str(events)
 

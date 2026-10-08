@@ -35,7 +35,16 @@ and frozen candidates are never repaired or overwritten.
   `provider_retries`. No reconnect/replay occurs after sending begins.
   `provider_transport_error` records connect/send/headers/stream phase, exception
   type, elapsed time, and whether a request may have been sent, without secrets
-  or exception text. A failed connection recovery still stops the attempt.
+  or exception text. Per-phase durations separate connection setup, request-body
+  send, response headers and stream reading. `provider_request_start` records
+  the local Unix start time, serialized body byte count and idle timeout;
+  `provider_response_headers` records the completed pre-stream timings.
+  `provider_response_metadata` preserves the first valid Fireworks response ID
+  and server creation timestamp as soon as they arrive, even if the stream later
+  fails. Completed responses retain those fields for deduplication and billing
+  correlation. Missing metadata remains absent, never fabricated. These events
+  do not prove provider acceptance before a response or establish billed usage.
+  A failed connection recovery still stops the attempt.
 - Active connections have a 120-second idle limit and wall-deadline socket
   cancellation. DNS resolution follows the host resolver timeout; if connection
   establishment outlasts the wall budget, no inference request is sent.
