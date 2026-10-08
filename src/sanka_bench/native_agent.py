@@ -111,6 +111,8 @@ def tools(with_sanka: bool) -> list[dict[str, Any]]:
                     "Verify public scenarios and register completion with the harness. "
                     "Use this tool after repairs; shell verification does not register completion. "
                     "Pass a workspace Python seed script (.py) when scenarios need initial rows. "
+                    "Replay already configures Django and migrates the database. Only populate "
+                    "existing tables; never delete/replace the database or rerun initialization. "
                     "Django is configured when the script runs; JSON fixtures are not scripts. "
                     "Does not regenerate the candidate."
                 ),
@@ -363,17 +365,19 @@ class Runner:
             ):
                 failure_category = "candidate_failure"
             elif data.get("error", {}).get("code") == "SANKA_EXTENSION_REPLAY_INVALID" and (
-                "seed changed MEDIA_ROOT; write seed files under settings.MEDIA_ROOT"
+                (
+                    self.seed is not None
+                    and data["error"].get("details", {}).get("failure_category") == "seed_failure"
+                )
+                or "seed changed MEDIA_ROOT; write seed files under settings.MEDIA_ROOT"
                 in data["error"].get("message", "")
+                or (
+                    self.seed is not None
+                    and data["error"].get("message", "").startswith("prepare process failed: ")
+                    and "django.db.utils.IntegrityError:" in data["error"]["message"]
+                )
             ):
-                failure_category = "coverage_incomplete"
-            elif (
-                self.seed is not None
-                and data.get("error", {}).get("code") == "SANKA_EXTENSION_REPLAY_INVALID"
-                and data["error"].get("message", "").startswith("prepare process failed: ")
-                and "django.db.utils.IntegrityError:" in data["error"]["message"]
-            ):
-                # A supplied seed violating schema constraints needs model repair.
+                # Retain older extension feedback while preferring structured seed errors.
                 failure_category = "coverage_incomplete"
             elif self.target == "fiber" and data.get("error", {}).get("details", {}).get(
                 "failure_category"

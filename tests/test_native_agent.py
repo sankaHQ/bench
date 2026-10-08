@@ -981,30 +981,45 @@ def test_first_verified_callback_excludes_warnings_and_survives_later_edits(tmp_
 
 
 @pytest.mark.parametrize(
-    "seed,side,error,repairable",
+    "seed,side,error,repairable,category",
     [
-        ("seed.py", "prepare", "django.db.utils.IntegrityError: UNIQUE constraint failed", True),
-        (None, "prepare", "django.db.utils.IntegrityError: UNIQUE constraint failed", False),
+        (
+            "seed.py",
+            "prepare",
+            "django.db.utils.IntegrityError: UNIQUE constraint failed",
+            True,
+            None,
+        ),
+        ("seed.py", "prepare", "seed replaced database", True, "seed_failure"),
+        (None, "prepare", "seed replaced database", False, "seed_failure"),
+        (None, "prepare", "django.db.utils.IntegrityError: UNIQUE constraint failed", False, None),
         (
             "seed.py",
             "source[list]",
             "django.db.utils.IntegrityError: UNIQUE constraint failed",
             False,
+            None,
         ),
-        ("seed.py", "prepare", "django.db.utils.OperationalError: unable to open database", False),
+        (
+            "seed.py",
+            "prepare",
+            "django.db.utils.OperationalError: unable to open database",
+            False,
+            "infrastructure_failure",
+        ),
     ],
 )
 @pytest.mark.parametrize("target", ["fastapi", "fiber"])
 def test_seed_constraint_failure_returns_repair_feedback(
-    tmp_path, seed, side, error, repairable, target
+    tmp_path, seed, side, error, repairable, category, target
 ):
     def execute(argv, **kw):
         failure = {
             "code": "SANKA_EXTENSION_REPLAY_INVALID",
             "message": f"{side} process failed: {error}",
             **(
-                {"details": {"failure_category": "infrastructure_failure"}}
-                if target == "fiber"
+                {"details": {"failure_category": category or "infrastructure_failure"}}
+                if target == "fiber" or category
                 else {}
             ),
         }
