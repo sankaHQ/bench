@@ -98,3 +98,9 @@ replay and a Go extension with candidate replay (shared replay >=0.1.0a6). Pin
 qualified released wheels before any paid run; the current historical release
 pins are intentionally unchanged by this harness patch. No paid runs were used
 to validate this change.
+
+Before the first Go public replay, the CLI arm downloads the supplied pinned Go
+dependencies into its isolated attempt cache. This command uses the existing
+command and overall time limits; failure stops before any provider request.
+Replay itself remains offline. Agent edits requiring other modules must prepare
+those dependencies through the existing execution tool.

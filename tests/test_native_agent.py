@@ -167,11 +167,26 @@ def cli_response(argv, *, ok=True, **data):
     return subprocess.CompletedProcess(argv, 0 if ok else 1, text.rstrip(), "")
 
 
-def test_go_lifecycle_verifies_promoted_candidate(tmp_path, monkeypatch):
+@pytest.mark.parametrize("dependencies_available", [True, False])
+def test_go_lifecycle_verifies_promoted_candidate(tmp_path, monkeypatch, dependencies_available):
     commands = []
+    cache_ready = False
 
     def execute(argv, **kwargs):
+        nonlocal cache_ready
         commands.append(argv)
+        if argv[:3] == ["go", "mod", "download"]:
+            cache_ready = dependencies_available
+            return subprocess.CompletedProcess(argv, 0 if cache_ready else 1, "", "")
+        if argv[1] == "verify" and not cache_ready:
+            return cli_response(
+                argv,
+                ok=False,
+                error={
+                    "code": "SANKA_EXTENSION_REPLAY_INVALID",
+                    "details": {"failure_category": "infrastructure_failure"},
+                },
+            )
         return (
             cli_response(argv)
             if argv[1] != "verify"
@@ -192,6 +207,12 @@ def test_go_lifecycle_verifies_promoted_candidate(tmp_path, monkeypatch):
         return {"backend.go": "sha256:generated"}
 
     monkeypatch.setattr(run, "promote", promote)
+    if not dependencies_available:
+        with pytest.raises(RuntimeError):
+            run.bootstrap_go()
+        assert not run.verified
+        assert not run.stages.get("verify")
+        return
     run.bootstrap_go()
     plan = commands[1]
     assert json.loads(plan[plan.index("--extension-config") + 1]) == {
