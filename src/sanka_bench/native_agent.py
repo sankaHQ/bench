@@ -326,6 +326,8 @@ class Runner:
                             "GOWORK",
                             "GOCACHE",
                             "GOMODCACHE",
+                            "GOPROXY",
+                            "GOSUMDB",
                         )
                         for item in ("--extension-env", name)
                     ]

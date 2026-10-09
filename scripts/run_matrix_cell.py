@@ -541,6 +541,11 @@ def generation_command(
     ]
     if cell.task_id.startswith("python-go-"):
         command.extend(["--go-bin", str(manifest["go_toolchain"]["go_bin"])])
+        seed = manifest["go_toolchain"].get("module_seed")
+        if seed is not None:
+            command.extend(
+                ["--go-module-seed", seed["path"], "--go-module-seed-sha256", seed["sha256"]]
+            )
         if cell.uses_sanka:
             command.extend(["--marketplace-revision", manifest["toolchain"]["marketplace_commit"]])
     if cell.agent != "sanka-native":
