@@ -949,6 +949,8 @@ def main() -> int:
     )
     parser.add_argument("--wall-clock-seconds", type=int, default=3600)
     parser.add_argument("--go-bin", type=Path)
+    parser.add_argument("--go-module-seed", type=Path)
+    parser.add_argument("--go-module-seed-sha256")
     parser.add_argument("--marketplace-revision")
     parser.add_argument("--sanka-bin", type=Path, default=None)
     parser.add_argument("--sanka-skill-sha256")
@@ -1192,6 +1194,12 @@ def main() -> int:
         claude_config.mkdir()
         raw_dir.mkdir()
         temp_dir.mkdir()
+        if args.go_module_seed is not None:
+            if task["lane"] != "python-go" or args.agent != "sanka-native":
+                parser.error("Go module seed requires the native Python-to-Go lane")
+            go_lane.seed_module_cache(
+                args.go_module_seed, args.go_module_seed_sha256, temp_dir / "go-mod"
+            )
 
         env = isolated_environment(
             os.environ,
@@ -1389,6 +1397,9 @@ def main() -> int:
                             "GOMODCACHE": str(temp_dir / "go-mod"),
                         }
                     )
+                if args.go_module_seed is not None:
+                    # Missing modules fail locally; never fall back to the provider network.
+                    tool_env.update({"GOPROXY": "off", "GOSUMDB": "off"})
                 tool_env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + os.defpath
 
                 if task["lane"] == "python-go":

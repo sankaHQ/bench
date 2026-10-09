@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import shutil
 import subprocess
 import zipfile
 from email.parser import BytesParser
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 TASKS = tuple(f"python-go-{index:03d}" for index in range(1, 5))
@@ -277,3 +278,22 @@ for filename, expected in json.loads(sys.argv[1]).items():
         raise ValueError(
             "installed Sanka runtime differs from pinned wheels: " + checked.stderr[-2000:]
         )
+
+
+def seed_module_cache(archive: Path, digest: str, destination: Path) -> None:
+    """Seed a private cache from pinned module downloads, never another candidate's tree."""
+    payload = archive.read_bytes()
+    if "sha256:" + hashlib.sha256(payload).hexdigest() != digest:
+        raise ValueError("Go module seed digest mismatch")
+    with zipfile.ZipFile(io.BytesIO(payload)) as bundle:
+        for entry in bundle.infolist():
+            path = PurePosixPath(entry.filename)
+            if (
+                path.is_absolute()
+                or ".." in path.parts
+                or path.parts[:2] != ("cache", "download")
+                or (entry.external_attr >> 16) & 0o170000 == 0o120000
+            ):
+                raise ValueError("unsafe Go module seed path")
+        destination.mkdir(parents=True, exist_ok=False)
+        bundle.extractall(destination)
